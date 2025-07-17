@@ -1,0 +1,40 @@
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++20
+
+# Formatting width
+ColumnLimit: 100
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+
+# Namespace formatting
+NamespaceIndentation: Inner
+
+# Brace placement
+BreakBeforeBraces: Allman
+AllowShortIfStatementsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+
+# Includes
+IncludeBlocks: Preserve
+IncludeCategories:
+  - Regex:           '^<.*\.h>'
+    Priority:        1
+    SortPriority:    1
+    CaseSensitive:   false
+  - Regex:           '^".*\.h"'
+    Priority:        2
+    SortPriority:    2
+SortIncludes: true
+
+# Spaces and padding
+SpaceAfterCStyleCast: true
+SpacesInAngles: false
+SpaceBeforeParens: ControlStatements
+SpacesBeforeTrailingComments: 1
+
+# Modern C++ tweaks
+DerivePointerAlignment: false
+PointerAlignment: Left
+Cpp11BracedListStyle: true

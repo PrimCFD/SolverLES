@@ -1,0 +1,19 @@
+{
+  "indent": 2,
+  "strict-indent": true,
+  "whitespace": true,
+  "enable-decl": true,
+  "enable-line-cont": true,
+  "enable-rewrite-use": false,
+  "align-assignment": true,
+  "align-continuation": true,
+  "align-comments": true,
+  "case": {
+    "keywords": "lower",
+    "intrinsics": "lower",
+    "types": "lower"
+  },
+  "continuation": "&",
+  "line-length": 100,
+  "double-colon": true
+}

@@ -1,0 +1,24 @@
+name: Style Check
+
+on: [push, pull_request]
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install formatters
+        run: |
+          pip install cmakelang fprettify
+          sudo apt-get install -y clang-format
+
+      - name: Check C++ format
+        run: clang-format --dry-run --Werror $(find src/ -name '*.cpp' -o -name '*.hpp')
+
+      - name: Check Fortran format
+        run: fprettify --check --config .fprettifyrc $(find src/ -name '*.f90')
+
+      - name: Check CMake lint
+        run: cmake-lint --config=.cmake-lint $(find . -name 'CMakeLists.txt' -o -name '*.cmake')

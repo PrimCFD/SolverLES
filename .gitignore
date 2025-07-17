@@ -1,1 +1,20 @@
-.vscode
+# Build artifacts
+/build/
+/build*/          
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Editor settings
+.vscode/
+*.swp
+*.swo
+*~
+
+# Sphinx build
+/docs/_build/
