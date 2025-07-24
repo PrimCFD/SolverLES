@@ -24,7 +24,6 @@ include(cmake/FetchCGNS.cmake)
 include(cmake/FetchPETSc.cmake)
 
 include(cmake/CompileOptions.cmake)
--
 add_subdirectory(src/core)
 add_subdirectory(src/kernels)
 add_subdirectory(src/bindings)
@@ -38,7 +37,10 @@ option(BUILD_EXAMPLES "Enable example cases" ON)
 
 if(BUILD_TESTS)
     enable_testing()
-    add_subdirectory(tests)
+    add_subdirectory(tests/ci_inputs)
+    add_subdirectory(tests/performance)
+    add_subdirectory(tests/regression)
+    add_subdirectory(tests/unit)
 endif()
 
 if(BUILD_EXAMPLES)
