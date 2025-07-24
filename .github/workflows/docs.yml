@@ -1,4 +1,4 @@
-name: Build Docs
+name: Docs
 
 on:
   push:
@@ -10,24 +10,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
-          pip install -r docs/requirements.txt
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip
+          pip install sphinx myst-parser furo
 
-      - name: Build docs
+      - name: Build documentation
+        working-directory: docs
         run: |
-          sphinx-build -b html docs/ build/docs
+          sphinx-build -b html . _build/html
 
-      - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/main'
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: build/docs
+          name: html-docs
+          path: docs/_build/html

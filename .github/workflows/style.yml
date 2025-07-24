@@ -13,10 +13,11 @@ on:
       - 'format-all.sh'
 
 jobs:
-  format:
+  style:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install formatters
@@ -25,15 +26,15 @@ jobs:
           sudo apt-get install -y clang-format fprettify python3-pip
           pip install cmake-format
 
-      - name: Run formatting script
+      - name: Run format-all.sh
         run: bash ./format-all.sh
 
-      - name: Check for changes
+      - name: Check for unformatted files
         run: |
-          if [[ `git status --porcelain` ]]; then
-            echo "❌ Formatting issues found. Please run ./format-all.sh locally and commit the changes."
+          if [[ $(git status --porcelain) ]]; then
+            echo "❌ Unformatted files detected. Please run ./format-all.sh locally and commit changes."
             git diff
             exit 1
           else
-            echo "✅ No formatting issues."
+            echo "✅ All code is properly formatted."
           fi
