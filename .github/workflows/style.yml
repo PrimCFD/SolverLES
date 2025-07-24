@@ -1,24 +1,39 @@
 name: Style Check
 
-on: [push, pull_request]
+on:
+  pull_request:
+    paths:
+      - '**.cpp'
+      - '**.hpp'
+      - '**.cc'
+      - '**.h'
+      - '**.f90'
+      - '**.cmake'
+      - 'CMakeLists.txt'
+      - 'format-all.sh'
 
 jobs:
   format:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
       - name: Install formatters
         run: |
-          pip install cmakelang fprettify
-          sudo apt-get install -y clang-format
+          sudo apt-get update
+          sudo apt-get install -y clang-format fprettify python3-pip
+          pip install cmake-format
 
-      - name: Check C++ format
-        run: clang-format --dry-run --Werror $(find src/ -name '*.cpp' -o -name '*.hpp')
+      - name: Run formatting script
+        run: bash ./format-all.sh
 
-      - name: Check Fortran format
-        run: fprettify --check --config .fprettifyrc $(find src/ -name '*.f90')
-
-      - name: Check CMake lint
-        run: cmake-lint --config=.cmake-lint $(find . -name 'CMakeLists.txt' -o -name '*.cmake')
+      - name: Check for changes
+        run: |
+          if [[ `git status --porcelain` ]]; then
+            echo "❌ Formatting issues found. Please run ./format-all.sh locally and commit the changes."
+            git diff
+            exit 1
+          else
+            echo "✅ No formatting issues."
+          fi

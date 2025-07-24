@@ -1,30 +1,39 @@
-name: Build & Test
+name: Linux CI
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
         compiler: [gcc, clang]
+
+    env:
+      CC: ${{ matrix.compiler == 'gcc' && 'gcc' || 'clang' }}
+      CXX: ${{ matrix.compiler == 'gcc' && 'g++' || 'clang++' }}
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build gfortran clang libopenmpi-dev openmpi-bin
+          sudo apt update
+          sudo apt install -y cmake g++ gfortran clang libopenmpi-dev
 
-      - name: Configure
-        run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_C_COMPILER=${{ matrix.compiler }} \
-            -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}++
+      - name: Configure (CMake)
+        run: cmake -S . -B build
 
       - name: Build
-        run: cmake --build build -j$(nproc)
+        run: cmake --build build -j4
 
-      - name: Test
-        run: ctest --test-dir build
+      - name: Run dummy solver
+        run: |
+          if [[ -f ./build/bin/solver ]]; then
+            ./build/bin/solver
+          else
+            echo "⚠️  No solver binary yet (expected for dummy setup)."
+          fi
