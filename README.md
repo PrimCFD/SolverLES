@@ -17,7 +17,7 @@ fvm-les-plasma/
 ├─ CMakeLists.txt            # Root super‑build
 ├─ .clang-format             # C++ style
 ├─ .fprettifyrc              # Fortran style
-├─ .gitignore
+├─ .gitignorev
 ├─ LICENSE
 ├─ README.md                 # Newcomer entry point
 │
