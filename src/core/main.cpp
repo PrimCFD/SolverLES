@@ -1,6 +1,7 @@
 #include <iostream>
 
-int main() {
+int main()
+{
     std::cout << "Solver bootstrap running." << std::endl;
     return 0;
 }

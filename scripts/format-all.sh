@@ -3,6 +3,9 @@
 
 set -e
 
+# Always run from the repo root
+cd "$(dirname "$0")/.."
+
 echo "🔧 Formatting C++ with clang-format..."
 find src/ tests/ cmake/ -type f \( -name "*.cpp" -o -name "*.hpp" -o -name "*.cc" -o -name "*.h" \) \
   -exec clang-format -i {} +

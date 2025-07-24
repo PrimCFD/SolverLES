@@ -9,6 +9,7 @@ Makefile
 # Python cache
 __pycache__/
 *.pyc
+.venv/
 
 # Editor settings
 .vscode/

@@ -9,8 +9,11 @@ on:
       - '**.h'
       - '**.f90'
       - '**.cmake'
-      - 'CMakeLists.txt'
-      - 'format-all.sh'
+      - '**/CMakeLists.txt'
+      - 'scripts/format-all.sh'
+      - '.clang-format'
+      - '.fprettifyrc'
+      - '.cmake-format.yaml'
 
 jobs:
   style:
@@ -23,16 +26,16 @@ jobs:
       - name: Install formatters
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-format fprettify python3-pip
-          pip install cmake-format
+          sudo apt-get install -y clang-format python3-pip
+          pip install cmake-format fprettify
 
       - name: Run format-all.sh
-        run: bash ./format-all.sh
+        run: bash scripts/format-all.sh
 
       - name: Check for unformatted files
         run: |
           if [[ $(git status --porcelain) ]]; then
-            echo "❌ Unformatted files detected. Please run ./format-all.sh locally and commit changes."
+            echo "❌ Unformatted files detected. Please run scripts/format-all.sh locally and commit changes."
             git diff
             exit 1
           else
