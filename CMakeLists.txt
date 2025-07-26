@@ -68,19 +68,19 @@ if(BUILD_DOCS)
   set(DOXY_OUT ${CMAKE_BINARY_DIR}/docs/_build/doxygen)
 
   add_custom_command(
-    OUTPUT  ${DOXY_OUT}/xml/index.xml
+    OUTPUT ${DOXY_OUT}/xml/index.xml
     COMMAND ${CMAKE_COMMAND} -E make_directory ${DOXY_OUT}
     COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/docs/Doxyfile
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/docs
     DEPENDS ${CMAKE_BINARY_DIR}/docs/Doxyfile
-    COMMENT "Generating Doxygen XML"
-  )
+    COMMENT "Generating Doxygen XML")
 
-  add_custom_target(doxygen_xml DEPENDS ${DOCS_BIN}/_build/doxygen/xml/index.xml)
+  add_custom_target(doxygen_xml
+                    DEPENDS ${DOCS_BIN}/_build/doxygen/xml/index.xml)
 
-  add_custom_target(docs
+  add_custom_target(
+    docs
     COMMAND ${SPHINX_BUILD} -b html ${DOCS_SRC} ${DOCS_BIN}/html
     DEPENDS doxygen_xml
-    COMMENT "Building Sphinx docs"
-  )
+    COMMENT "Building Sphinx docs")
 endif()
