@@ -2,6 +2,9 @@
 
 > **Status:** _Initial draft._
 
+[![Docs](https://img.shields.io/badge/docs-online-blue)](https://primcfd.github.io/SolverLES/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 ---
 
 ## 1&nbsp;· Project Vision
