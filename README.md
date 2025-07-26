@@ -22,7 +22,7 @@ fvm-les-plasma/
 ├─ README.md                 # Newcomer entry point
 │
 ├─ cmake/                    # CMake helper modules
-│   ├─ FetchKokkos.cmake
+│   ├─ FetchPETSc.cmake
 │   ├─ FetchCGNS.cmake
 │   └─ CompileOptions.cmake
 │
@@ -32,7 +32,7 @@ fvm-les-plasma/
 │
 ├─ src/                      # Solver source code
 │   ├─ core/                 # C++ runtime (orchestration only)
-│   ├─ gui/                  # Qt front‑end
+│   ├─ gui/                  # Qt/VTK front‑end
 │   ├─ plugins/              # Hot‑swappable physics modules
 │   │   ├─ flux/             # ‑ IFluxScheme implementations
 │   │   ├─ sgs/              # ‑ ISGSModel implementations
@@ -42,8 +42,6 @@ fvm-les-plasma/
 │
 ├─ tests/                    # Unit, regression & perf tests
 ├─ examples/                 # Tiny run‑ready cases (< 60 s)
-├─ benchmarks/               # Large scaling cases (LFS)
-│
 ├─ docs/                     # Sphinx + architecture notes
 ├─ scripts/                  # Dev‑ops & helper scripts
 └─ .github/                  # CI definitions
@@ -59,11 +57,10 @@ fvm-les-plasma/
 | **src/plugins/flux** | Spatial discretisation schemes. | Each sub‑dir → one shared lib (e.g. `libweno.so`). |
 | **src/plugins/sgs** | LES SGS models. | Research mostly done here. |
 | **src/plugins/time** | Time‑integration schemes. | Explicit RK, implicit, etc. |
-| **src/kernels** | Optimised Fortran math; reused by plug‑ins. | Vectorised / GPU‑offloaded via >OpenMP/CUDA Fortran. |
+| **src/kernels** | Optimised Fortran math; reused by plug‑ins. | Vectorised / GPU‑offloaded via OpenMP/CUDA Fortran. |
 | **extern** | Vendored: CGNS, PETSc. | Pulled via `FetchContent`; do **not** modify in‑tree. |
 | **tests** | Unit, regression CGNS, etc | CI runs these on every PR. |
 | **examples** | Minimal decks: Taylor–Green, Sod, etc. | Should finish < 1 minute serial. |
-| **benchmarks** | 256³+ meshes for scaling. | Stored via Git‑LFS or external URL. |
 
 ---
 

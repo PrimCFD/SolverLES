@@ -17,5 +17,6 @@ __pycache__/
 *.swo
 *~
 
-# Sphinx build
+# Doc build
 /docs/_build/
+/docs/api/

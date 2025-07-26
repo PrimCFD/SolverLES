@@ -22,8 +22,8 @@ endif()
 
 include(cmake/FetchCGNS.cmake)
 include(cmake/FetchPETSc.cmake)
-
 include(cmake/CompileOptions.cmake)
+
 add_subdirectory(src/core)
 add_subdirectory(src/kernels)
 add_subdirectory(src/bindings)
@@ -56,6 +56,31 @@ install(
 
 option(BUILD_DOCS "Build developer documentation" OFF)
 if(BUILD_DOCS)
-  find_package(Sphinx REQUIRED)
-  add_subdirectory(docs)
+  find_package(Doxygen REQUIRED)
+  find_program(SPHINX_BUILD sphinx-build REQUIRED)
+
+  set(DOCS_SRC ${CMAKE_SOURCE_DIR}/docs)
+  set(DOCS_BIN ${CMAKE_BINARY_DIR}/docs)
+
+  # Configure Doxyfile
+  configure_file(${DOCS_SRC}/Doxyfile.in ${DOCS_BIN}/Doxyfile @ONLY)
+
+  set(DOXY_OUT ${CMAKE_BINARY_DIR}/docs/_build/doxygen)
+
+  add_custom_command(
+    OUTPUT  ${DOXY_OUT}/xml/index.xml
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${DOXY_OUT}
+    COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/docs/Doxyfile
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/docs
+    DEPENDS ${CMAKE_BINARY_DIR}/docs/Doxyfile
+    COMMENT "Generating Doxygen XML"
+  )
+
+  add_custom_target(doxygen_xml DEPENDS ${DOCS_BIN}/_build/doxygen/xml/index.xml)
+
+  add_custom_target(docs
+    COMMAND ${SPHINX_BUILD} -b html ${DOCS_SRC} ${DOCS_BIN}/html
+    DEPENDS doxygen_xml
+    COMMENT "Building Sphinx docs"
+  )
 endif()

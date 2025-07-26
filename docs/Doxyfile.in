@@ -1,0 +1,20 @@
+# --- Input / parsing ---
+PROJECT_NAME           = SolverLES
+INPUT                  = @CMAKE_SOURCE_DIR@/src
+FILE_PATTERNS          = *.hpp *.cpp *.h *.f90
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+OPTIMIZE_FOR_FORTRAN   = YES
+STRIP_FROM_PATH = @CMAKE_SOURCE_DIR@/src
+
+EXCLUDE_SYMBOLS = main
+
+# --- Output ---
+GENERATE_HTML          = NO
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+OUTPUT_DIRECTORY       = @CMAKE_BINARY_DIR@/docs/_build/doxygen
+
+# --- Misc ---
+WARN_IF_UNDOCUMENTED   = YES
+QUIET                  = YES
