@@ -20,11 +20,8 @@ register_catch_tests(
   ".xml")
 
 if(ENABLE_MPI)
-  find_package(MPI REQUIRED)  # in the MPI job only
-  add_executable(test_halo
-    mpi_main.cpp
-    test_halo.cpp
-  )
+  find_package(MPI REQUIRED) # in the MPI job only
+  add_executable(test_halo mpi_main.cpp test_halo.cpp)
   target_link_libraries(test_halo PRIVATE core Catch2::Catch2 MPI::MPI_CXX)
 
   add_mpi_test(core_halo_2rank test_halo 2)
