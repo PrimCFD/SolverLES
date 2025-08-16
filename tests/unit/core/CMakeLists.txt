@@ -19,9 +19,14 @@ register_catch_tests(
   OUTPUT_SUFFIX
   ".xml")
 
-add_executable(test_halo test_halo.cpp mpi_main.cpp)
-target_link_libraries(test_halo PRIVATE core Catch2::Catch2 MPI::MPI_CXX)
+if(ENABLE_MPI)
+  find_package(MPI REQUIRED)  # in the MPI job only
+  add_executable(test_halo
+    mpi_main.cpp
+    test_halo.cpp
+  )
+  target_link_libraries(test_halo PRIVATE core Catch2::Catch2 MPI::MPI_CXX)
 
-# MPI tests for this suite (registered only if ENABLE_MPI=ON)
-add_mpi_test(core_halo_2rank test_halo 2)
-add_mpi_test(core_halo_4rank test_halo 4)
+  add_mpi_test(core_halo_2rank test_halo 2)
+  add_mpi_test(core_halo_4rank test_halo 4)
+endif()
