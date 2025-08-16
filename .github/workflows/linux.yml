@@ -16,6 +16,7 @@ jobs:
         shell: bash -eo pipefail {0}
 
     strategy:
+      fail-fast: false              
       matrix:
         compiler: [gcc, clang]
 
@@ -29,12 +30,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Check exec bits for shell scripts
+    - name: Ensure scripts are executable
       run: |
-        echo "🔍  Verifying +x on scripts/*.sh ..."
+        echo "🔍 verifying +x on scripts/*.sh"
         missing=$(git ls-files -s scripts/*.sh | awk '$1 !~ /^100755/ {print $4}')
         if [[ -n "${missing}" ]]; then
-          echo "::error::The following scripts have lost their +x bit:"
+          echo "::error::The following scripts need +x:"
           echo "${missing}"
           git update-index --chmod=+x ${missing}
           exit 1
@@ -47,13 +48,6 @@ jobs:
         path: extern
         key: extern-${{ hashFiles('cmake/Fetch*.cmake') }}
 
-    - name: Report extern-cache status
-      if: always()
-      run: |
-        [[ "${{ steps.cache-extern.outputs.cache-hit }}" == 'true' ]] \
-          && echo "📦  extern/ cache **HIT**" \
-          || echo "📦  extern/ cache **MISS** (will prefetch)"
-
     - name: Prefetch third-party archives (one-time)
       if: steps.cache-extern.outputs.cache-hit != 'true'
       run: scripts/prefetch_third_party.sh
@@ -61,14 +55,15 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y ninja-build cmake \
-             gfortran libopenmpi-dev openmpi-bin
+        sudo apt-get install -y \
+          ninja-build cmake gfortran clang \
+          openmpi-bin libopenmpi-dev
 
     # ---------- Unit tests ----------
     - name: Unit tests
       run: scripts/run_unit_tests.sh
       env:
-        OFFLINE: "1"         
+        OFFLINE: "1"
         CTEST_PARALLEL_LEVEL: 4
         CTEST_TIMEOUT: 900
 
@@ -94,14 +89,13 @@ jobs:
         path: build-perf/test-reports/perf/*.xml
         if-no-files-found: warn
 
-    # ---------- MPI tests ----------
-    - name: MPI halo tests
+    # ---------- MPI tests  ----------
+    - name: MPI halo tests (OpenMPI emulate mode)
       run: |
-        source scripts/mpi_env.sh  # picks sane flags per MPI vendor/runtime
-        scripts/run_mpi_tests.sh
+        scripts/run_mpi_tests.sh --mode emulate --type Debug --build-dir build-mpi --np 4
       env:
         OFFLINE: "1"
-        CTEST_PARALLEL_LEVEL: 4
+        CTEST_PARALLEL_LEVEL: 1 
         CTEST_TIMEOUT: 900
 
     - name: Upload MPI test report
