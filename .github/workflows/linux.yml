@@ -95,8 +95,14 @@ jobs:
         scripts/run_mpi_tests.sh --mode emulate --type Debug --build-dir build-mpi --np 4
       env:
         OFFLINE: "1"
-        CTEST_PARALLEL_LEVEL: 1 
+        CTEST_PARALLEL_LEVEL: 1     # keep CTest from launching multiple MPI jobs at once
         CTEST_TIMEOUT: 900
+        # Force Open MPI to allow oversubscription even if CTest didn't bake flags in:
+        OMPI_MCA_rmaps_base_oversubscribe: "1"
+        OMPI_MCA_btl: self,tcp
+        OMPI_MCA_btl_tcp_if_include: lo
+        OMPI_MCA_oob_tcp_if_include: lo
+        OMPI_MCA_pml: ob1
 
     - name: Upload MPI test report
       if: always()
