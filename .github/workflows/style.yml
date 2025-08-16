@@ -21,14 +21,14 @@ jobs:
           pip install --upgrade pip
           pip install fprettify cmake-format
 
-      - name: Run format-all.sh
-        run: bash scripts/format-all.sh
+      - name: Run format_all.sh
+        run: bash scripts/format_all.sh
 
       - name: Check for unformatted files
         run: |
           if [[ $(git status --porcelain) ]]; then
             echo "❌ Formatting issues detected! Please run:"
-            echo "   bash scripts/format-all.sh"
+            echo "   bash scripts/format_all.sh"
             echo
             echo "🔍 Diff preview:"
             git --no-pager diff

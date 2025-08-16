@@ -4,36 +4,110 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  build-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
 
     strategy:
       matrix:
         compiler: [gcc, clang]
 
     env:
-      CC: ${{ matrix.compiler == 'gcc' && 'gcc' || 'clang' }}
+      CC:  ${{ matrix.compiler }}
       CXX: ${{ matrix.compiler == 'gcc' && 'g++' || 'clang++' }}
+      CMAKE_GENERATOR: Ninja
+      CTEST_PARALLEL_LEVEL: 4
+      CTEST_TIMEOUT: 900
 
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y cmake g++ gfortran clang libopenmpi-dev
+    - name: Check exec bits for shell scripts
+      run: |
+        echo "🔍  Verifying +x on scripts/*.sh ..."
+        missing=$(git ls-files -s scripts/*.sh | awk '$1 !~ /^100755/ {print $4}')
+        if [[ -n "${missing}" ]]; then
+          echo "::error::The following scripts have lost their +x bit:"
+          echo "${missing}"
+          git update-index --chmod=+x ${missing}
+          exit 1
+        fi
 
-      - name: Configure (CMake)
-        run: cmake -S . -B build
+    - name: Cache extern tarballs
+      id: cache-extern
+      uses: actions/cache@v4
+      with:
+        path: extern
+        key: extern-${{ hashFiles('cmake/Fetch*.cmake') }}
 
-      - name: Build
-        run: cmake --build build -j4
+    - name: Report extern-cache status
+      if: always()
+      run: |
+        [[ "${{ steps.cache-extern.outputs.cache-hit }}" == 'true' ]] \
+          && echo "📦  extern/ cache **HIT**" \
+          || echo "📦  extern/ cache **MISS** (will prefetch)"
 
-      - name: Run dummy solver
-        run: |
-          if [[ -f ./build/bin/solver ]]; then
-            ./build/bin/solver
-          else
-            echo "⚠️  No solver binary yet (expected for dummy setup)."
-          fi
+    - name: Prefetch third-party archives (one-time)
+      if: steps.cache-extern.outputs.cache-hit != 'true'
+      run: scripts/prefetch_third_party.sh
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ninja-build cmake \
+             gfortran libopenmpi-dev openmpi-bin
+
+    # ---------- Unit tests ----------
+    - name: Unit tests
+      run: scripts/run_unit_tests.sh
+      env:
+        OFFLINE: "1"         
+        CTEST_PARALLEL_LEVEL: 4
+        CTEST_TIMEOUT: 900
+
+    - name: Upload unit test report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: unit-report-${{ matrix.compiler }}
+        path: build-unit/test-reports/unit/*.xml
+        if-no-files-found: warn
+
+    # ---------- Perf tests (smoke) ----------
+    - name: Performance smoke
+      run: scripts/run_perf_tests.sh
+      env:
+        OFFLINE: "1"
+
+    - name: Upload perf test report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: perf-report-${{ matrix.compiler }}
+        path: build-perf/test-reports/perf/*.xml
+        if-no-files-found: warn
+
+    # ---------- MPI tests ----------
+    - name: MPI halo tests
+      run: |
+        source scripts/mpi_env.sh  # picks sane flags per MPI vendor/runtime
+        scripts/run_mpi_tests.sh
+      env:
+        OFFLINE: "1"
+        CTEST_PARALLEL_LEVEL: 4
+        CTEST_TIMEOUT: 900
+
+    - name: Upload MPI test report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mpi-report-${{ matrix.compiler }}
+        path: build-mpi/test-reports/mpi/*.xml
+        if-no-files-found: warn

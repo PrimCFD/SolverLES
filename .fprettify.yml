@@ -1,0 +1,10 @@
+indent: 2
+strict-indent: true
+whitespace: 1
+
+# --case expects four integers:
+#   0 = leave unchanged, 1 = lowercase, 2 = UPPERCASE
+# order: keywords  intrinsics  user-types  operators/constants
+case: [1, 1, 1, 0]      # lower-case the first three, leave operators alone
+
+line-length: 100

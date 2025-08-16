@@ -19,8 +19,9 @@ The objective is to build an **open, modular finite‑volume LES solver for ther
 fvm-les-plasma/
 ├─ CMakeLists.txt            # Root super‑build
 ├─ .clang-format             # C++ style
-├─ .fprettifyrc              # Fortran style
-├─ .gitignorev
+├─ .cmake-format.yml         # CMake style
+├─ .fprettify.yml          # Fortran style
+├─ .gitignore
 ├─ LICENSE
 ├─ README.md                 # Newcomer entry point
 │
@@ -34,14 +35,16 @@ fvm-les-plasma/
 │   └─ cgns/
 │
 ├─ src/                      # Solver source code
-│   ├─ core/                 # C++ runtime (orchestration only)
+│   ├─ core/                 # C++ runtime static lib (orchestration, memory management)
 │   ├─ gui/                  # Qt/VTK front‑end
-│   ├─ plugins/              # Hot‑swappable physics modules
+│   ├─ plugins/              # Hot‑swappable physics modules dynamic lib
 │   │   ├─ flux/             # ‑ IFluxScheme implementations
 │   │   ├─ sgs/              # ‑ ISGSModel implementations
 │   │   └─ time/             # ‑ ITimeStepper implementations
 │   ├─ kernels/              # Shared Fortran math kernels
-│   └─ bindings/             # C/Fortran interop helpers
+│   ├─ bindings/             # C/Fortran interop helpers
+│   ├─ ipc/                  # Inter process communication GUI/Solver
+│   └─ apps/                 # Executables wrappers
 │
 ├─ tests/                    # Unit, regression & perf tests
 ├─ examples/                 # Tiny run‑ready cases (< 60 s)

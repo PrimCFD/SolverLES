@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write 
 
@@ -30,7 +34,7 @@ jobs:
       - name: Upload docs artifact
         uses: actions/upload-artifact@v4
         with:
-          name: html-docss
+          name: html-docs
           path: build/docs/html
 
       - name: Deploy to GitHub Pages

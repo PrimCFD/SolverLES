@@ -1,6 +1,8 @@
 # Build artifacts
 /build/
-/build*/          
+/build-*/
+/prefetch/
+/.prefetch/          
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
@@ -20,3 +22,7 @@ __pycache__/
 # Doc build
 /docs/_build/
 /docs/api/
+
+# Local download of external dependencies
+/extern/*
+!/extern/README.md
