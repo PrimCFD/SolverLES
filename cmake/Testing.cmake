@@ -10,8 +10,24 @@ endif()
 
 # Robust MPI test helper: becomes a no-op if MPI is disabled. Usage: Usage:
 function(add_mpi_test name target np)
-  add_test(NAME ${name} COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG}
-                                ${np} $<TARGET_FILE:${target}>)
+  # JUnit target directory for MPI
+  set(_junit_dir "${CMAKE_BINARY_DIR}/test-reports/mpi")
+  file(MAKE_DIRECTORY "${_junit_dir}")
+
+  # If tests are Catch2-based, ask the binary to emit JUnit directly.
+  if(TARGET Catch2::Catch2WithMain OR TARGET Catch2)
+    add_test(
+      NAME ${name}
+      COMMAND
+        ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
+        $<TARGET_FILE:${target}> --reporter junit --out
+        "${_junit_dir}/${name}.xml")
+  else()
+    # Non-Catch2 fallback: still runs the test (no JUnit from the binary)
+    add_test(NAME ${name} COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG}
+                                  ${np} $<TARGET_FILE:${target}>)
+  endif()
+
   set_tests_properties(${name} PROPERTIES LABELS mpi)
 endfunction()
 
@@ -25,10 +41,39 @@ function(register_catch_tests target)
   cmake_parse_arguments(R "${options}" "${oneValueArgs}" "${multiValueArgs}"
                         ${ARGN})
 
-  # Sensible defaults
-  if(NOT R_OUTPUT_DIR)
-    set(R_OUTPUT_DIR "${CMAKE_BINARY_DIR}/test-reports")
+  # Default label if none provided
+  if(NOT R_LABEL)
+    set(R_LABEL unit)
   endif()
+
+  # Skip entirely when the suite is disabled
+  if(R_LABEL STREQUAL "unit"
+     AND DEFINED ENABLE_TESTS_UNIT
+     AND NOT ENABLE_TESTS_UNIT)
+    return()
+  endif()
+  if(R_LABEL STREQUAL "mpi"
+     AND DEFINED ENABLE_TESTS_MPI
+     AND NOT ENABLE_TESTS_MPI)
+    return()
+  endif()
+  if(R_LABEL STREQUAL "perf"
+     AND DEFINED ENABLE_TESTS_PERF
+     AND NOT ENABLE_TESTS_PERF)
+    return()
+  endif()
+  if(R_LABEL STREQUAL "regression"
+     AND DEFINED ENABLE_TESTS_REGRESSION
+     AND NOT ENABLE_TESTS_REGRESSION)
+    return()
+  endif()
+
+  # Smarter default report location (per label)
+  if(NOT R_OUTPUT_DIR)
+    set(R_OUTPUT_DIR "${CMAKE_BINARY_DIR}/test-reports/${R_LABEL}")
+  endif()
+
+  # Create the directory only if we're actually registering this suite
   file(MAKE_DIRECTORY "${R_OUTPUT_DIR}")
 
   if(USE_SYSTEM_CATCH2)

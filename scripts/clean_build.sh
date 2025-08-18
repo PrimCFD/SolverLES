@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Thorough CMake/Ninja build cleaner for this repo
+# Works on build-*/ dirs except build-docs/ (docs-only)
 # Usage:
 #   ./clean.sh [-a|--all] [-k|--keep-deps] [-n|--dry-run] [-y|--yes] [-v|--verbose] [BUILD_DIR ...]
 #

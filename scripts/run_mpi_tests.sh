@@ -76,6 +76,11 @@ if [[ -z "${MPIEXEC_EXECUTABLE:-}" ]]; then
     export MPIEXEC_EXECUTABLE="mpiexec"; export MPIEXEC_NUMPROC_FLAG="-np"
   else
     echo "⚠️  No MPI launcher (srun/mpirun/mpiexec) found; skipping MPI tests."
+    # Leave a placeholder JUnit so CI artifact upload succeeds
+    report_dir="${BUILD_DIR}/test-reports/mpi"
+    mkdir -p "$report_dir"
+    printf '<testsuite name="mpi" tests="0" failures="0" skipped="0"/>\n' > "${report_dir}/ctest-mpi.xml"
+    echo "📄 JUnit: ${report_dir}/ctest-mpi.xml"
     exit 0
   fi
 fi
@@ -89,6 +94,7 @@ MPIEXEC_PREFLAGS="${MPIEXEC_PREFLAGS:-}" \
 MPIEXEC_POSTFLAGS="${MPIEXEC_POSTFLAGS:-}" \
 CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" \
 BUILD_DIR="${BUILD_DIR}" \
+  EXTRA_CMAKE_ARGS="-DENABLE_TESTS_UNIT=OFF -DENABLE_TESTS_MPI=ON -DENABLE_TESTS_PERF=OFF -DENABLE_TESTS_REGRESSION=OFF" \
 scripts/build.sh
 
 # --- test report path (JUnit if supported) ---
@@ -97,7 +103,7 @@ report_dir="${BUILD_DIR}/test-reports/mpi"
 mkdir -p "$report_dir"
 junit_xml="${report_dir}/ctest-mpi-${now}.xml"
 
-# Detect if this ctest supports --output-junit
+# Detect if this ctest supports --output-junit; no pre-run placeholder
 if ctest --help 2>/dev/null | grep -q -- '--output-junit'; then
   CTEST_JUNIT_OPTS=( --output-junit "$junit_xml" )
 else
@@ -127,7 +133,15 @@ echo "🧪 Running MPI tests (label-regex=${LABEL_RE})"
 )
 rc=$?
 
-if [[ ${#CTEST_JUNIT_OPTS[@]} -gt 0 ]]; then
+# Post-run fallback: only if no XML was produced by CTest or test binaries
+shopt -s nullglob
+mpi_xmls=("${report_dir}"/*.xml)
+if [[ ${#mpi_xmls[@]} -eq 0 ]]; then
+  printf '<testsuite name="mpi" tests="0" failures="0" skipped="0"/>\n' > "$junit_xml"
+  echo "📄 JUnit (fallback): ${junit_xml}"
+elif [[ ${#CTEST_JUNIT_OPTS[@]} -gt 0 ]]; then
+  # CTest wrote the summary XML we asked for
   echo "📄 JUnit: ${junit_xml}"
 fi
+
 exit "$rc"

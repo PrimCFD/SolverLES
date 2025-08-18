@@ -13,6 +13,7 @@ if [[ "${SKIP_BUILD}" != "1" ]]; then
   CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" \
   ENABLE_MPI=OFF \
   BUILD_TESTS=ON \
+  EXTRA_CMAKE_ARGS="-DENABLE_TESTS_UNIT=OFF -DENABLE_TESTS_MPI=OFF -DENABLE_TESTS_PERF=ON -DENABLE_TESTS_REGRESSION=OFF" \
   scripts/build.sh
 else
   [[ -d "${BUILD_DIR}" ]] || { echo "❌ BUILD_DIR ${BUILD_DIR} not found; remove SKIP_BUILD=1"; exit 1; }
@@ -21,7 +22,7 @@ fi
 mkdir -p "${REPORT_DIR}"
 
 if ctest --help 2>/dev/null | grep -q -- '--output-junit'; then
-  CTEST_JUNIT_OPTS=( --output-junit "${REPORT_DIR}/ctest-unit.xml" )
+  CTEST_JUNIT_OPTS=( --output-junit "${REPORT_DIR}/ctest-perf.xml" )
 else
   CTEST_JUNIT_OPTS=()
 fi
@@ -33,3 +34,11 @@ ctest --test-dir "${BUILD_DIR}" \
       --no-tests=error \
       --output-on-failure \
       "${CTEST_JUNIT_OPTS[@]}"
+
+# Post-run fallback: only if no XML was produced by CTest/Catch2
+shopt -s nullglob
+perf_xmls=("${REPORT_DIR}"/*.xml)
+if [[ ${#perf_xmls[@]} -eq 0 ]]; then
+  printf '<testsuite name="perf" tests="0" failures="0" skipped="0"/>\n' > "${REPORT_DIR}/ctest-perf.xml"
+  echo "📄 JUnit (fallback): ${REPORT_DIR}/ctest-perf.xml"
+fi

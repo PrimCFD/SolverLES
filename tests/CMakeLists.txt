@@ -1,13 +1,20 @@
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 include(Testing)
 
-# Add suites
-add_subdirectory(unit/core)
+option(ENABLE_TESTS_UNIT "Build unit tests" ON)
+option(ENABLE_TESTS_MPI "Build MPI tests (under unit/core)" ON)
+option(ENABLE_TESTS_PERF "Build performance tests" ON)
+option(ENABLE_TESTS_REGRESSION "Build regression tests" ON)
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/performance/core/CMakeLists.txt")
+# Add suites
+if(ENABLE_TESTS_UNIT OR ENABLE_TESTS_MPI)
+  add_subdirectory(unit/core)
+endif()
+
+if(ENABLE_TESTS_PERF)
   add_subdirectory(performance/core)
 endif()
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/regression/CMakeLists.txt")
+if(ENABLE_TESTS_REGRESSION)
   add_subdirectory(regression)
 endif()

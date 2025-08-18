@@ -26,20 +26,20 @@ jobs:
           sudo apt-get install -y python3 python3-pip doxygen graphviz
           pip install sphinx myst-parser furo breathe exhale
 
-      - name: Configure and build docs
+      - name: Build docs
         run: |
-          cmake -S . -B build -DBUILD_DOCS=ON
-          cmake --build build --target docs
+          chmod +x scripts/build-docs.sh
+          SPHINX_STRICT=1 ./scripts/build_docs.sh --force -q
 
       - name: Upload docs artifact
         uses: actions/upload-artifact@v4
         with:
           name: html-docs
-          path: build/docs/html
+          path: build-docs/docs/html
 
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: build/docs/html
+          publish_dir: build-docs/docs/html

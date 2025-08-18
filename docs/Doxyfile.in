@@ -4,6 +4,10 @@ INPUT                  = @CMAKE_SOURCE_DIR@/src
 FILE_PATTERNS          = *.hpp *.cpp *.h *.f90
 RECURSIVE              = YES
 EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+EXTRACT_ANON_NSPACES   = YES
 OPTIMIZE_FOR_FORTRAN   = YES
 STRIP_FROM_PATH = @CMAKE_SOURCE_DIR@/src
 
@@ -16,5 +20,9 @@ XML_OUTPUT             = xml
 OUTPUT_DIRECTORY       = @CMAKE_BINARY_DIR@/docs/_build/doxygen
 
 # --- Misc ---
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+PREDEFINED             = HAVE_MPI
 WARN_IF_UNDOCUMENTED   = YES
 QUIET                  = YES

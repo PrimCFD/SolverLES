@@ -4,7 +4,7 @@ extensions = ["breathe", "exhale"]
 
 breathe_projects = {
     "SolverLES": os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../build/docs/_build/doxygen/xml")
+        os.path.join(os.path.dirname(__file__), "../build-docs/docs/_build/doxygen/xml")
     )
 }
 breathe_default_project = "SolverLES"

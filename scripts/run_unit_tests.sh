@@ -14,6 +14,7 @@ if [[ "${SKIP_BUILD}" != "1" ]]; then
   CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Debug}" \
   ENABLE_MPI=OFF \
   BUILD_TESTS=ON \
+  EXTRA_CMAKE_ARGS="-DENABLE_TESTS_UNIT=ON -DENABLE_TESTS_MPI=OFF -DENABLE_TESTS_PERF=OFF -DENABLE_TESTS_REGRESSION=OFF" \
   scripts/build.sh
 else
   [[ -d "${BUILD_DIR}" ]] || { echo "❌ BUILD_DIR ${BUILD_DIR} not found; remove SKIP_BUILD=1"; exit 1; }
@@ -34,3 +35,11 @@ ctest --test-dir "${BUILD_DIR}" \
       --no-tests=error \
       --output-on-failure \
       "${CTEST_JUNIT_OPTS[@]}"
+
+# Post-run fallback: only if no XML was produced by CTest/Catch2
+shopt -s nullglob
+unit_xmls=("${REPORT_DIR}"/*.xml)
+if [[ ${#unit_xmls[@]} -eq 0 ]]; then
+  printf '<testsuite name="unit" tests="0" failures="0" skipped="0"/>\n' > "${REPORT_DIR}/ctest-unit.xml"
+  echo "📄 JUnit (fallback): ${REPORT_DIR}/ctest-unit.xml"
+fi
