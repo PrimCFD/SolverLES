@@ -28,7 +28,7 @@ jobs:
 
       - name: Build docs
         run: |
-          chmod +x scripts/build-docs.sh
+          chmod +x scripts/build_docs.sh
           SPHINX_STRICT=1 ./scripts/build_docs.sh --force -q
 
       - name: Upload docs artifact
