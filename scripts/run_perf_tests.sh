@@ -9,15 +9,28 @@ CTEST_TIMEOUT=${CTEST_TIMEOUT:-900}
 REPORT_DIR=${REPORT_DIR:-"${BUILD_DIR}/test-reports/perf"}
 
 if [[ "${SKIP_BUILD}" != "1" ]]; then
+  # Auto-detect CUDA unless user forced it
+  if [[ -z "${ENABLE_CUDA:-}" || "${ENABLE_CUDA}" == "AUTO" ]]; then
+    if command -v nvcc >/dev/null || [[ -d "${CUDAToolkit_ROOT:-/usr/local/cuda}" ]]; then
+      ENABLE_CUDA=ON
+      : "${USE_CUDA_UM:=ON}"
+    else
+      ENABLE_CUDA=OFF
+    fi
+  fi
+
   BUILD_DIR="${BUILD_DIR}" \
   CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" \
   ENABLE_MPI=OFF \
+  ENABLE_CUDA="${ENABLE_CUDA}" \
+  USE_CUDA_UM="${USE_CUDA_UM:-OFF}" \
   BUILD_TESTS=ON \
-  EXTRA_CMAKE_ARGS="-DENABLE_TESTS_UNIT=OFF -DENABLE_TESTS_MPI=OFF -DENABLE_TESTS_PERF=ON -DENABLE_TESTS_REGRESSION=OFF" \
+  EXTRA_CMAKE_ARGS="-DENABLE_TESTS_UNIT=OFF -DENABLE_TESTS_MPI=OFF -DENABLE_TESTS_PERF=ON -DENABLE_TESTS_REGRESSION=OFF ${EXTRA_CMAKE_ARGS_USER:-}" \
   scripts/build.sh
 else
   [[ -d "${BUILD_DIR}" ]] || { echo "❌ BUILD_DIR ${BUILD_DIR} not found; remove SKIP_BUILD=1"; exit 1; }
 fi
+
 
 mkdir -p "${REPORT_DIR}"
 

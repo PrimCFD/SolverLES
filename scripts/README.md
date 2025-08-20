@@ -13,6 +13,7 @@
 | `format_all.sh` | Run code formatters for C/C++, Fortran, and CMake (skips vendor/build). | `./scripts/format_all.sh` |
 | `mpi_env.sh` | Sourceable helpers to set MPI launcher/env; provides `mpi_exec`. | `source scripts/mpi_env.sh auto` |
 | `prefetch_third_party.sh` | Pre‑download third‑party sources and create reproducible archives in `extern/`. | `./scripts/prefetch_third_party.sh` |
+| `push_ci.sh` | Push the current branch to GitHub and runs the CI on a locally hosted runner (tmux terminal). | `./scripts/push_ci.sh` |
 | `run_unit_tests.sh` | Build (optional) and run **unit** tests via CTest; write JUnit XML. | `./scripts/run_unit_tests.sh` |
 | `run_perf_tests.sh` | Build (optional) and run **perf** tests via CTest; write JUnit XML. | `./scripts/run_perf_tests.sh` |
 | `run_mpi_tests.sh` | Configure with MPI and run **MPI** tests, laptop/cluster friendly. | `./scripts/run_mpi_tests.sh --mode emulate --np 4` |
@@ -206,6 +207,18 @@ mpi_exec 4 ./build/bin/your_mpi_program
 ---
 
 ## Test runners
+
+### `push_ci.sh`
+
+**What it does**
+- Pushes changes to GitHub  
+- Configures tmux terminal with the actions user and actions-runner/run.sh  
+- Waits on and runs CI config /.workflow/linux.yml  
+
+**Example**  
+```bash
+./scripts/push_ci.sh
+```
 
 ### `run_unit_tests.sh`
 - **What it does:** Optionally builds (via `build.sh`) then runs `ctest -L unit`. Creates JUnit XML under `$BUILD_DIR/test-reports/unit/` (fallback created if CTest/Catch2 doesn’t emit one).  

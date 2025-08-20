@@ -9,16 +9,18 @@ CTEST_TIMEOUT=${CTEST_TIMEOUT:-900}
 REPORT_DIR=${REPORT_DIR:-"${BUILD_DIR}/test-reports/unit"}
 
 if [[ "${SKIP_BUILD}" != "1" ]]; then
-  # Ensure dependencies & tests are configured consistently via build.sh
   BUILD_DIR="${BUILD_DIR}" \
   CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Debug}" \
   ENABLE_MPI=OFF \
+  ENABLE_CUDA="${ENABLE_CUDA:-OFF}" \
+  USE_CUDA_UM="${USE_CUDA_UM:-OFF}" \
   BUILD_TESTS=ON \
-  EXTRA_CMAKE_ARGS="-DENABLE_TESTS_UNIT=ON -DENABLE_TESTS_MPI=OFF -DENABLE_TESTS_PERF=OFF -DENABLE_TESTS_REGRESSION=OFF" \
+  EXTRA_CMAKE_ARGS="-DENABLE_TESTS_UNIT=ON -DENABLE_TESTS_MPI=OFF -DENABLE_TESTS_PERF=OFF -DENABLE_TESTS_REGRESSION=OFF ${EXTRA_CMAKE_ARGS_USER:-}" \
   scripts/build.sh
 else
   [[ -d "${BUILD_DIR}" ]] || { echo "❌ BUILD_DIR ${BUILD_DIR} not found; remove SKIP_BUILD=1"; exit 1; }
 fi
+
 
 mkdir -p "${REPORT_DIR}"
 

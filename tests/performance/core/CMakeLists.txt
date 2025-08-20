@@ -7,6 +7,11 @@ target_link_libraries(bench_allocate PRIVATE core)
 target_link_libraries(bench_index PRIVATE core)
 target_link_libraries(bench_copy PRIVATE core)
 
+if(ENABLE_CUDA)
+  target_link_libraries(bench_copy PRIVATE CUDA::cudart)
+  target_compile_definitions(bench_copy PRIVATE HAVE_CUDA)
+endif()
+
 # Tests (serial, labeled "perf", CUDA copy auto-skips when CUDA is off)
 add_perf_test(perf_alloc bench_allocate)
 add_perf_test(perf_index bench_index)

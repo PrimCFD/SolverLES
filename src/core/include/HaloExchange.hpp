@@ -1,238 +1,194 @@
 #pragma once
-#include <array>
-#include <cstdint>
-#include <type_traits>
-#include <vector>
-
 #include "Field.hpp"
-#include "MemoryManager.hpp"
 #include "Mesh.hpp"
-
-#ifdef HAVE_MPI
 #include <mpi.h>
-#endif
+#include <vector>
 
 namespace core
 {
 
-// --- MPI type mapping -------------------------------------------------------
-#ifdef HAVE_MPI
-template <class T> inline MPI_Datatype mpi_dt();
-template <> inline MPI_Datatype mpi_dt<float>()
+// Exchange the 6 axis-aligned faces (no edges/corners). Works for ng >= 1.
+// Uses a Cartesian communicator derived from the provided `comm`.
+template <class T> void exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm comm)
 {
-    return MPI_FLOAT;
-}
-template <> inline MPI_Datatype mpi_dt<double>()
-{
-    return MPI_DOUBLE;
-}
-template <> inline MPI_Datatype mpi_dt<std::int32_t>()
-{
-    return MPI_INT;
-}
-template <> inline MPI_Datatype mpi_dt<std::int64_t>()
-{
-    return MPI_LONG_LONG;
-} // portable
-#endif
-
-// --- Public API --------------------------------------------------------------
-// Convenience: world communicator
-template <class T> inline void exchange_ghosts(Field<T>& f, const Mesh& m)
-{
-#ifdef HAVE_MPI
-    exchange_ghosts(f, m, MPI_COMM_WORLD);
-#else
-    (void) f;
-    (void) m; // no-op without MPI
-#endif
-}
-
-// 3D exchange (faces + edges + corners)
-template <class T>
-inline void exchange_ghosts(Field<T>& f, const Mesh& m,
-/*in*/
-#ifdef HAVE_MPI
-                            MPI_Comm user_comm
-#else
-                            int /*dummy*/ = 0
-#endif
-)
-{
-#ifndef HAVE_MPI
-    (void) f;
-    (void) m;
-    return; // no-MPI build: do nothing
-#else
-    // Local extents and halo width
-    const int nx = m.local[0];
-    const int ny = m.local[1];
-    const int nz = m.local[2];
+    const int nx = m.local[0], ny = m.local[1], nz = m.local[2];
     const int ng = m.ng;
-    if (ng <= 0)
-        return;
 
-    // Build (or adapt to) a 3D Cartesian communicator
-    int world_n = 1, world_rank = 0;
-    MPI_Comm_size(user_comm, &world_n);
-    MPI_Comm_rank(user_comm, &world_rank);
+    // Derive a 3D Cartesian communicator from `comm`
+    int size = 1;
+    MPI_Comm_size(comm, &size);
+    int dims[3] = {0, 0, 0};
+    int periods[3] = {0, 0, 0};
+    MPI_Dims_create(size, 3, dims);
+    MPI_Comm cart = MPI_COMM_NULL;
+    MPI_Cart_create(comm, 3, dims, periods, /*reorder=*/1, &cart);
+    if (cart == MPI_COMM_NULL)
+        cart = comm;
 
-    int dims[3] = {0, 0, 0};    // auto factorization
-    int periods[3] = {0, 0, 0}; // non-periodic by default
-    MPI_Dims_create(world_n, 3, dims);
-    MPI_Comm cart_comm = MPI_COMM_NULL;
-    MPI_Cart_create(user_comm, 3, dims, periods, /*reorder=*/1, &cart_comm);
-    if (cart_comm == MPI_COMM_NULL)
-        cart_comm = user_comm; // fallback (single rank)
+    // Neighbor ranks for faces
+    int xneg, xpos, yneg, ypos, zneg, zpos;
+    MPI_Cart_shift(cart, 0, 1, &xneg, &xpos);
+    MPI_Cart_shift(cart, 1, 1, &yneg, &ypos);
+    MPI_Cart_shift(cart, 2, 1, &zneg, &zpos);
 
-    int coords[3] = {0, 0, 0};
-    if (cart_comm != MPI_COMM_NULL)
+    // Pack/unpack helpers
+    auto pack_x = [&](int i_start, std::vector<T>& buf)
     {
-        int ndims = 0;
-        MPI_Cartdim_get(cart_comm, &ndims);
-        if (ndims == 3)
-            MPI_Cart_coords(cart_comm, world_rank, 3, coords);
-    }
-
-    // Describe one neighbor exchange
-    struct Ex
-    {
-        int dx, dy, dz;    // neighbor offset (-1,0,1)
-        int nbr;           // neighbor rank (or MPI_PROC_NULL)
-        int sx, sy, sz;    // block size to send
-        int ix0, iy0, iz0; // source start (interior)
-        int ox0, oy0, oz0; // destination start (ghosts)
-        std::size_t count; // sx*sy*sz
-        T* sbuf{nullptr};
-        T* rbuf{nullptr};
-        MPI_Request reqs[2]{MPI_REQUEST_NULL, MPI_REQUEST_NULL}; // {recv, send}
-    };
-
-    std::vector<Ex> work;
-    work.reserve(26);
-
-    auto tag_of = [](int dx, int dy, int dz) -> int
-    {
-        // Unique tag in [0..26], offset so it's >=100 (avoid collisions with other code)
-        return 100 + (dx + 1) * 9 + (dy + 1) * 3 + (dz + 1);
-    };
-
-    // Helper to compute neighbor rank for (dx,dy,dz)
-    auto neighbor_of = [&](int dx, int dy, int dz) -> int
-    {
-        int here[3];
-        MPI_Cart_coords(cart_comm, world_rank, 3, here);
-        int there[3] = {here[0] + dx, here[1] + dy, here[2] + dz};
-        int dims_local[3], periods_local[3], coords_dummy[3];
-        MPI_Cart_get(cart_comm, 3, dims_local, periods_local, coords_dummy);
-
-        // Handle non-periodic out-of-bounds
-        for (int a = 0; a < 3; ++a)
-        {
-            if (!periods_local[a] && (there[a] < 0 || there[a] >= dims_local[a]))
-            {
-                return MPI_PROC_NULL;
-            }
-            if (periods_local[a])
-            {
-                if (there[a] < 0)
-                    there[a] += dims_local[a];
-                if (there[a] >= dims_local[a])
-                    there[a] -= dims_local[a];
-            }
-        }
-        int r = MPI_PROC_NULL;
-        MPI_Cart_rank(cart_comm, there, &r);
-        return r;
-    };
-
-    // Build the 26 neighbor exchanges
-    for (int dx = -1; dx <= 1; ++dx)
-        for (int dy = -1; dy <= 1; ++dy)
-            for (int dz = -1; dz <= 1; ++dz)
-            {
-                if (dx == 0 && dy == 0 && dz == 0)
-                    continue;
-
-                Ex ex{};
-                ex.dx = dx;
-                ex.dy = dy;
-                ex.dz = dz;
-                ex.nbr = neighbor_of(dx, dy, dz);
-                if (ex.nbr == MPI_PROC_NULL)
-                    continue; // nothing to do
-
-                ex.sx = (dx == 0) ? nx : ng;
-                ex.sy = (dy == 0) ? ny : ng;
-                ex.sz = (dz == 0) ? nz : ng;
-
-                ex.ix0 = (dx < 0) ? 0 : (dx == 0 ? 0 : nx - ng);
-                ex.iy0 = (dy < 0) ? 0 : (dy == 0 ? 0 : ny - ng);
-                ex.iz0 = (dz < 0) ? 0 : (dz == 0 ? 0 : nz - ng);
-
-                ex.ox0 = (dx < 0) ? -ng : (dx == 0 ? 0 : nx);
-                ex.oy0 = (dy < 0) ? -ng : (dy == 0 ? 0 : ny);
-                ex.oz0 = (dz < 0) ? -ng : (dz == 0 ? 0 : nz);
-
-                ex.count = static_cast<std::size_t>(ex.sx) * static_cast<std::size_t>(ex.sy) *
-                           static_cast<std::size_t>(ex.sz);
-
-                work.push_back(ex);
-            }
-
-    // Allocate receive buffers and post Irecv first (to avoid races)
-    auto& mm = core::MemoryManager::instance();
-    for (auto& ex : work)
-    {
-        ex.rbuf = mm.allocate<T>(ex.count);
-        const int tagOpp = tag_of(-ex.dx, -ex.dy, -ex.dz);
-        MPI_Irecv(ex.rbuf, static_cast<int>(ex.count), mpi_dt<T>(), ex.nbr, tagOpp, cart_comm,
-                  &ex.reqs[0]);
-    }
-
-    // Pack and Isend
-    for (auto& ex : work)
-    {
-        ex.sbuf = mm.allocate<T>(ex.count);
-        // pack: (k,j,i) fastest-varying i
+        buf.resize(static_cast<std::size_t>(ny) * nz * ng);
         std::size_t p = 0;
-        for (int kz = 0; kz < ex.sz; ++kz)
-            for (int jy = 0; jy < ex.sy; ++jy)
-                for (int ix = 0; ix < ex.sx; ++ix)
-                    ex.sbuf[p++] = f(ex.ix0 + ix, ex.iy0 + jy, ex.iz0 + kz);
-
-        const int tag = tag_of(ex.dx, ex.dy, ex.dz);
-        MPI_Isend(ex.sbuf, static_cast<int>(ex.count), mpi_dt<T>(), ex.nbr, tag, cart_comm,
-                  &ex.reqs[1]);
-    }
-
-    // Wait for all comms to complete
-    std::vector<MPI_Request> all;
-    all.reserve(work.size() * 2);
-    for (auto& ex : work)
-    {
-        all.push_back(ex.reqs[0]);
-        all.push_back(ex.reqs[1]);
-    }
-    if (!all.empty())
-        MPI_Waitall(static_cast<int>(all.size()), all.data(), MPI_STATUSES_IGNORE);
-
-    // Unpack and free
-    for (auto& ex : work)
+        for (int k = 0; k < nz; ++k)
+            for (int j = 0; j < ny; ++j)
+                for (int g = 0; g < ng; ++g)
+                    buf[p++] = f(i_start + g, j, k);
+    };
+    auto unpack_x = [&](int i_ghost_start, const std::vector<T>& buf)
     {
         std::size_t p = 0;
-        for (int kz = 0; kz < ex.sz; ++kz)
-            for (int jy = 0; jy < ex.sy; ++jy)
-                for (int ix = 0; ix < ex.sx; ++ix)
-                    f(ex.ox0 + ix, ex.oy0 + jy, ex.oz0 + kz) = ex.rbuf[p++];
+        for (int k = 0; k < nz; ++k)
+            for (int j = 0; j < ny; ++j)
+                for (int g = 0; g < ng; ++g)
+                    f(i_ghost_start + g, j, k) = buf[p++];
+    };
 
-        mm.release(ex.sbuf);
-        mm.release(ex.rbuf);
+    auto pack_y = [&](int j_start, std::vector<T>& buf)
+    {
+        buf.resize(static_cast<std::size_t>(nx) * nz * ng);
+        std::size_t p = 0;
+        for (int k = 0; k < nz; ++k)
+            for (int i = 0; i < nx; ++i)
+                for (int g = 0; g < ng; ++g)
+                    buf[p++] = f(i, j_start + g, k);
+    };
+    auto unpack_y = [&](int j_ghost_start, const std::vector<T>& buf)
+    {
+        std::size_t p = 0;
+        for (int k = 0; k < nz; ++k)
+            for (int i = 0; i < nx; ++i)
+                for (int g = 0; g < ng; ++g)
+                    f(i, j_ghost_start + g, k) = buf[p++];
+    };
+
+    auto pack_z = [&](int k_start, std::vector<T>& buf)
+    {
+        buf.resize(static_cast<std::size_t>(nx) * ny * ng);
+        std::size_t p = 0;
+        for (int j = 0; j < ny; ++j)
+            for (int i = 0; i < nx; ++i)
+                for (int g = 0; g < ng; ++g)
+                    buf[p++] = f(i, j, k_start + g);
+    };
+    auto unpack_z = [&](int k_ghost_start, const std::vector<T>& buf)
+    {
+        std::size_t p = 0;
+        for (int j = 0; j < ny; ++j)
+            for (int i = 0; i < nx; ++i)
+                for (int g = 0; g < ng; ++g)
+                    f(i, j, k_ghost_start + g) = buf[p++];
+    };
+
+    // Buffers & requests
+    std::vector<T> s_xn, r_xn, s_xp, r_xp;
+    std::vector<T> s_yn, r_yn, s_yp, r_yp;
+    std::vector<T> s_zn, r_zn, s_zp, r_zp;
+    MPI_Request reqs[12];
+    int rcount = 0;
+    auto bytes = [](std::size_t n) -> int { return static_cast<int>(n); }; // small halos
+
+    // Post recvs (MPI_BYTE for portability across T)
+    if (xneg != MPI_PROC_NULL)
+    {
+        r_xn.resize((size_t) ny * nz * ng);
+        MPI_Irecv(r_xn.data(), bytes(r_xn.size() * sizeof(T)), MPI_BYTE, xneg, 100, cart,
+                  &reqs[rcount++]);
+    }
+    if (xpos != MPI_PROC_NULL)
+    {
+        r_xp.resize((size_t) ny * nz * ng);
+        MPI_Irecv(r_xp.data(), bytes(r_xp.size() * sizeof(T)), MPI_BYTE, xpos, 101, cart,
+                  &reqs[rcount++]);
+    }
+    if (yneg != MPI_PROC_NULL)
+    {
+        r_yn.resize((size_t) nx * nz * ng);
+        MPI_Irecv(r_yn.data(), bytes(r_yn.size() * sizeof(T)), MPI_BYTE, yneg, 200, cart,
+                  &reqs[rcount++]);
+    }
+    if (ypos != MPI_PROC_NULL)
+    {
+        r_yp.resize((size_t) nx * nz * ng);
+        MPI_Irecv(r_yp.data(), bytes(r_yp.size() * sizeof(T)), MPI_BYTE, ypos, 201, cart,
+                  &reqs[rcount++]);
+    }
+    if (zneg != MPI_PROC_NULL)
+    {
+        r_zn.resize((size_t) nx * ny * ng);
+        MPI_Irecv(r_zn.data(), bytes(r_zn.size() * sizeof(T)), MPI_BYTE, zneg, 300, cart,
+                  &reqs[rcount++]);
+    }
+    if (zpos != MPI_PROC_NULL)
+    {
+        r_zp.resize((size_t) nx * ny * ng);
+        MPI_Irecv(r_zp.data(), bytes(r_zp.size() * sizeof(T)), MPI_BYTE, zpos, 301, cart,
+                  &reqs[rcount++]);
     }
 
-    if (cart_comm != user_comm)
-        MPI_Comm_free(&cart_comm);
-#endif
+    // Pack & send
+    if (xneg != MPI_PROC_NULL)
+    {
+        pack_x(0, s_xn);
+        MPI_Isend(s_xn.data(), bytes(s_xn.size() * sizeof(T)), MPI_BYTE, xneg, 101, cart,
+                  &reqs[rcount++]);
+    }
+    if (xpos != MPI_PROC_NULL)
+    {
+        pack_x(nx - ng, s_xp);
+        MPI_Isend(s_xp.data(), bytes(s_xp.size() * sizeof(T)), MPI_BYTE, xpos, 100, cart,
+                  &reqs[rcount++]);
+    }
+    if (yneg != MPI_PROC_NULL)
+    {
+        pack_y(0, s_yn);
+        MPI_Isend(s_yn.data(), bytes(s_yn.size() * sizeof(T)), MPI_BYTE, yneg, 201, cart,
+                  &reqs[rcount++]);
+    }
+    if (ypos != MPI_PROC_NULL)
+    {
+        pack_y(ny - ng, s_yp);
+        MPI_Isend(s_yp.data(), bytes(s_yp.size() * sizeof(T)), MPI_BYTE, ypos, 200, cart,
+                  &reqs[rcount++]);
+    }
+    if (zneg != MPI_PROC_NULL)
+    {
+        pack_z(0, s_zn);
+        MPI_Isend(s_zn.data(), bytes(s_zn.size() * sizeof(T)), MPI_BYTE, zneg, 301, cart,
+                  &reqs[rcount++]);
+    }
+    if (zpos != MPI_PROC_NULL)
+    {
+        pack_z(nz - ng, s_zp);
+        MPI_Isend(s_zp.data(), bytes(s_zp.size() * sizeof(T)), MPI_BYTE, zpos, 300, cart,
+                  &reqs[rcount++]);
+    }
+
+    if (rcount)
+        MPI_Waitall(rcount, reqs, MPI_STATUSES_IGNORE);
+
+    // Unpack to ghosts (only where a message arrived)
+    if (!r_xn.empty())
+        unpack_x(-ng, r_xn);
+    if (!r_xp.empty())
+        unpack_x(nx, r_xp);
+    if (!r_yn.empty())
+        unpack_y(-ng, r_yn);
+    if (!r_yp.empty())
+        unpack_y(ny, r_yp);
+    if (!r_zn.empty())
+        unpack_z(-ng, r_zn);
+    if (!r_zp.empty())
+        unpack_z(nz, r_zp);
+
+    if (cart != comm)
+        MPI_Comm_free(&cart);
 }
 
 } // namespace core

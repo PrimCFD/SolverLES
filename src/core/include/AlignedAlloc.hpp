@@ -1,7 +1,8 @@
 #pragma once
 #include <cstddef>
 #include <cstdlib>
-#include <stdexcept>
+#include <new>
+
 #ifdef HAVE_CUDA
 #include <cuda_runtime.h>
 #endif
@@ -9,44 +10,55 @@
 namespace core::detail
 {
 
-#ifdef USE_CUDA_UM
-constexpr std::size_t HW_ALIGN = 128; // covers CPU 64 B as well
+#if defined(USE_CUDA_UM)
+// Managed allocations are at least 256B aligned on most GPUs; 128 is safe+wide for host SIMD.
+inline constexpr std::size_t HW_ALIGN = 128;
 #else
-constexpr std::size_t HW_ALIGN = 64;
+inline constexpr std::size_t HW_ALIGN = 64;
 #endif
 
-inline void* aligned_malloc(std::size_t bytes)
+inline void* aligned_malloc(std::size_t bytes, std::size_t alignment = HW_ALIGN)
 {
-#ifdef USE_CUDA_UM
+#if defined(USE_CUDA_UM) && defined(HAVE_CUDA)
+    // Unified Memory path: one pointer valid on host and device
     void* p = nullptr;
-#ifdef HAVE_CUDA
-    if (cudaMallocManaged(&p, bytes) != cudaSuccess)
-        p = nullptr;
+    if (cudaMallocManaged(&p, bytes, cudaMemAttachGlobal) != cudaSuccess)
+    {
+        throw std::bad_alloc{};
+    }
+    return p;
+
 #else
-    (void) bytes;
-    p = nullptr; // UM requested but CUDA absent
+// Host-only path (or UM requested but CUDA not available)
+#if defined(_MSC_VER)
+    void* p = _aligned_malloc(bytes, alignment);
+    if (!p)
+        throw std::bad_alloc{};
+    return p;
+#else
+    // std::aligned_alloc requires size multiple of alignment
+    if (alignment == 0 || (alignment & (alignment - 1)) != 0)
+        alignment = HW_ALIGN;
+    std::size_t padded = ((bytes + alignment - 1) / alignment) * alignment;
+    void* p = std::aligned_alloc(alignment, padded);
+    if (!p)
+        throw std::bad_alloc{};
+    return p;
 #endif
-    if (!p)
-        throw std::bad_alloc{};
-    return p;
-#else
-    void* p = std::aligned_alloc(HW_ALIGN, ((bytes + HW_ALIGN - 1) & ~(HW_ALIGN - 1)));
-    if (!p)
-        throw std::bad_alloc{};
-    return p;
 #endif
 }
 
 inline void aligned_free(void* p) noexcept
 {
-#ifdef USE_CUDA_UM
-#ifdef HAVE_CUDA
-    cudaFree(p);
+#if defined(USE_CUDA_UM) && defined(HAVE_CUDA)
+    if (p)
+        cudaFree(p);
+#else
+#if defined(_MSC_VER)
+    _aligned_free(p);
 #else
     std::free(p);
 #endif
-#else
-    std::free(p);
 #endif
 }
 

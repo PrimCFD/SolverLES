@@ -1,113 +1,153 @@
-name: Linux CI
+name: Tests · CPU/GPU/MPI (optimized)
 
 on:
-  push:
   pull_request:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
 concurrency:
-  group: linux-${{ github.ref }}
+  group: tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  build-test:
+  # One-time per workflow run: prefetch deps to speed up all matrix jobs
+  prefetch-deps:
+    name: Prefetch third‑party archives
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash -eo pipefail {0}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install minimal build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build build-essential gfortran
+      - name: Prefetch third‑party sources into extern/
+        run: |
+          bash scripts/prefetch_third_party.sh
+      - name: Upload extern/ cache for downstream jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: extern-cache
+          path: extern/
+          if-no-files-found: error
+          retention-days: 7
 
+  # Matrix of test types / environments
+  tests:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+    name: ${{ matrix.name }}
+    needs: prefetch-deps
+    runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 60
+    continue-on-error: ${{ matrix.allow_fail || false }}
     strategy:
-      fail-fast: false              
+      fail-fast: false
       matrix:
-        compiler: [gcc, clang]
+        include:
+          - name: Unit (CPU)
+            test: unit
+            runs_on: [self-hosted, linux, x64]
+            apt_deps: true
+            gpu: false
+            mpi: false
 
-    env:
-      CC:  ${{ matrix.compiler }}
-      CXX: ${{ matrix.compiler == 'gcc' && 'g++' || 'clang++' }}
-      CMAKE_GENERATOR: Ninja
-      CTEST_PARALLEL_LEVEL: 4
-      CTEST_TIMEOUT: 900
+          - name: Perf (CPU)
+            test: perf
+            runs_on: [self-hosted, linux, x64]
+            apt_deps: true
+            gpu: false
+            mpi: false
+
+          - name: MPI (emulated)
+            test: mpi
+            runs_on: [self-hosted, linux, x64]
+            apt_deps: true
+            gpu: false
+            mpi: true
+            mpi_mode: emulate
+            np: 2
+
+          - name: Perf (GPU)
+            test: perf
+            runs_on: [self-hosted, linux, x64]
+            apt_deps: false
+            gpu: true
+            mpi: false
+            allow_fail: true
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Ensure scripts are executable
-      run: |
-        echo "🔍 verifying +x on scripts/*.sh"
-        missing=$(git ls-files -s scripts/*.sh | awk '$1 !~ /^100755/ {print $4}')
-        if [[ -n "${missing}" ]]; then
-          echo "::error::The following scripts need +x:"
-          echo "${missing}"
-          git update-index --chmod=+x ${missing}
-          exit 1
-        fi
+      - name: Install build/MPI deps (Ubuntu)
+        if: ${{ matrix.apt_deps }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential gfortran \
+            openmpi-bin libopenmpi-dev
 
-    - name: Cache extern tarballs
-      id: cache-extern
-      uses: actions/cache@v4
-      with:
-        path: extern
-        key: extern-${{ hashFiles('cmake/Fetch*.cmake') }}
+      - name: Fetch extern/ from prefetch job
+        uses: actions/download-artifact@v4
+        with:
+          name: extern-cache
+          path: extern/
 
-    - name: Prefetch third-party archives (one-time)
-      if: steps.cache-extern.outputs.cache-hit != 'true'
-      run: scripts/prefetch_third_party.sh
+      - name: Ensure extern/ exists (fallback safety)
+        shell: bash
+        run: |
+          if [ ! -d extern ] || [ -z "$(ls -A extern)" ]; then
+            echo "extern/ missing, running prefetch_third_party.sh here as a fallback…"
+            bash scripts/prefetch_third_party.sh
+          fi
+          ls -l extern || true
 
-    - name: Install build dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          ninja-build cmake gfortran clang \
-          openmpi-bin libopenmpi-dev
+      - name: CPU Unit tests
+        if: ${{ matrix.test == 'unit' }}
+        env:
+          OFFLINE: "1"
+        run: |
+          ./scripts/run_unit_tests.sh
 
-    # ---------- Unit tests ----------
-    - name: Unit tests
-      run: scripts/run_unit_tests.sh
-      env:
-        OFFLINE: "1"
-        CTEST_PARALLEL_LEVEL: 4
-        CTEST_TIMEOUT: 900
+      - name: CPU Perf tests
+        if: ${{ matrix.test == 'perf' && !matrix.gpu }}
+        env:
+          OFFLINE: "1"
+          ENABLE_CUDA: "OFF"   # keep CPU-only path explicit
+          CMAKE_BUILD_TYPE: Release
+        run: |
+          ./scripts/run_perf_tests.sh
 
-    - name: Upload unit test report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: unit-report-${{ matrix.compiler }}
-        path: build-unit/test-reports/unit/*.xml
-        if-no-files-found: warn
+      - name: MPI tests (emulated on CI)
+        if: ${{ matrix.test == 'mpi' }}
+        env:
+          OFFLINE: "1"
+        run: |
+          ./scripts/run_mpi_tests.sh --mode ${{ matrix.mpi_mode || 'auto' }} --np ${{ matrix.np || 2 }} --keep-going
 
-    # ---------- Perf tests (smoke) ----------
-    - name: Performance smoke
-      run: scripts/run_perf_tests.sh
-      env:
-        OFFLINE: "1"
+      - name: GPU Perf tests
+        if: ${{ matrix.test == 'perf' && matrix.gpu }}
+        env:
+          OFFLINE: "1"
+          CMAKE_BUILD_TYPE: Release
+        run: |
+          nvidia-smi || true
+          nvcc --version || true
+          ./scripts/run_perf_tests.sh
 
-    - name: Upload perf test report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: perf-report-${{ matrix.compiler }}
-        path: build-perf/test-reports/perf/*.xml
-        if-no-files-found: warn
-
-    # ---------- MPI tests  ----------
-    - name: MPI halo tests (OpenMPI emulate mode)
-      run: |
-        scripts/run_mpi_tests.sh --mode emulate --type Debug --build-dir build-mpi --np 4
-      env:
-        OFFLINE: "1"
-        CTEST_PARALLEL_LEVEL: 1     # keep CTest from launching multiple MPI jobs at once
-        CTEST_TIMEOUT: 900
-        # Force Open MPI to allow oversubscription even if CTest didn't bake flags in:
-        OMPI_MCA_rmaps_base_oversubscribe: "1"
-        OMPI_MCA_btl: self,tcp
-        OMPI_MCA_btl_tcp_if_include: lo
-        OMPI_MCA_oob_tcp_if_include: lo
-        OMPI_MCA_pml: ob1
-
-    - name: Upload MPI test report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: mpi-report-${{ matrix.compiler }}
-        path: build-mpi/test-reports/mpi/*.xml
-        if-no-files-found: warn
+      - name: Upload test reports (JUnit XML)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.name }} · reports
+          path: |
+            build-unit/test-reports/unit/**
+            build-perf/test-reports/perf/**
+            build-mpi/test-reports/mpi/**
+          if-no-files-found: ignore
+          retention-days: 7

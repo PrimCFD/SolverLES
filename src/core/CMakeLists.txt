@@ -19,10 +19,13 @@ if(MPI_FOUND)
   target_link_libraries(core PUBLIC MPI::MPI_CXX)
 endif()
 
-if(CUDAToolkit_FOUND)
+if(ENABLE_CUDA)
   target_link_libraries(core PUBLIC CUDA::cudart)
-  # Build any .cu files with correct arch; adjust as needed
-  set_target_properties(core PROPERTIES CUDA_ARCHITECTURES 70)
+  target_compile_definitions(core PUBLIC HAVE_CUDA)
+  # Optional UM default:
+  if(USE_CUDA_UM)
+    target_compile_definitions(core PUBLIC USE_CUDA_UM)
+  endif()
 endif()
 
 # Propagate global compile definitions (USE_CUDA_UM, HAVE_MPI, HAVE_CUDA) They

@@ -53,6 +53,18 @@ if(ENABLE_MPI)
   add_compile_definitions(HAVE_MPI)
 endif()
 
+# CUDA toggle
+option(ENABLE_CUDA "Enable CUDA features (HAVE_CUDA, link cudart)" OFF)
+
+if(ENABLE_CUDA)
+  find_package(CUDAToolkit REQUIRED)
+  add_compile_definitions(HAVE_CUDA)
+
+  if(USE_CUDA_UM)
+    add_compile_definitions(USE_CUDA_UM)
+  endif()
+endif()
+
 # Helper modules containing reused CMake logic (warnings, sanitizers…)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 

@@ -88,6 +88,8 @@ fi
 # --- configure/build with MPI and pass launcher hints to CMake/CTest ---
 echo "🔧 Configuring & building in ${BUILD_DIR} (type=${CMAKE_BUILD_TYPE})"
 ENABLE_MPI=ON BUILD_TESTS=ON \
+ENABLE_CUDA="${ENABLE_CUDA:-OFF}" \
+USE_CUDA_UM="${USE_CUDA_UM:-OFF}" \
 MPIEXEC_EXECUTABLE="${MPIEXEC_EXECUTABLE:-}" \
 MPIEXEC_NUMPROC_FLAG="${MPIEXEC_NUMPROC_FLAG:-}" \
 MPIEXEC_PREFLAGS="${MPIEXEC_PREFLAGS:-}" \

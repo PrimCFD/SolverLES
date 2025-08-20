@@ -1,6 +1,7 @@
 #pragma once
 #include "Layout.hpp"
 #include <array>
+#include <cstddef>
 #include <span>
 
 namespace core
@@ -8,35 +9,39 @@ namespace core
 
 template <class T> class Field
 {
+    T* data_ = nullptr;        // host (or UM) pointer
+    std::array<int, 3> ext_{}; // totals including ghosts
+    int ng_ = 0;
+    layout::Indexer3D idx_{};
+
   public:
     Field() = default;
-
-    Field(T* raw, std::array<int, 3> ext_with_ghosts, int ng)
-        : data_{raw}, ext_{ext_with_ghosts}, ng_{ng}, idx_{layout::make_indexer(ext_with_ghosts)}
+    Field(T* p, std::array<int, 3> e, int ng)
+        : data_(p), ext_(e), ng_(ng), idx_{layout::Indexer3D{e[0], e[1], e[2]}}
     {
     }
 
-    constexpr T& operator()(int i, int j, int k) noexcept
-    {
-        return data_[idx_(i + ng_, j + ng_, k + ng_)];
-    }
-    constexpr const T& operator()(int i, int j, int k) const noexcept
+    inline T& operator()(int i, int j, int k) noexcept
     {
         return data_[idx_(i + ng_, j + ng_, k + ng_)];
     }
-
-    [[nodiscard]] void* c_ptr() noexcept { return static_cast<void*>(data_); }
+    inline const T& operator()(int i, int j, int k) const noexcept
+    {
+        return data_[idx_(i + ng_, j + ng_, k + ng_)];
+    }
 
     std::span<T> span() noexcept
     {
-        return {data_, static_cast<std::size_t>(ext_[0] * ext_[1] * ext_[2])};
+        return {data_, static_cast<std::size_t>(ext_[0]) * static_cast<std::size_t>(ext_[1]) *
+                           static_cast<std::size_t>(ext_[2])};
     }
 
-  private:
-    T* data_ = nullptr; // non‑owning
-    std::array<int, 3> ext_{};
-    int ng_ = 0;
-    layout::Indexer3D idx_{};
+    // Raw typed pointer accessors
+    T* raw() noexcept { return data_; }
+    const T* raw() const noexcept { return data_; }
+
+    const std::array<int, 3>& extents() const noexcept { return ext_; }
+    int ng() const noexcept { return ng_; }
 };
 
 } // namespace core
