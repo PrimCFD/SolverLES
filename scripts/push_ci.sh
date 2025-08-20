@@ -2,10 +2,11 @@
 set -eu
 
 # ---------- Config ----------
-SESSION="${PUSHCI_SESSION:-gh-runner}"                   # tmux session name for the runner
+SESSION="${PUSHCI_SESSION:-gh-runner}"                   # tmux session name
 RUNNER_DIR="${RUNNER_DIR:-/home/actions/actions-runner}" # where ./config.sh was run (owned by 'actions')
 RUNNER_USER="${RUNNER_USER:-actions}"                    # runner account
 REMOTE_DEFAULT="${PUSHCI_REMOTE:-origin}"                # default git remote
+WORKFLOW="${PUSHCI_WORKFLOW:-*}"                         # which workflow(s) to watch; "*" means any
 POLL_TOTAL="${PUSHCI_POLL_TOTAL:-240}"                   # seconds to wait for run to appear
 POLL_STEP="${PUSHCI_POLL_STEP:-3}"                       # seconds between polls
 TMUX_PATH="/usr/bin/tmux"                                # path allowed in sudoers
@@ -23,7 +24,7 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "Run this from inside
 [ -x "$RUNNER_DIR/run.sh" ] || die "run.sh missing in '$RUNNER_DIR' (did you run ./config.sh as $RUNNER_USER?)"
 gh auth status >/dev/null 2>&1 || die "GitHub CLI not authenticated. Run: gh auth login"
 
-# sudo helpers (prefer non-interactive; fall back to interactive if sudoers not set)
+# sudo helpers
 SUDO_N="sudo -n -u $RUNNER_USER"
 SUDO_I="sudo    -u $RUNNER_USER"
 if $SUDO_N "$TMUX_PATH" -V >/dev/null 2>&1; then
@@ -57,37 +58,48 @@ else
   git push
 fi
 
-# Find run for this commit (prefer exact SHA)
 HEAD_SHA="$(git rev-parse HEAD)"
-if [ -n "${HEAD_BEFORE:-}" ] && [ "$HEAD_SHA" = "$HEAD_BEFORE" ]; then
-  msg "Note: commit SHA unchanged; will watch most recent run on '$BRANCH'."
-fi
+[ -n "${HEAD_BEFORE:-}" ] && [ "$HEAD_SHA" = "$HEAD_BEFORE" ] && \
+  msg "Note: commit SHA unchanged; will watch the newest run on '$BRANCH'."
 
-msg "Waiting for workflow run (branch: $BRANCH, sha: $HEAD_SHA)…"
+# Build the workflow filter (empty for "*")
+WF_FLAG=()
+[ "$WORKFLOW" != "*" ] && WF_FLAG=(--workflow "$WORKFLOW")
+
+msg "Waiting for workflow run (workflow: ${WORKFLOW}, branch: $BRANCH, sha: $HEAD_SHA)…"
 RUN_ID=""
 deadline=$(($(date +%s) + POLL_TOTAL))
+FIELDS="databaseId,headSha,headBranch,status,conclusion,createdAt"
+
 while [ -z "$RUN_ID" ] && [ "$(date +%s)" -lt "$deadline" ]; do
-  RUN_ID="$(gh run list --limit 20 --json databaseId,headSha,headBranch \
-            --jq 'map(select(.headSha=="'"$HEAD_SHA"'" and .headBranch=="'"$BRANCH"'")) | .[0].databaseId' 2>/dev/null || true)"
+  # 1) Try non-completed runs (any workflow unless WORKFLOW set)
+  RUN_ID="$(gh run list "${WF_FLAG[@]}" --limit 40 --json $FIELDS \
+    --jq 'map(select(.headSha=="'"$HEAD_SHA"'" and .headBranch=="'"$BRANCH"'" and .status!="completed"))
+          | sort_by(.createdAt) | (.[-1].databaseId // empty)' 2>/dev/null || true)"
+  # 2) Else newest run for this SHA+branch (even if completed)
   if [ -z "$RUN_ID" ]; then
-    RUN_ID="$(gh run list --branch "$BRANCH" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)"
+    RUN_ID="$(gh run list "${WF_FLAG[@]}" --limit 40 --json $FIELDS \
+      --jq 'map(select(.headSha=="'"$HEAD_SHA"'" and .headBranch=="'"$BRANCH"'"))
+            | sort_by(.createdAt) | (.[-1].databaseId // empty)' 2>/dev/null || true)"
   fi
+  # 3) Else newest run on branch
+  if [ -z "$RUN_ID" ]; then
+    RUN_ID="$(gh run list "${WF_FLAG[@]}" --branch "$BRANCH" --limit 1 \
+      --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)"
+  fi
+
   [ -n "$RUN_ID" ] || sleep "$POLL_STEP"
 done
 
 if [ -z "$RUN_ID" ]; then
-  msg "No run found yet. Try: gh run list --branch \"$BRANCH\""
-  if [ "$STARTED" -eq 1 ]; then $TMUX kill-session -t "$SESSION" || true; fi
+  msg "No run found yet. Try: gh run list ${WF_FLAG[*]} --branch \"$BRANCH\""
+  [ "$STARTED" -eq 1 ] && $TMUX kill-session -t "$SESSION" || true
   exit 0
 fi
 
 # Stream logs; exit with run status
-msg "Streaming logs for run $RUN_ID…"
-if gh run watch "$RUN_ID" --exit-status; then
-  STATUS=0
-else
-  STATUS=$?
-fi
+msg "Streaming logs for ${WORKFLOW} run $RUN_ID…"
+gh run watch "$RUN_ID" --exit-status || STATUS=$?; STATUS=${STATUS:-0}
 
 # Stop runner if we started it
 if [ "$STARTED" -eq 1 ]; then
@@ -96,3 +108,4 @@ if [ "$STARTED" -eq 1 ]; then
 fi
 
 exit "$STATUS"
+
