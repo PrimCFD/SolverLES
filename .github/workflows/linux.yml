@@ -13,6 +13,11 @@ concurrency:
 permissions:
   contents: read
 
+# Ensure Bash inside containers (fixes: "Illegal option -o pipefail")
+defaults:
+  run:
+    shell: bash
+
 jobs:
   prefetch-deps:
     name: Prefetch third-party archives
@@ -25,14 +30,14 @@ jobs:
 
       - name: Install minimal build tools (inside container)
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             ca-certificates git cmake ninja-build build-essential gfortran
 
       - name: Prefetch third-party sources into extern/
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           bash scripts/prefetch_third_party.sh
 
       - name: Upload extern/ cache for downstream jobs
@@ -90,7 +95,7 @@ jobs:
       - name: Ensure extern/ exists (fallback safety)
         shell: bash
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           if [ ! -d extern ] || [ -z "$(ls -A extern || true)" ]; then
             echo "extern/ missing, running prefetch_third_party.sh here as a fallback…"
             bash scripts/prefetch_third_party.sh
@@ -99,7 +104,7 @@ jobs:
 
       - name: Install build toolchain (inside container)
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             cmake ninja-build build-essential gfortran git
@@ -107,7 +112,7 @@ jobs:
       - name: Install MPI (when needed)
         if: ${{ matrix.test == 'mpi' }}
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             openmpi-bin libopenmpi-dev
@@ -116,7 +121,9 @@ jobs:
         if: ${{ matrix.test == 'unit' }}
         env:
           OFFLINE: "1"
-        run: ./scripts/run_unit_tests.sh
+        run: |
+          set -euo pipefail
+          ./scripts/run_unit_tests.sh
 
       - name: CPU Perf tests
         if: ${{ matrix.test == 'perf' && !contains(matrix.container, 'nvidia/cuda') }}
@@ -124,13 +131,17 @@ jobs:
           OFFLINE: "1"
           ENABLE_CUDA: "OFF"
           CMAKE_BUILD_TYPE: Release
-        run: ./scripts/run_perf_tests.sh
+        run: |
+          set -euo pipefail
+          ./scripts/run_perf_tests.sh
 
       - name: MPI tests (emulated on CI)
         if: ${{ matrix.test == 'mpi' }}
         env:
           OFFLINE: "1"
-        run: ./scripts/run_mpi_tests.sh --mode ${{ matrix.mpi_mode || 'auto' }} --np ${{ matrix.np || 2 }} --keep-going
+        run: |
+          set -euo pipefail
+          ./scripts/run_mpi_tests.sh --mode ${{ matrix.mpi_mode || 'auto' }} --np ${{ matrix.np || 2 }} --keep-going
 
       - name: GPU Perf tests
         if: ${{ matrix.test == 'perf' && contains(matrix.container, 'nvidia/cuda') }}
@@ -138,6 +149,7 @@ jobs:
           OFFLINE: "1"
           CMAKE_BUILD_TYPE: Release
         run: |
+          set -euo pipefail
           nvidia-smi || true
           nvcc --version || true
           ./scripts/run_perf_tests.sh
