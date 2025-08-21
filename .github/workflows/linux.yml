@@ -48,6 +48,13 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  gpu-warmup:
+    runs-on: [self-hosted, linux, x64, gpu]
+    steps:
+      - run: |
+          docker pull nvidia/cuda:12.4.1-devel-ubuntu22.04
+          docker run --rm --gpus all nvidia/cuda:12.4.1-devel-ubuntu22.04 nvidia-smi
+
   tests:
     name: ${{ matrix.name }}
     needs: prefetch-deps
@@ -74,9 +81,10 @@ jobs:
             runs_on: ubuntu-latest
             container: '{"image":"ubuntu:24.04"}'
             mpi_mode: emulate
-            np: 2
+            np: 4
 
           - name: Perf (GPU)
+            needs: gpu-warmup
             test: perf
             runs_on: [self-hosted, linux, x64, gpu]
             container: '{"image":"nvidia/cuda:12.4.1-devel-ubuntu22.04","options":"--gpus all"}'
@@ -141,7 +149,7 @@ jobs:
           OFFLINE: "1"
         run: |
           set -euo pipefail
-          ./scripts/run_mpi_tests.sh --mode ${{ matrix.mpi_mode || 'auto' }} --np ${{ matrix.np || 2 }} --keep-going
+          ./scripts/run_mpi_tests.sh --mode ${{ matrix.mpi_mode || 'auto' }} --np ${{ matrix.np || 4 }} --keep-going
 
       - name: GPU Perf tests
         if: ${{ matrix.test == 'perf' && contains(matrix.container, 'nvidia/cuda') }}
