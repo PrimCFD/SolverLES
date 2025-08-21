@@ -14,7 +14,6 @@ permissions:
   contents: read
 
 jobs:
-  # One-time per workflow run: prefetch deps to speed up all matrix jobs
   prefetch-deps:
     name: Prefetch third-party archives
     runs-on: ubuntu-latest
@@ -26,12 +25,14 @@ jobs:
 
       - name: Install minimal build tools (inside container)
         run: |
+          set -euxo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             ca-certificates git cmake ninja-build build-essential gfortran
 
       - name: Prefetch third-party sources into extern/
         run: |
+          set -euxo pipefail
           bash scripts/prefetch_third_party.sh
 
       - name: Upload extern/ cache for downstream jobs
@@ -42,15 +43,11 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Matrix of test types / environments (CPU+MPI in Ubuntu container; GPU in CUDA container)
   tests:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
     name: ${{ matrix.name }}
     needs: prefetch-deps
     runs-on: ${{ matrix.runs_on }}
-    container:
-      image: ${{ matrix.container_image }}
-      options: ${{ matrix.container_options || '' }}
+    container: ${{ fromJSON(matrix.container) }}
     timeout-minutes: 60
     continue-on-error: ${{ matrix.allow_fail || false }}
     strategy:
@@ -60,34 +57,24 @@ jobs:
           - name: Unit (CPU)
             test: unit
             runs_on: ubuntu-latest
-            container_image: ubuntu:24.04
-            mpi: false
-            gpu: false
+            container: '{"image":"ubuntu:24.04"}'
 
           - name: Perf (CPU)
             test: perf
             runs_on: ubuntu-latest
-            container_image: ubuntu:24.04
-            mpi: false
-            gpu: false
+            container: '{"image":"ubuntu:24.04"}'
 
           - name: MPI (emulated)
             test: mpi
             runs_on: ubuntu-latest
-            container_image: ubuntu:24.04
-            mpi: true
+            container: '{"image":"ubuntu:24.04"}'
             mpi_mode: emulate
             np: 2
-            gpu: false
 
           - name: Perf (GPU)
             test: perf
-            # GPU still requires a GPU host; container isolates toolchain
             runs_on: [self-hosted, linux, x64, gpu]
-            container_image: nvidia/cuda:12.4.1-devel-ubuntu22.04
-            container_options: --gpus all
-            mpi: false
-            gpu: true
+            container: '{"image":"nvidia/cuda:12.4.1-devel-ubuntu22.04","options":"--gpus all"}'
             allow_fail: true
 
     steps:
@@ -103,7 +90,8 @@ jobs:
       - name: Ensure extern/ exists (fallback safety)
         shell: bash
         run: |
-          if [ ! -d extern ] || [ -z "$(ls -A extern)" ]; then
+          set -euxo pipefail
+          if [ ! -d extern ] || [ -z "$(ls -A extern || true)" ]; then
             echo "extern/ missing, running prefetch_third_party.sh here as a fallback…"
             bash scripts/prefetch_third_party.sh
           fi
@@ -111,13 +99,15 @@ jobs:
 
       - name: Install build toolchain (inside container)
         run: |
+          set -euxo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             cmake ninja-build build-essential gfortran git
 
       - name: Install MPI (when needed)
-        if: ${{ matrix.mpi }}
+        if: ${{ matrix.test == 'mpi' }}
         run: |
+          set -euxo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             openmpi-bin libopenmpi-dev
@@ -129,10 +119,10 @@ jobs:
         run: ./scripts/run_unit_tests.sh
 
       - name: CPU Perf tests
-        if: ${{ matrix.test == 'perf' && !matrix.gpu }}
+        if: ${{ matrix.test == 'perf' && !contains(matrix.container, 'nvidia/cuda') }}
         env:
           OFFLINE: "1"
-          ENABLE_CUDA: "OFF"   # keep CPU-only path explicit
+          ENABLE_CUDA: "OFF"
           CMAKE_BUILD_TYPE: Release
         run: ./scripts/run_perf_tests.sh
 
@@ -143,7 +133,7 @@ jobs:
         run: ./scripts/run_mpi_tests.sh --mode ${{ matrix.mpi_mode || 'auto' }} --np ${{ matrix.np || 2 }} --keep-going
 
       - name: GPU Perf tests
-        if: ${{ matrix.test == 'perf' && matrix.gpu }}
+        if: ${{ matrix.test == 'perf' && contains(matrix.container, 'nvidia/cuda') }}
         env:
           OFFLINE: "1"
           CMAKE_BUILD_TYPE: Release

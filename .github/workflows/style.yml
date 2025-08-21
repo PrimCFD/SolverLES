@@ -15,24 +15,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install formatting tools (inside container)
+      - name: Install formatting tools (apt) + Python venv
+        env:
+          PIP_DISABLE_PIP_VERSION_CHECK: "1"
+          PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
         run: |
+          set -euxo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            clang-format python3 python3-pip git
-          python3 -m pip install --upgrade pip
-          python3 -m pip install fprettify cmake-format
+            clang-format python3 python3-venv python3-pip git
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install -U pip wheel
+          pip install fprettify cmake-format
 
       - name: Run format_all.sh
-        run: bash scripts/format_all.sh
+        run: |
+          set -euxo pipefail
+          . .venv/bin/activate
+          bash scripts/format_all.sh
 
       - name: Check for unformatted files
         run: |
+          set -e
           if [[ $(git status --porcelain) ]]; then
-            echo "❌ Formatting issues detected! Please run:"
-            echo "   bash scripts/format_all.sh"
+            echo "❌ Formatting issues detected! Please run: bash scripts/format_all.sh"
             echo
-            echo "🔍 Diff preview:"
             git --no-pager diff
             exit 1
           else

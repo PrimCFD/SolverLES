@@ -22,23 +22,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies (inside container)
+      - name: Deps (apt) + Python venv
+        env:
+          PIP_DISABLE_PIP_VERSION_CHECK: "1"
+          PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
         run: |
+          set -euxo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            python3 python3-pip doxygen graphviz git
-          python3 -m pip install --upgrade pip
-          python3 -m pip install sphinx myst-parser furo breathe exhale
+            python3 python3-venv python3-pip doxygen graphviz git
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install -U pip wheel
+          pip install sphinx myst-parser furo breathe exhale
 
       - name: Build docs
         run: |
+          set -euxo pipefail
+          . .venv/bin/activate
           chmod +x scripts/build_docs.sh
           SPHINX_STRICT=1 ./scripts/build_docs.sh --force -q
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build-docs/docs/html   # must contain index.html
+          path: build-docs/docs/html
 
   deploy:
     needs: docs
