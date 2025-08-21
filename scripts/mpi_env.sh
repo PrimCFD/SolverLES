@@ -50,6 +50,14 @@ elif _have mpiexec; then
   MPI_LAUNCHER="mpiexec"
 fi
 
+# If running as root (CI/container), Open MPI blocks by default.
+# Allow it explicitly so tests can run in the job container.
+if [[ "$MPI_VENDOR" == "openmpi" && "${EUID:-$(id -u)}" -eq 0 ]]; then
+  export OMPI_ALLOW_RUN_AS_ROOT=1
+  export OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
+  MPI_LAUNCHER_OPTS+=" --allow-run-as-root"
+fi
+
 # Clean slate for emulation knobs
 _unset_emulation() {
   unset OMPI_MCA_btl OMPI_MCA_btl_tcp_if_include OMPI_MCA_oob_tcp_if_include OMPI_MCA_pml
