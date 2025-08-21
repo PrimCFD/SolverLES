@@ -1,4 +1,4 @@
-name: Tests · CPU/GPU/MPI (optimized)
+name: Tests · CPU/GPU/MPI (containerized)
 
 on:
   pull_request:
@@ -16,19 +16,24 @@ permissions:
 jobs:
   # One-time per workflow run: prefetch deps to speed up all matrix jobs
   prefetch-deps:
-    name: Prefetch third‑party archives
-    runs-on: [self-hosted, linux, x64]
+    name: Prefetch third-party archives
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install minimal build tools
+
+      - name: Install minimal build tools (inside container)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build build-essential gfortran
-      - name: Prefetch third‑party sources into extern/
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates git cmake ninja-build build-essential gfortran
+
+      - name: Prefetch third-party sources into extern/
         run: |
           bash scripts/prefetch_third_party.sh
+
       - name: Upload extern/ cache for downstream jobs
         uses: actions/upload-artifact@v4
         with:
@@ -37,12 +42,15 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Matrix of test types / environments
+  # Matrix of test types / environments (CPU+MPI in Ubuntu container; GPU in CUDA container)
   tests:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
     name: ${{ matrix.name }}
     needs: prefetch-deps
     runs-on: ${{ matrix.runs_on }}
+    container:
+      image: ${{ matrix.container_image }}
+      options: ${{ matrix.container_options || '' }}
     timeout-minutes: 60
     continue-on-error: ${{ matrix.allow_fail || false }}
     strategy:
@@ -51,46 +59,40 @@ jobs:
         include:
           - name: Unit (CPU)
             test: unit
-            runs_on: [self-hosted, linux, x64]
-            apt_deps: true
-            gpu: false
+            runs_on: ubuntu-latest
+            container_image: ubuntu:24.04
             mpi: false
+            gpu: false
 
           - name: Perf (CPU)
             test: perf
-            runs_on: [self-hosted, linux, x64]
-            apt_deps: true
-            gpu: false
+            runs_on: ubuntu-latest
+            container_image: ubuntu:24.04
             mpi: false
+            gpu: false
 
           - name: MPI (emulated)
             test: mpi
-            runs_on: [self-hosted, linux, x64]
-            apt_deps: true
-            gpu: false
+            runs_on: ubuntu-latest
+            container_image: ubuntu:24.04
             mpi: true
             mpi_mode: emulate
             np: 2
+            gpu: false
 
           - name: Perf (GPU)
             test: perf
-            runs_on: [self-hosted, linux, x64]
-            apt_deps: false
-            gpu: true
+            # GPU still requires a GPU host; container isolates toolchain
+            runs_on: [self-hosted, linux, x64, gpu]
+            container_image: nvidia/cuda:12.4.1-devel-ubuntu22.04
+            container_options: --gpus all
             mpi: false
+            gpu: true
             allow_fail: true
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install build/MPI deps (Ubuntu)
-        if: ${{ matrix.apt_deps }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build build-essential gfortran \
-            openmpi-bin libopenmpi-dev
 
       - name: Fetch extern/ from prefetch job
         uses: actions/download-artifact@v4
@@ -107,12 +109,24 @@ jobs:
           fi
           ls -l extern || true
 
+      - name: Install build toolchain (inside container)
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential gfortran git
+
+      - name: Install MPI (when needed)
+        if: ${{ matrix.mpi }}
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            openmpi-bin libopenmpi-dev
+
       - name: CPU Unit tests
         if: ${{ matrix.test == 'unit' }}
         env:
           OFFLINE: "1"
-        run: |
-          ./scripts/run_unit_tests.sh
+        run: ./scripts/run_unit_tests.sh
 
       - name: CPU Perf tests
         if: ${{ matrix.test == 'perf' && !matrix.gpu }}
@@ -120,15 +134,13 @@ jobs:
           OFFLINE: "1"
           ENABLE_CUDA: "OFF"   # keep CPU-only path explicit
           CMAKE_BUILD_TYPE: Release
-        run: |
-          ./scripts/run_perf_tests.sh
+        run: ./scripts/run_perf_tests.sh
 
       - name: MPI tests (emulated on CI)
         if: ${{ matrix.test == 'mpi' }}
         env:
           OFFLINE: "1"
-        run: |
-          ./scripts/run_mpi_tests.sh --mode ${{ matrix.mpi_mode || 'auto' }} --np ${{ matrix.np || 2 }} --keep-going
+        run: ./scripts/run_mpi_tests.sh --mode ${{ matrix.mpi_mode || 'auto' }} --np ${{ matrix.np || 2 }} --keep-going
 
       - name: GPU Perf tests
         if: ${{ matrix.test == 'perf' && matrix.gpu }}

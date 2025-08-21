@@ -2,24 +2,26 @@ name: Style Check
 
 on:
   push:
-      branches: [main]
+    branches: [main]
   pull_request:
 
 jobs:
   style:
     name: Check Code Formatting
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install formatting tools
+      - name: Install formatting tools (inside container)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-format python3-pip
-          pip install --upgrade pip
-          pip install fprettify cmake-format
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            clang-format python3 python3-pip git
+          python3 -m pip install --upgrade pip
+          python3 -m pip install fprettify cmake-format
 
       - name: Run format_all.sh
         run: bash scripts/format_all.sh
