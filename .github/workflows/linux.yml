@@ -186,6 +186,12 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             cmake ninja-build build-essential gfortran git
 
+      - name: Install newer CMake via pip (alt)
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends python3-pip
+          python3 -m pip install --upgrade cmake ninja
+          cmake --version
+
       - name: GPU info
         run: |
           nvidia-smi || true
