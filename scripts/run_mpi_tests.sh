@@ -51,13 +51,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- repo root ---
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-if git rev-parse --show-toplevel &>/dev/null; then
-  repo_root="$(git rev-parse --show-toplevel)"
-else
-  repo_root="$script_dir"
+_script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+repo_root="$_script_dir"
+while [[ ! -f "$repo_root/scripts/mpi_env.sh" && "$repo_root" != "/" ]]; do
+  repo_root="$(dirname "$repo_root")"
+done
+if [[ ! -f "$repo_root/scripts/mpi_env.sh" ]]; then
+  echo "❌ mpi_env.sh not found by walking up from $_script_dir"
+  echo "   Looked for <repo>/scripts/mpi_env.sh"
+  exit 1
 fi
-cd "$repo_root"
+
 
 # --- source MPI env (exports MPIEXEC_* variables) ---
 if [[ ! -f "$repo_root/scripts/mpi_env.sh" ]]; then
@@ -97,7 +101,7 @@ MPIEXEC_POSTFLAGS="${MPIEXEC_POSTFLAGS:-}" \
 CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" \
 BUILD_DIR="${BUILD_DIR}" \
   EXTRA_CMAKE_ARGS="-DENABLE_TESTS_UNIT=OFF -DENABLE_TESTS_MPI=ON -DENABLE_TESTS_PERF=OFF -DENABLE_TESTS_REGRESSION=OFF" \
-scripts/build.sh
+$repo_root/scripts/build.sh
 
 # --- test report path (JUnit if supported) ---
 now="$(date +%Y%m%d-%H%M%S)"
