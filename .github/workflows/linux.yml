@@ -21,7 +21,7 @@ defaults:
 jobs:
   prefetch-deps:
     name: Prefetch third-party archives
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     container: ubuntu:24.04
     timeout-minutes: 15
     steps:
