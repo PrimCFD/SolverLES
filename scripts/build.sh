@@ -86,6 +86,7 @@ cmake_args=(
 [[ -n "${MPIEXEC_NUMPROC_FLAG:-}" ]] && cmake_args+=( -DMPIEXEC_NUMPROC_FLAG="${MPIEXEC_NUMPROC_FLAG}" )
 [[ -n "${MPIEXEC_PREFLAGS:-}"    ]] && cmake_args+=( -DMPIEXEC_PREFLAGS="${MPIEXEC_PREFLAGS}" )
 [[ -n "${MPIEXEC_POSTFLAGS:-}"   ]] && cmake_args+=( -DMPIEXEC_POSTFLAGS="${MPIEXEC_POSTFLAGS}" )
+[[ -n "${MPIEXEC_EXECUTABLE:-}"  ]] && cmake_args+=( -DMPIEXEC_EXECUTABLE="${MPIEXEC_EXECUTABLE}" )
 [[ -n "${CMAKE_TOOLCHAIN_FILE:-}" ]] && cmake_args+=( -DCMAKE_TOOLCHAIN_FILE="${CMAKE_TOOLCHAIN_FILE}" )
 
 # --- Scan extern/ for pre-fetched archives; wire up FETCHCONTENT_SOURCE_DIR_* like before

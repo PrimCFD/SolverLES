@@ -83,13 +83,6 @@ jobs:
             mpi_mode: emulate
             np: 4
 
-          - name: Perf (GPU)
-            needs: gpu-warmup
-            test: perf
-            runs_on: [self-hosted, linux, x64, gpu]
-            container: '{"image":"nvidia/cuda:12.4.1-devel-ubuntu22.04","options":"--gpus all"}'
-            allow_fail: true
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -151,17 +144,6 @@ jobs:
           set -euo pipefail
           ./scripts/run_mpi_tests.sh --mode ${{ matrix.mpi_mode || 'auto' }} --np ${{ matrix.np || 4 }} --keep-going
 
-      - name: GPU Perf tests
-        if: ${{ matrix.test == 'perf' && contains(matrix.container, 'nvidia/cuda') }}
-        env:
-          OFFLINE: "1"
-          CMAKE_BUILD_TYPE: Release
-        run: |
-          set -euo pipefail
-          nvidia-smi || true
-          nvcc --version || true
-          ./scripts/run_perf_tests.sh
-
       - name: Upload test reports (JUnit XML)
         uses: actions/upload-artifact@v4
         if: always()
@@ -171,5 +153,55 @@ jobs:
             build-unit/test-reports/unit/**
             build-perf/test-reports/perf/**
             build-mpi/test-reports/mpi/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  tests-gpu:
+    name: Perf (GPU)
+    needs: [prefetch-deps, gpu-warmup]   
+    runs-on: [self-hosted, linux, x64, gpu]
+
+    container:
+      image: nvidia/cuda:12.4.1-devel-ubuntu22.04
+      options: --gpus all
+
+    timeout-minutes: 60
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download extern cache
+        uses: actions/download-artifact@v4
+        with:
+          name: extern-cache
+          path: extern/
+        continue-on-error: true
+
+      - name: Install build deps
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential gfortran git
+
+      - name: GPU info
+        run: |
+          nvidia-smi || true
+          nvcc --version || true
+
+      - name: Run perf tests (GPU)
+        env:
+          OFFLINE: "1"              
+          CMAKE_BUILD_TYPE: Release
+        run: |
+          ./scripts/run_perf_tests.sh
+
+      - name: Upload test reports (JUnit XML)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Perf (GPU) · reports
+          path: build-perf/test-reports/perf/**
           if-no-files-found: ignore
           retention-days: 7
