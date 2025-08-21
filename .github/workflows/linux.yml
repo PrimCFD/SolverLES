@@ -21,7 +21,7 @@ defaults:
 jobs:
   prefetch-deps:
     name: Prefetch third-party archives
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     container: ubuntu:24.04
     timeout-minutes: 15
     steps:
@@ -49,7 +49,8 @@ jobs:
           retention-days: 7
 
   gpu-warmup:
-    runs-on: [self-hosted, linux, x64, gpu]
+    name: GPU Warmup (NVIDIA container)
+    runs-on: [self-hosted, linux, x64]
     steps:
       - run: |
           docker pull nvidia/cuda:12.4.1-devel-ubuntu22.04
@@ -159,7 +160,7 @@ jobs:
   tests-gpu:
     name: Perf (GPU)
     needs: [prefetch-deps, gpu-warmup]   
-    runs-on: [self-hosted, linux, x64, gpu]
+    runs-on: [self-hosted, linux, x64]
 
     container:
       image: nvidia/cuda:12.4.1-devel-ubuntu22.04
