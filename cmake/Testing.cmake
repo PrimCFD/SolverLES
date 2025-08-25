@@ -15,6 +15,16 @@ function(add_mpi_test name target np)
     return()
   endif()
 
+  # Normalize pre/post flags (env/CLI may provide them as a single space-separated string)
+  set(_mpipre  "${MPIEXEC_PREFLAGS}")
+  set(_mpipost "${MPIEXEC_POSTFLAGS}")
+  if(_mpipre)
+    separate_arguments(_mpipre  NATIVE_COMMAND)
+  endif()
+  if(_mpipost)
+    separate_arguments(_mpipost NATIVE_COMMAND)
+  endif()
+
   # JUnit target directory for MPI
   set(_junit_dir "${CMAKE_BINARY_DIR}/test-reports/mpi")
   file(MAKE_DIRECTORY "${_junit_dir}")
@@ -23,14 +33,19 @@ function(add_mpi_test name target np)
     add_test(
       NAME ${name}
       COMMAND
-        ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np} ${MPIEXEC_PREFLAGS}
-        $<TARGET_FILE:${target}> ${MPIEXEC_POSTFLAGS} --reporter junit --out
-        "${_junit_dir}/${name}.xml")
+        ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
+        ${_mpipre}
+        $<TARGET_FILE:${target}>
+        ${_mpipost}
+        --reporter junit --out "${_junit_dir}/${name}.xml")
   else()
     add_test(
       NAME ${name}
-      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
-              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${target}> ${MPIEXEC_POSTFLAGS})
+      COMMAND
+        ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
+        ${_mpipre}
+        $<TARGET_FILE:${target}>
+        ${_mpipost})
   endif()
 
   set_tests_properties(${name} PROPERTIES LABELS mpi)
