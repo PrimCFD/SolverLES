@@ -20,12 +20,12 @@ function(add_mpi_test name target np)
       NAME ${name}
       COMMAND
         ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
-        ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${target}> --reporter junit --out
+        $<TARGET_FILE:${target}> --reporter junit --out
         "${_junit_dir}/${name}.xml")
   else()
     # Non-Catch2 fallback: still runs the test (no JUnit from the binary)
     add_test(NAME ${name} COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG}
-                                  ${np} ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${target}>)
+                                  ${np} $<TARGET_FILE:${target}>)
   endif()
 
   set_tests_properties(${name} PROPERTIES LABELS mpi)
