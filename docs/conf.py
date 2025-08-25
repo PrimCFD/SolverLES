@@ -52,7 +52,19 @@ exhale_args = {
 # Make warnings fail in CI: SPHINX_STRICT=1 ./scripts/build_docs.sh
 if os.environ.get("SPHINX_STRICT") == "1":
     nitpicky = True
-    nitpick_ignore = []
+    nitpick_ignore = [
+        ("cpp:identifier", "core"),
+        ("cpp:identifier", "core::detail"),
+        ("cpp:identifier", "uint8_t"),
+        ("cpp:identifier", "MPI_Comm"),
+        ("cpp:identifier", "subroutine"),
+    ]
+    # Future-proof a bit without being too broad.
+    nitpick_ignore_regex = [
+        (r"cpp:identifier", r"^(std::)?u?int(8|16|32|64)_t$"),
+        (r"cpp:identifier", r"^MPI_.*$"),
+    ]
+
 
 # Autosectionlabel so :ref: works across pages without collisions
 autosectionlabel_prefix_document = True

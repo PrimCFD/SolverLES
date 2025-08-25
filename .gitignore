@@ -20,7 +20,6 @@ __pycache__/
 *~
 
 # Doc build
-/docs/_build/
 /docs/api/
 
 # Local download of external dependencies
