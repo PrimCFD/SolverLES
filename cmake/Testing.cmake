@@ -3,33 +3,51 @@ include(CMakeParseArguments)
 
 # Default mpiexec flags (OpenMPI on CI needs --oversubscribe)
 if(ENABLE_MPI AND NOT DEFINED MPIEXEC_PREFLAGS)
-  set(MPIEXEC_PREFLAGS
-      "--oversubscribe"
-      CACHE STRING "Extra flags passed to mpiexec")
+  set(MPIEXEC_PREFLAGS "--oversubscribe" CACHE STRING "Extra flags passed to mpiexec")
 endif()
 
-# Robust MPI test helper: becomes a no-op if MPI is disabled. Usage: Usage:
+# Robust MPI test helper: becomes a no-op if MPI is disabled.
 function(add_mpi_test name target np)
   # JUnit target directory for MPI
   set(_junit_dir "${CMAKE_BINARY_DIR}/test-reports/mpi")
   file(MAKE_DIRECTORY "${_junit_dir}")
 
-  # If tests are Catch2-based, ask the binary to emit JUnit directly.
+  # Older CMake exports MPIEXEC instead of MPIEXEC_EXECUTABLE; normalize if needed.
+  if(NOT DEFINED MPIEXEC_EXECUTABLE AND DEFINED MPIEXEC)
+    set(MPIEXEC_EXECUTABLE "${MPIEXEC}")
+  endif()
+
+  # Convert space-separated flag strings into argv lists
+  set(_pref "${MPIEXEC_PREFLAGS}")
+  set(_post "${MPIEXEC_POSTFLAGS}")
+  if(_pref)  separate_arguments(_pref)  endif()
+  if(_post)  separate_arguments(_post)  endif()
+
   if(TARGET Catch2::Catch2WithMain OR TARGET Catch2)
     add_test(
-      NAME ${name}
-      COMMAND
-        ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
-        $<TARGET_FILE:${target}> --reporter junit --out
-        "${_junit_dir}/${name}.xml")
+      NAME    ${name}
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
+              ${_pref}
+              $<TARGET_FILE:${target}>
+              ${_post}
+              --reporter junit --out "${_junit_dir}/${name}.xml"
+    )
   else()
-    # Non-Catch2 fallback: still runs the test (no JUnit from the binary)
-    add_test(NAME ${name} COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG}
-                                  ${np} $<TARGET_FILE:${target}>)
+    add_test(
+      NAME    ${name}
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
+              ${_pref}
+              $<TARGET_FILE:${target}>
+              ${_post}
+    )
   endif()
 
   set_tests_properties(${name} PROPERTIES LABELS mpi)
+
+  # Optional belt-and-suspenders for Open MPI runners:
+  # set_tests_properties(${name} PROPERTIES ENVIRONMENT "OMPI_MCA_rmaps_base_oversubscribe=1")
 endfunction()
+
 
 # Catch2 discovery + labeling + JUnit output in one place. Usage:
 # register_catch_tests(<target> LABEL <lbl> TEST_PREFIX <pfx> OUTPUT_DIR <dir>
