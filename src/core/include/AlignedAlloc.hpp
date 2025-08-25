@@ -3,6 +3,17 @@
 #include <cstdlib>
 #include <new>
 
+/**
+* @file AlignedAlloc.hpp
+* @ingroup memory
+* @brief Low‑level aligned allocation helpers for host memory.
+*
+* Provides \c aligned_malloc(bytes, alignment)  and \c aligned_free(ptr) used by the
+* memory subsystem to satisfy cache‑line/SIMD alignment (≥64 B by default).
+* When \c USE_PINNED_HOST is defined and CUDA is available, host buffers may be
+* allocated with \c cudaHostAlloc instead (see MemoryManager for policy).
+*/
+
 #ifdef HAVE_CUDA
 #include <cuda_runtime.h>
 #endif

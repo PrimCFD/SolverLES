@@ -12,9 +12,17 @@ A modular finite‑volume LES solver for thermal–plasma flows. This site cover
 
 .. toctree::
    :maxdepth: 2
+   :caption: User Guide
+
+   README
+   memory
+
+.. toctree::
+   :maxdepth: 2
    :caption: API Reference
 
    api/library_root
+   api/unabridged_orphan
 
 Indices and tables
 ------------------

@@ -22,7 +22,6 @@ while [[ ! -f "$repo_root/CMakeLists.txt" && "$repo_root" != "/" ]]; do
 done
 [[ -f "$repo_root/CMakeLists.txt" ]] || { echo "❌  CMakeLists.txt not found above $here_dir"; exit 1; }
 
-# Fixed build locations to match conf.py
 build_root="$repo_root/build-docs"
 docs_src="$repo_root/docs"
 docs_build_dir="$build_root/docs"
@@ -67,8 +66,8 @@ fi
 
 # Clean
 if $clean; then
-  log "🧹  Cleaning $docs_build_dir"
-  rm -rf "$docs_build_dir"
+  log "🧹  Cleaning $docs_build_dir and $docs_src/api"
+  rm -rf "$docs_build_dir" "$docs_src/api"
 fi
 
 mkdir -p "$docs_build_dir" "$html_dir" "$doctrees_dir" "$doxygen_out_dir"
@@ -125,15 +124,18 @@ else
   log "⏭️  Skipping Doxygen (no changes detected)"
 fi
 
+# Breathe/Exhale see the Doxygen XML path
+export DOXYGEN_XML_DIR="$doxygen_xml_dir"
+
 # Sphinx build
 log "📚  Building Sphinx HTML → $html_dir"
 strict_flags=()
 [[ "${SPHINX_STRICT:-0}" == "1" ]] && strict_flags=(-W)
 # Parallel: let Sphinx decide (auto)
 if $quiet; then
-  sphinx-build -q -j auto -b html -d "$doctrees_dir" "$docs_src" "$html_dir" "${strict_flags[@]}"
+  sphinx-build -q -j auto -b html -d "$doctrees_dir" -Dbreathe_projects.SolverLES="$doxygen_xml_dir" "$docs_src" "$html_dir" "${strict_flags[@]}"
 else
-  sphinx-build -j auto -b html -d "$doctrees_dir" "$docs_src" "$html_dir" "${strict_flags[@]}"
+  sphinx-build -j auto -b html -d "$doctrees_dir" -Dbreathe_projects.SolverLES="$doxygen_xml_dir" "$docs_src" "$html_dir" "${strict_flags[@]}"
 fi
 
 log "✅  Docs ready: $html_dir"

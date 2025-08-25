@@ -4,6 +4,28 @@
 #include <cstddef>
 #include <span>
 
+/**
+* @file Field.hpp
+* @ingroup memory
+* @brief Non‑owning, typed view into SoA data with ghost padding.
+*
+* \c Field\<T\> wraps a raw pointer and the ghost‑inclusive extents. It does not
+* allocate or free memory; ownership remains with MemoryManager. Designed for
+* zero‑overhead access in inner loops and ISO_C_BINDING interop.
+*
+* @tparam T arithmetic element type (e.g., double, float)
+*
+*@rst
+*.. code-block:: cpp
+*
+*   Field<double> rho(rho_ptr, {nx_tot, ny_tot, nz_tot}, ng);
+*   double val = rho(i,j,k); // adds ghost offset, uses Indexer3D
+*   void* cptr = rho.c_ptr(); // pass to Fortran bind(C) kernel
+* @endrst
+*
+* @note Bounds are not checked in release builds. Prefer unit tests to validate extents.
+*/
+
 namespace core
 {
 

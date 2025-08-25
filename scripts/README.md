@@ -7,7 +7,7 @@
 | Script | Purpose | Typical use |
 |---|---|---|
 | `build.sh` | Configure & build the project via CMake (env‑driven). | `./scripts/build.sh` |
-| `build_docs.sh` | Build Sphinx HTML (+ Doxygen XML) and optionally serve locally. | `./scripts/build_docs.sh --serve --open` |
+| `build_docs.sh` | Build clean Sphinx HTML (+ Doxygen XML) and optionally serve locally. | `./scripts/build_docs.sh --serve --open` |
 | `clean_build.sh` | Remove CMake/Ninja build trees (`build-*`, keeps docs). | `./scripts/clean_build.sh --all -y` |
 | `clean_extern.sh` | Wipe vendored third‑party sources under `extern/` (keeps `extern/README.md`). | `./scripts/clean_extern.sh -y` |
 | `format_all.sh` | Run code formatters for C/C++, Fortran, and CMake (skips vendor/build). | `./scripts/format_all.sh` |

@@ -1,22 +1,83 @@
+# docs/conf.py
 import os
+import pathlib
 
-extensions = ["breathe", "exhale"]
-
-breathe_projects = {
-    "SolverLES": os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../build-docs/docs/_build/doxygen/xml")
-    )
-}
-breathe_default_project = "SolverLES"
-
-exhale_args = {
-    "containmentFolder": "./api",
-    "rootFileName": "library_root.rst",
-    "rootFileTitle": "C++ API",
-    "doxygenStripFromPath": "../src",
-    "createTreeView": True,
-}
-
+# Project info 
 project = "SolverLES"
 author = "RICHARD Anthony"
 release = "0.0.0"
+
+# Extensions
+extensions = [
+    "breathe",
+    "exhale",
+    "sphinx.ext.autosectionlabel",
+    "sphinx.ext.graphviz",
+    "sphinx.ext.todo",
+    "sphinx.ext.napoleon",
+    "myst_parser",            # optional: for Markdown in docs/
+]
+
+templates_path = ["_templates"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
+# Theme 
+html_theme = os.environ.get("SPHINX_THEME", "furo")
+html_static_path = ["_static"]
+
+# Breathe / Exhale 
+breathe_projects = {}
+xml_env = os.environ.get("DOXYGEN_XML_DIR")
+if xml_env:
+    breathe_projects["SolverLES"] = xml_env
+breathe_default_project = "SolverLES"
+
+breathe_use_project_refids = True
+
+# Exhale: generate a tidy API index under docs/api/
+repo_root = pathlib.Path(__file__).resolve().parents[1]
+exhale_args = {
+    "containmentFolder": "api",
+    "rootFileName": "library_root.rst",
+    "rootFileTitle": "C++ API",
+    "doxygenStripFromPath": str(repo_root),
+    "createTreeView": True,
+}
+
+# Build strictness & nitpicky mode
+# Make warnings fail in CI: SPHINX_STRICT=1 ./scripts/build_docs.sh
+if os.environ.get("SPHINX_STRICT") == "1":
+    nitpicky = True
+    nitpick_ignore = []
+
+# Autosectionlabel so :ref: works across pages without collisions
+autosectionlabel_prefix_document = True
+
+# Enable TODOs when desired:
+todo_include_todos = bool(int(os.environ.get("SPHINX_TODOS", "0")))
+
+# Graphviz defaults
+graphviz_output_format = "svg"
+
+# -- Exhale + Furo: silence 'contents' warning on generated pages ----------
+import re
+def _tag_contents_for_furo(app, docname, source):
+    # Only touch Exhale-generated pages (anything under api/)
+    if not docname.startswith("api/"):
+        return
+    text = source[0]
+    # Skip if already present (idempotent)
+    if "this-will-duplicate-information-and-it-is-still-useful-here" in text:
+        source[0] = text
+        return
+    # Add the special class Furo looks for
+    text = re.sub(
+        r"(^\.\. contents::[^\n]*\n(?:\s*:\w+:.*\n)*)",
+        r"\1   :class: this-will-duplicate-information-and-it-is-still-useful-here\n",
+        text,
+        flags=re.M,
+    )
+    source[0] = text
+
+def setup(app):
+    app.connect("source-read", _tag_contents_for_furo)

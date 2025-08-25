@@ -26,3 +26,11 @@ EXPAND_ONLY_PREDEF     = NO
 PREDEFINED             = HAVE_MPI
 WARN_IF_UNDOCUMENTED   = YES
 QUIET                  = YES
+HAVE_DOT               = YES
+DOT_IMAGE_FORMAT       = svg
+DOT_GRAPH_MAX_NODES    = 64
+
+# Allows to embed ReST inside Doxygen comments (handles leading '*')
+MARKDOWN_SUPPORT       = YES
+ALIASES               += "rst=\verbatim embed:rst:leading-asterisk"
+ALIASES               += "endrst=\endverbatim"
