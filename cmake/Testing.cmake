@@ -15,11 +15,12 @@ function(add_mpi_test name target np)
     return()
   endif()
 
-  # Normalize pre/post flags (env/CLI may provide them as a single space-separated string)
-  set(_mpipre  "${MPIEXEC_PREFLAGS}")
+  # Normalize pre/post flags (env/CLI may provide them as a single
+  # space-separated string)
+  set(_mpipre "${MPIEXEC_PREFLAGS}")
   set(_mpipost "${MPIEXEC_POSTFLAGS}")
   if(_mpipre)
-    separate_arguments(_mpipre  NATIVE_COMMAND)
+    separate_arguments(_mpipre NATIVE_COMMAND)
   endif()
   if(_mpipost)
     separate_arguments(_mpipost NATIVE_COMMAND)
@@ -33,22 +34,19 @@ function(add_mpi_test name target np)
     add_test(
       NAME ${name}
       COMMAND
-        ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
-        ${_mpipre}
-        $<TARGET_FILE:${target}>
-        ${_mpipost}
-        --reporter junit --out "${_junit_dir}/${name}.xml")
+        ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np} ${_mpipre}
+        $<TARGET_FILE:${target}> ${_mpipost} --reporter junit --out
+        "${_junit_dir}/${name}.xml")
   else()
-    add_test(
-      NAME ${name}
-      COMMAND
-        ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
-        ${_mpipre}
-        $<TARGET_FILE:${target}>
-        ${_mpipost})
+    add_test(NAME ${name}
+             COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
+                     ${_mpipre} $<TARGET_FILE:${target}> ${_mpipost})
   endif()
 
-  set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "OMPI_MCA_rmaps_base_oversubscribe=1")
+  set_property(
+    TEST ${name}
+    APPEND
+    PROPERTY ENVIRONMENT "OMPI_MCA_rmaps_base_oversubscribe=1")
 
   set_tests_properties(${name} PROPERTIES LABELS mpi)
 endfunction()

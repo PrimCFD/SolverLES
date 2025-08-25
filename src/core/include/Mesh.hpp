@@ -3,14 +3,14 @@
 #include <cstddef>
 
 /**
-* @file Mesh.hpp
-* @ingroup memory
-* @brief Local domain geometry and ghost width.
-*
-* Holds the interior cell counts and the ghost width \c ng. Utility methods
-* return ghost‑inclusive extents and total volume used by memory allocation.
-* The mesh also carries the Cartesian communicator used by halo exchange.
-*/
+ * @file Mesh.hpp
+ * @ingroup memory
+ * @brief Local domain geometry and ghost width.
+ *
+ * Holds the interior cell counts and the ghost width \c ng. Utility methods
+ * return ghost‑inclusive extents and total volume used by memory allocation.
+ * The mesh also carries the Cartesian communicator used by halo exchange.
+ */
 
 namespace core
 {

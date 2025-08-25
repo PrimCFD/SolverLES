@@ -6,101 +6,98 @@
 #include <unordered_map>
 
 /**
-* @defgroup memory Memory & Data‑Layout Subsystem
-* @brief Ownership, transfers, layout and halo exchange for structured grids.
-*
-* The memory layer provides:
-* - **Structure‑of‑Arrays (SoA)** global layout for stencil‑friendly access.
-* - **Ghost/halo padding** around local domains for branch‑free kernels.
-* - **Explicit host↔device mirrors** or **CUDA Unified Memory** (UM) paths.
-* - **64‑byte host alignment** (cache‑/SIMD‑friendly) and optional pinned host buffers.
-* - **Async transfers & prefetch** with streams; overlap with MPI halo exchange.
-*
-* Compile‑time feature toggles:
-* - \c HAVE_CUDA – enable GPU code paths.
-* - \c USE_CUDA_UM – use cudaMallocManaged + prefetch instead of explicit mirrors.
-* - \c USE_PINNED_HOST – allocate page‑locked host staging buffers for faster H2D/D2H.
-*
-* @note All raw pointers returned by this layer are **owned** by the MemoryManager.
-* Non‑owning *views* (e.g., Field<T>) expose typed access without taking ownership.
-* @see MemoryManager, Field, layout::Indexer3D, Mesh, HaloExchange
-*/
-
-
-/**
-* @page memory_overview Memory & Data‑Layout Overview
-* @ingroup memory
-*
-* ## Goals
-* - Keep hot loops pointer‑fast and vectorizable on CPU and coalesced on GPU.
-* - Provide one ownership point (RAII) and leak‑free lifetime.
-* - Make halo exchange contiguous and overlap it with compute.
-*
-* ## Layout
-* **SoA** per primitive: \c rho[], \c ux[], \c uy[], \c uz[], \c p[], … allocated with ghosts.
-* Linear index (0‑based, ghosts included):
-* `idx(i,j,k) = (k * Ny_tot + j) * Nx_tot + i`.
-*
-* ## Alignment
-* Host allocations are aligned (≥64 B). On GPU, UM or explicit mirrors are used.
-* Optional **pinned host** buffers improve PCIe/NVLink throughput.
-*
-* ## CPU/GPU
-* - **Unified Memory**: one pointer, on‑demand migration + optional prefetch.
-* - **Explicit mirrors**: \c to_device() / \c to_host() async copies into device buffers.
-*
-* ## Halos
-* Each local field is \c (Nx+2*ng)×(Ny+2*ng)×(Nz+2*ng). Six face slabs are exchanged with neighbors.
-* Ghost padding turns boundary updates into unit‑stride copies and simplifies kernels.
-*/
-
+ * @defgroup memory Memory & Data‑Layout Subsystem
+ * @brief Ownership, transfers, layout and halo exchange for structured grids.
+ *
+ * The memory layer provides:
+ * - **Structure‑of‑Arrays (SoA)** global layout for stencil‑friendly access.
+ * - **Ghost/halo padding** around local domains for branch‑free kernels.
+ * - **Explicit host↔device mirrors** or **CUDA Unified Memory** (UM) paths.
+ * - **64‑byte host alignment** (cache‑/SIMD‑friendly) and optional pinned host buffers.
+ * - **Async transfers & prefetch** with streams; overlap with MPI halo exchange.
+ *
+ * Compile‑time feature toggles:
+ * - \c HAVE_CUDA – enable GPU code paths.
+ * - \c USE_CUDA_UM – use cudaMallocManaged + prefetch instead of explicit mirrors.
+ * - \c USE_PINNED_HOST – allocate page‑locked host staging buffers for faster H2D/D2H.
+ *
+ * @note All raw pointers returned by this layer are **owned** by the MemoryManager.
+ * Non‑owning *views* (e.g., Field<T>) expose typed access without taking ownership.
+ * @see MemoryManager, Field, layout::Indexer3D, Mesh, HaloExchange
+ */
 
 /**
-* @file MemoryManager.hpp
-* @ingroup memory
-* @brief Singleton RAII owner of all solver buffers (host and device).
-*
-* The MemoryManager owns every allocated block and tracks it in an internal
-* registry. It supports two back‑ends:
-* 1. **Unified Memory (UM)** – single pointer via \c cudaMallocManaged with
-* optional \c cudaMemPrefetchAsync.
-* 2. **Explicit mirrors** – separate host/device buffers with async H2D/D2H.
-*
-* ### Thread‑safety
-* All public methods are thread‑safe. The registry is protected by a mutex.
-*
-* ### Typical use
-* @rst
-*.. code-block:: cpp
-*
-*   auto& mm = MemoryManager::instance();
-*   // Allocate SoA arrays with ghosts
-*   double* rho = mm.allocate<double>(nx_tot*ny_tot*nz_tot);
-*   // Transfer before a GPU kernel when not using UM
-*   mm.to_device(rho, bytes, stream);
-*   // On shutdown or scope end, release once
-*   mm.release(rho);
-* @endrst
-*
-* @note Non‑owning views (Field<T>) should wrap the returned pointer for safer access.
-*/
-
+ * @page memory_overview Memory & Data‑Layout Overview
+ * @ingroup memory
+ *
+ * ## Goals
+ * - Keep hot loops pointer‑fast and vectorizable on CPU and coalesced on GPU.
+ * - Provide one ownership point (RAII) and leak‑free lifetime.
+ * - Make halo exchange contiguous and overlap it with compute.
+ *
+ * ## Layout
+ * **SoA** per primitive: \c rho[], \c ux[], \c uy[], \c uz[], \c p[], … allocated with ghosts.
+ * Linear index (0‑based, ghosts included):
+ * `idx(i,j,k) = (k * Ny_tot + j) * Nx_tot + i`.
+ *
+ * ## Alignment
+ * Host allocations are aligned (≥64 B). On GPU, UM or explicit mirrors are used.
+ * Optional **pinned host** buffers improve PCIe/NVLink throughput.
+ *
+ * ## CPU/GPU
+ * - **Unified Memory**: one pointer, on‑demand migration + optional prefetch.
+ * - **Explicit mirrors**: \c to_device() / \c to_host() async copies into device buffers.
+ *
+ * ## Halos
+ * Each local field is \c (Nx+2*ng)×(Ny+2*ng)×(Nz+2*ng). Six face slabs are exchanged with
+ * neighbors. Ghost padding turns boundary updates into unit‑stride copies and simplifies kernels.
+ */
 
 /**
-* @class MemoryManager
-* @ingroup memory
-* @brief Centralized allocator + transfer engine.
-*
-* @par Features
-* - \c allocate\<T\>(n) – aligned host allocation; may also create a device mirror.
-* - \c to_device(ptr, bytes, stream) / \c to_host(ptr, bytes, stream) – async transfer or prefetch.
-* - \c device_ptr(host_ptr) – returns device mirror when using explicit mirrors.
-* - \c host_ptr(maybe_device) – returns owning host pointer for a device mirror.
-* - \c release(ptr) – frees host/device memory and unregisters the block.
-* - \c using_unified_memory() – compile‑time/runtime policy check.
-*
-* @warning Pointers are invalid after \c release. Views must not outlive the block.
-*/
+ * @file MemoryManager.hpp
+ * @ingroup memory
+ * @brief Singleton RAII owner of all solver buffers (host and device).
+ *
+ * The MemoryManager owns every allocated block and tracks it in an internal
+ * registry. It supports two back‑ends:
+ * 1. **Unified Memory (UM)** – single pointer via \c cudaMallocManaged with
+ * optional \c cudaMemPrefetchAsync.
+ * 2. **Explicit mirrors** – separate host/device buffers with async H2D/D2H.
+ *
+ * ### Thread‑safety
+ * All public methods are thread‑safe. The registry is protected by a mutex.
+ *
+ * ### Typical use
+ * @rst
+ *.. code-block:: cpp
+ *
+ *   auto& mm = MemoryManager::instance();
+ *   // Allocate SoA arrays with ghosts
+ *   double* rho = mm.allocate<double>(nx_tot*ny_tot*nz_tot);
+ *   // Transfer before a GPU kernel when not using UM
+ *   mm.to_device(rho, bytes, stream);
+ *   // On shutdown or scope end, release once
+ *   mm.release(rho);
+ * @endrst
+ *
+ * @note Non‑owning views (Field<T>) should wrap the returned pointer for safer access.
+ */
+
+/**
+ * @class MemoryManager
+ * @ingroup memory
+ * @brief Centralized allocator + transfer engine.
+ *
+ * @par Features
+ * - \c allocate\<T\>(n) – aligned host allocation; may also create a device mirror.
+ * - \c to_device(ptr, bytes, stream) / \c to_host(ptr, bytes, stream) – async transfer or prefetch.
+ * - \c device_ptr(host_ptr) – returns device mirror when using explicit mirrors.
+ * - \c host_ptr(maybe_device) – returns owning host pointer for a device mirror.
+ * - \c release(ptr) – frees host/device memory and unregisters the block.
+ * - \c using_unified_memory() – compile‑time/runtime policy check.
+ *
+ * @warning Pointers are invalid after \c release. Views must not outlive the block.
+ */
 
 #ifdef HAVE_CUDA
 #include <cuda_runtime.h>

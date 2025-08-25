@@ -5,22 +5,22 @@
 #include <vector>
 
 /**
-* @file HaloExchange.hpp
-* @ingroup memory
-* @brief MPI façade to exchange ghost/halo slabs of ghost‑padded fields.
-*
-* Posts six non‑blocking \c MPI_Isend/\c MPI_Irecv operations into the ghost layers
-* of each field and overlaps communication with interior computation. Interfaces
-* operate on \c Field\<T\> views to avoid extra copies.
-*
-* @rst
-*.. code-block:: cpp
-*
-*    exchange_ghosts(rho, mesh, cart_comm); // X±, Y±, Z± slabs
-* @endrst
-*
-* @warning All participating fields must share the same ghost width and extents.
-*/
+ * @file HaloExchange.hpp
+ * @ingroup memory
+ * @brief MPI façade to exchange ghost/halo slabs of ghost‑padded fields.
+ *
+ * Posts six non‑blocking \c MPI_Isend/\c MPI_Irecv operations into the ghost layers
+ * of each field and overlaps communication with interior computation. Interfaces
+ * operate on \c Field\<T\> views to avoid extra copies.
+ *
+ * @rst
+ *.. code-block:: cpp
+ *
+ *    exchange_ghosts(rho, mesh, cart_comm); // X±, Y±, Z± slabs
+ * @endrst
+ *
+ * @warning All participating fields must share the same ghost width and extents.
+ */
 
 namespace core
 {
