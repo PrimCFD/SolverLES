@@ -48,6 +48,8 @@ function(add_mpi_test name target np)
         ${_mpipost})
   endif()
 
+  set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "OMPI_MCA_rmaps_base_oversubscribe=1")
+
   set_tests_properties(${name} PROPERTIES LABELS mpi)
 endfunction()
 
