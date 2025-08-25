@@ -1,6 +1,7 @@
-# docs/conf.py
 import os
 import pathlib
+from pathlib import Path as _Path
+import re
 
 # Project info 
 project = "SolverLES"
@@ -23,7 +24,10 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 # Theme 
 html_theme = os.environ.get("SPHINX_THEME", "furo")
-html_static_path = ["_static"]
+if (_Path(__file__).parent / '_static').exists():
+    html_static_path = ['_static']
+else:
+    html_static_path = []
 
 # Breathe / Exhale 
 breathe_projects = {}
@@ -60,7 +64,6 @@ todo_include_todos = bool(int(os.environ.get("SPHINX_TODOS", "0")))
 graphviz_output_format = "svg"
 
 # -- Exhale + Furo: silence 'contents' warning on generated pages ----------
-import re
 def _tag_contents_for_furo(app, docname, source):
     # Only touch Exhale-generated pages (anything under api/)
     if not docname.startswith("api/"):
