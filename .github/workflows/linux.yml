@@ -199,9 +199,7 @@ jobs:
 
       - name: Run perf tests (GPU)
         env:
-          OFFLINE: "1"
-          OMPI_MCA_rmaps_base_oversubscribe: "1"
-          MPIEXEC_PREFLAGS: "-H localhost:4 --oversubscribe --use-hwthread-cpus"              
+          OFFLINE: "1"              
           CMAKE_BUILD_TYPE: Release
         run: |
           ./scripts/run_perf_tests.sh
