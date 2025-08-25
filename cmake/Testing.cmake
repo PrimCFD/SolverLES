@@ -10,22 +10,27 @@ endif()
 
 # Robust MPI test helper: becomes a no-op if MPI is disabled. Usage: Usage:
 function(add_mpi_test name target np)
+  if(NOT ENABLE_MPI OR NOT MPIEXEC_EXECUTABLE)
+    message(STATUS "MPI disabled or launcher missing; skipping ${name}")
+    return()
+  endif()
+
   # JUnit target directory for MPI
   set(_junit_dir "${CMAKE_BINARY_DIR}/test-reports/mpi")
   file(MAKE_DIRECTORY "${_junit_dir}")
 
-  # If tests are Catch2-based, ask the binary to emit JUnit directly.
   if(TARGET Catch2::Catch2WithMain OR TARGET Catch2)
     add_test(
       NAME ${name}
       COMMAND
-        ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
-        $<TARGET_FILE:${target}> --reporter junit --out
+        ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np} ${MPIEXEC_PREFLAGS}
+        $<TARGET_FILE:${target}> ${MPIEXEC_POSTFLAGS} --reporter junit --out
         "${_junit_dir}/${name}.xml")
   else()
-    # Non-Catch2 fallback: still runs the test (no JUnit from the binary)
-    add_test(NAME ${name} COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG}
-                                  ${np} $<TARGET_FILE:${target}>)
+    add_test(
+      NAME ${name}
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
+              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${target}> ${MPIEXEC_POSTFLAGS})
   endif()
 
   set_tests_properties(${name} PROPERTIES LABELS mpi)
