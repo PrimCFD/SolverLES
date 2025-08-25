@@ -73,7 +73,7 @@ _apply_emulation() {
     export UCX_TLS="tcp"
     : "${OMPI_MCA_pml:=ob1}"
     # Launcher-side niceties
-    if [[ "$MPI_LAUNCHER" == "mpirun" ]]; then
+    if [[ "$MPI_LAUNCHER" == "mpirun" || "$MPI_LAUNCHER" == "mpiexec" ]]; then
       MPI_LAUNCHER_OPTS+=" --oversubscribe --bind-to ${MPI_BIND} --map-by ${MPI_MAP_BY}"
     fi
   fi
