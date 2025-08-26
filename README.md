@@ -5,6 +5,11 @@
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://primcfd.github.io/SolverLES/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+[![Linux CI](https://github.com/PrimCFD/SolverLES/actions/workflows/linux.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/linux.yml)
+[![Docs](https://github.com/PrimCFD/SolverLES/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/docs.yml)
+[![Style](https://github.com/PrimCFD/SolverLES/actions/workflows/style.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/style.yml)
+
+
 ---
 
 ## 1&nbsp;· Project Vision
@@ -30,8 +35,8 @@ SolverLES/
 │   ├─ plugins/              # Hot‑swappable physics modules dynamic lib
 │   ├─ kernels/              # Shared Fortran math kernels
 │   ├─ bindings/             # C/Fortran interop helpers
-│   ├─ ipc/                  # Inter process communication GUI/Solver
-│   └─ apps/                 # Executables wrappers
+│   ├─ ipc/                  # Inter-process communication GUI/Solver
+│   └─ apps/                 # Executable wrappers
 ├─ tests/                    # Unit, regression & perf tests
 ├─ .clang-format             # C++ style
 ├─ .cmake-format.yml         # CMake style
@@ -68,7 +73,8 @@ This project ships convenience scripts in `scripts/` for reliable, repeatable de
 - Optional/when needed:
   - **MPI stack** (Open MPI/MPICH) for MPI builds and tests.
   - **Doxygen** and **Sphinx** (`sphinx-build`) for docs.
-  - Formatters: `clang-format`, `fprettify`, `cmake-format`. (need to `source venv/bin.activate` if using python virtual environment)
+  - Formatters: `clang-format`, `fprettify`, `cmake-format`. (if using a Python virtual environment, run `source venv/bin/activate`)
+
 
 > Tip: CI uses recent GCC/Clang on Linux; matching that locally avoids surprises (see §5 CI).  
 
@@ -96,7 +102,7 @@ EXTRA_CMAKE_ARGS="-DBUILD_EXAMPLES=ON -DBUILD_GUI=OFF" ./scripts/build.sh
 ### 4.4 Offline / reproducible third-party cache
 Pre-download third-party sources into `extern/` and build fully offline later:
 ```bash
-# Populate extern/ with reproducible archives + MANIFEST.prefetch + HA256SUMS
+# Populate extern/ with reproducible archives + MANIFEST.prefetch + SHA256SUMS
 ./scripts/prefetch_third_party.sh
 
 # Then force an offline build (uses the cached archives)
@@ -147,6 +153,7 @@ See [🛠️ Developer workflow cheatsheet](/scripts/README.md) for further deta
 ---
 
 ## 5&nbsp;· Continuous Integration
+[![Linux CI](https://github.com/PrimCFD/SolverLES/actions/workflows/linux.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/linux.yml) [![Docs](https://github.com/PrimCFD/SolverLES/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/docs.yml) [![Style](https://github.com/PrimCFD/SolverLES/actions/workflows/style.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/style.yml)
 All CI is always built from clean slate (containerized) to check the whole pipeline on Hardware with missing tools
 
 * **linux.yml** – GCC 13 / Clang 18 matrix; runs unit, performance & regression tests (GPU tests need hosted runner).
