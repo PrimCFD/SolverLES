@@ -154,6 +154,7 @@ See [🛠️ Developer workflow cheatsheet](/scripts/README.md) for further deta
 
 ## 5&nbsp;· Continuous Integration
 [![Linux CI](https://github.com/PrimCFD/SolverLES/actions/workflows/linux.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/linux.yml) [![Docs](https://github.com/PrimCFD/SolverLES/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/docs.yml) [![Style](https://github.com/PrimCFD/SolverLES/actions/workflows/style.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/style.yml)
+
 All CI is always built from clean slate (containerized) to check the whole pipeline on Hardware with missing tools
 
 * **linux.yml** – GCC 13 / Clang 18 matrix; runs unit, performance & regression tests (GPU tests need hosted runner).
