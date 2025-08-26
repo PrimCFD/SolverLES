@@ -1,6 +1,6 @@
 # FVM–LES–Plasma Solver
 
-> **Status:** _Initial draft._
+> **Status:** _Early stage_
 
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://primcfd.github.io/SolverLES/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -16,41 +16,30 @@ The objective is to build an **open, modular finite‑volume LES solver for ther
 ## 2&nbsp;· Repository Layout (high‑level)
 
 ```text
-fvm-les-plasma/
-├─ CMakeLists.txt            # Root super‑build
-├─ .clang-format             # C++ style
-├─ .cmake-format.yml         # CMake style
-├─ .fprettify.yml          # Fortran style
-├─ .gitignore
-├─ LICENSE
-├─ README.md                 # Newcomer entry point
-│
+SolverLES/
+
+├─ .github/workflows/        # CI definitions
 ├─ cmake/                    # CMake helper modules
-│   ├─ FetchPETSc.cmake
-│   ├─ FetchCGNS.cmake
-│   └─ CompileOptions.cmake
-│
-├─ extern/                   # Third‑party sources (mirrored, no edits)
-│   ├─ petsc/
-│   └─ cgns/
-│
+├─ docs/                     # Sphinx/Doxygen furo doc
+├─ examples/                 # Tiny run‑ready cases (< 60 s)
+├─ extern/                   # Third‑party sources (tar balls mirrored, no edits)
+├─ scripts/                  # Dev‑ops & helper scripts
 ├─ src/                      # Solver source code
 │   ├─ core/                 # C++ runtime static lib (orchestration, memory management)
 │   ├─ gui/                  # Qt/VTK front‑end
 │   ├─ plugins/              # Hot‑swappable physics modules dynamic lib
-│   │   ├─ flux/             # ‑ IFluxScheme implementations
-│   │   ├─ sgs/              # ‑ ISGSModel implementations
-│   │   └─ time/             # ‑ ITimeStepper implementations
 │   ├─ kernels/              # Shared Fortran math kernels
 │   ├─ bindings/             # C/Fortran interop helpers
 │   ├─ ipc/                  # Inter process communication GUI/Solver
 │   └─ apps/                 # Executables wrappers
-│
 ├─ tests/                    # Unit, regression & perf tests
-├─ examples/                 # Tiny run‑ready cases (< 60 s)
-├─ docs/                     # Sphinx + architecture notes
-├─ scripts/                  # Dev‑ops & helper scripts
-└─ .github/                  # CI definitions
+├─ .clang-format             # C++ style
+├─ .cmake-format.yml         # CMake style
+├─ .fprettify.yml            # Fortran style
+├─ .gitignore
+├─ CMakeLists.txt            # Root super‑build
+├─ LICENSE
+└─ README.md                 # This file
 ```
 
 ---
@@ -70,24 +59,97 @@ fvm-les-plasma/
 
 ---
 
-## 4&nbsp;· Build & Install Quick Start
+## 4&nbsp;· Quick Start (using `scripts/` helpers)
 
+This project ships convenience scripts in `scripts/` for reliable, repeatable developer workflows (builds, docs, MPI, offline vendor cache, cleaning, formatting). See the cheatsheet in that folder for details.  
+
+### 4.1 Prerequisites
+- **CMake ≥ 3.24**, a C/C++/Fortran toolchain; **Ninja** is recommended.  
+- Optional/when needed:
+  - **MPI stack** (Open MPI/MPICH) for MPI builds and tests.
+  - **Doxygen** and **Sphinx** (`sphinx-build`) for docs.
+  - Formatters: `clang-format`, `fprettify`, `cmake-format`.
+
+> Tip: CI uses recent GCC/Clang on Linux; matching that locally avoids surprises (see §5 CI).  
+
+### 4.2 Fast path (CPU, Release)
 ```bash
-# Clone and configure (CPU only, Debug)
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build -j8
+# Configure + build (Release by default) into ./build
+./scripts/build.sh
 
-# Run the hello‑mesh example
+# Run the hello-mesh example
 ./build/bin/solver examples/hello_mesh.yaml
 ```
 
-*See `/docs/developer_guide/build.md` for GPU flags and cluster hints.*
+### 4.3 Common switches
+```bash
+# Debug build into a custom directory
+BUILD_DIR=build-debug CMAKE_BUILD_TYPE=Debug ./scripts/build.sh
+
+# Toggle MPI paths and pass Open MPI oversubscribe to CTest/launchers
+ENABLE_MPI=ON MPIEXEC_PREFLAGS=--oversubscribe ./scripts/build.sh
+
+# Extra CMake options (examples)
+EXTRA_CMAKE_ARGS="-DBUILD_EXAMPLES=ON -DBUILD_GUI=OFF" ./scripts/build.sh
+```
+
+### 4.4 Offline / reproducible third-party cache
+Pre-download third-party sources into `extern/` and build fully offline later:
+```bash
+# Populate extern/ with reproducible archives + MANIFEST.prefetch + HA256SUMS
+./scripts/prefetch_third_party.sh
+
+# Then force an offline build (uses the cached archives)
+OFFLINE=1 ./scripts/build.sh
+```
+
+### 4.5 MPI quickstart (laptop-friendly)
+```bash
+# Prepare a consistent MPI launcher env (auto-detects vendor/launcher)
+source scripts/mpi_env.sh auto
+
+# Launch with N ranks (works across srun/mpirun/mpiexec)
+mpi_exec 4 ./build/bin/solver examples/hello_mesh.yaml
+
+# Or run MPI-labeled tests end-to-end
+./scripts/run_mpi_tests.sh --mode emulate --np 4
+```
+
+### 4.6 Docs build & local preview
+```bash
+# Build Doxygen XML + Sphinx HTML
+./scripts/build_docs.sh
+
+# Serve locally and open a browser tab
+./scripts/build_docs.sh --serve --open
+```
+
+### 4.7 Cleaning up build trees & vendor cache
+```bash
+# Clean CMake/Ninja artifacts (keeps build-docs/)
+./scripts/clean_build.sh --all -y
+
+# Optionally wipe vendored archives/sources under extern/
+./scripts/clean_extern.sh -y
+```
+
+### 4.8 Format sources (C/C++, Fortran, CMake)
+```bash
+# Best-effort (ignores missing tools)
+./scripts/format_all.sh
+
+# Fail if any formatter is missing or errors
+STRICT=1 ./scripts/format_all.sh
+```
+### More details
+See [🛠️ Developer workflow cheatsheet](/scripts/README.md) for further details
 
 ---
 
 ## 5&nbsp;· Continuous Integration
+All CI is always built from clean slate (containerized) to check the whole pipeline on Hardware with missing tools
 
-* **linux.yml** – GCC 13 / Clang 18 matrix; runs unit & regression tests.
+* **linux.yml** – GCC 13 / Clang 18 matrix; runs unit, performance & regression tests (GPU tests need hosted runner).
 * **style.yml** – clang‑format, fprettify, cmake‑lint.
 * **docs.yml** – builds Sphinx docs, pushes to `gh-pages`.
 
