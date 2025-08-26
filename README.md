@@ -68,7 +68,7 @@ This project ships convenience scripts in `scripts/` for reliable, repeatable de
 - Optional/when needed:
   - **MPI stack** (Open MPI/MPICH) for MPI builds and tests.
   - **Doxygen** and **Sphinx** (`sphinx-build`) for docs.
-  - Formatters: `clang-format`, `fprettify`, `cmake-format`.
+  - Formatters: `clang-format`, `fprettify`, `cmake-format`. (need to `source venv/bin.activate` if using python virtual environment)
 
 > Tip: CI uses recent GCC/Clang on Linux; matching that locally avoids surprises (see §5 CI).  
 
