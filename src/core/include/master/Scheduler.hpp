@@ -1,7 +1,7 @@
 #pragma once
-#include <memory>
 #include "master/Views.hpp"
 #include "master/plugin/Program.hpp"
+#include <memory>
 
 /**
  * @file Scheduler.hpp
@@ -30,41 +30,48 @@
  * @endrst
  */
 
+namespace core
+{
+namespace mesh
+{
+    class Layout;
+    class HaloExchange;
+    class Boundary;
+} // namespace mesh
+namespace master
+{
 
-namespace core {
-namespace mesh { class Layout; class HaloExchange; class Boundary; }
-namespace master {
+    class FieldCatalog;
+    namespace io
+    {
+        class IWriter;
+    }
 
-class FieldCatalog;
-namespace io { class IWriter; }
+    struct TimeControls
+    {
+        double dt{0.0};
+        double t_end{0.0};
+        int write_every{0};
+    };
 
-struct TimeControls {
-  double dt{0.0};
-  double t_end{0.0};
-  int    write_every{0};
-};
+    class Scheduler
+    {
+      public:
+        Scheduler(const RunContext& rc, const mesh::Layout& layout, mesh::HaloExchange& halos,
+                  mesh::Boundary& bcs, FieldCatalog& fields, io::IWriter& writer);
 
-class Scheduler {
-public:
-  Scheduler(const RunContext& rc,
-            const mesh::Layout& layout,
-            mesh::HaloExchange& halos,
-            mesh::Boundary& bcs,
-            FieldCatalog& fields,
-            io::IWriter& writer);
+        void set_program(std::unique_ptr<plugin::IProgram> program);
+        void run(const TimeControls& tc);
 
-  void set_program(std::unique_ptr<plugin::IProgram> program);
-  void run(const TimeControls& tc);
-
-private:
-  const RunContext& rc_;
-  const mesh::Layout& layout_;
-  mesh::HaloExchange& halos_;
-  mesh::Boundary& bcs_;
-  FieldCatalog& fields_;
-  io::IWriter& writer_;
-  std::unique_ptr<plugin::IProgram> program_;
-};
+      private:
+        const RunContext& rc_;
+        const mesh::Layout& layout_;
+        mesh::HaloExchange& halos_;
+        mesh::Boundary& bcs_;
+        FieldCatalog& fields_;
+        io::IWriter& writer_;
+        std::unique_ptr<plugin::IProgram> program_;
+    };
 
 } // namespace master
 } // namespace core

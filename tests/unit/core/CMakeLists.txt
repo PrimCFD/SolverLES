@@ -1,9 +1,18 @@
-# General 
+# General
 add_executable(
-  unit_core test_alignment.cpp test_registry_memory.cpp test_field_index.cpp
-            test_copy_roundtrip.cpp test_device_mirror.cpp test_boundary.cpp
-            test_fieldcatalog.cpp test_fieldcatalog_more.cpp test_scheduler_noop.cpp
-            test_scheduler_calls.cpp test_plugin_register.cpp test_registry_error_master.cpp)
+  unit_core
+  test_alignment.cpp
+  test_registry_memory.cpp
+  test_field_index.cpp
+  test_copy_roundtrip.cpp
+  test_device_mirror.cpp
+  test_boundary.cpp
+  test_fieldcatalog.cpp
+  test_fieldcatalog_more.cpp
+  test_scheduler_noop.cpp
+  test_scheduler_calls.cpp
+  test_plugin_register.cpp
+  test_registry_error_master.cpp)
 
 # Seam lib
 add_library(mesh_seams STATIC mesh_seams.cpp)
@@ -29,7 +38,8 @@ register_catch_tests(
 
 if(ENABLE_CUDA)
   add_executable(unit_gpu gpu/test_um_fields.cpp)
-  target_link_libraries(unit_gpu PRIVATE CUDA::cudart core Catch2::Catch2WithMain)
+  target_link_libraries(unit_gpu PRIVATE CUDA::cudart core
+                                         Catch2::Catch2WithMain)
   target_compile_definitions(unit_gpu PRIVATE HAVE_CUDA)
 endif()
 
@@ -37,7 +47,8 @@ if(ENABLE_MPI)
   find_package(MPI REQUIRED) # in the MPI job only
 
   # Halo exchange tests
-  add_executable(test_halo mpi/mpi_main.cpp mpi/test_halo.cpp mpi/test_halo_ng2.cpp)
+  add_executable(test_halo mpi/mpi_main.cpp mpi/test_halo.cpp
+                           mpi/test_halo_ng2.cpp)
 
   target_link_libraries(test_halo PRIVATE core Catch2::Catch2 MPI::MPI_CXX)
 
@@ -47,7 +58,8 @@ if(ENABLE_MPI)
   # Boundary condition tests
   add_executable(test_boundary_mpi mpi/mpi_main.cpp mpi/test_boundary_mpi.cpp)
 
-  target_link_libraries(test_boundary_mpi PRIVATE core Catch2::Catch2 MPI::MPI_CXX)
+  target_link_libraries(test_boundary_mpi PRIVATE core Catch2::Catch2
+                                                  MPI::MPI_CXX)
 
   # Run on a single rank to sanity-check "physical face" behavior
   add_mpi_test(core_boundary_mpi_1rank test_boundary_mpi 1)

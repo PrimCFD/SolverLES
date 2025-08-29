@@ -36,7 +36,7 @@ SolverLES/
 │   ├─ kernels/              # Shared Fortran math kernels
 │   ├─ bindings/             # C/Fortran interop helpers
 │   ├─ ipc/                  # Inter-process communication GUI/Solver
-│   └─ apps/                 # Executable wrappers
+│   └─ apps/                 # Executable entry points
 ├─ tests/                    # Unit, regression & perf tests
 ├─ .clang-format             # C++ style
 ├─ .cmake-format.yml         # CMake style
@@ -54,11 +54,12 @@ SolverLES/
 | Path | Role | Notes |
 |------|------|-------|
 | **src/core** | Owns mesh, fields, time loop, I/O; _no physics_. | Written in modern C++ (C++20). |
-| **src/plugins/flux** | Spatial discretisation schemes. | Each sub‑dir → one shared lib (e.g. `libweno.so`). |
-| **src/plugins/sgs** | LES SGS models. | Research mostly done here. |
-| **src/plugins/time** | Time‑integration schemes. | Explicit RK, implicit, etc. |
+| **src/physics** | Physics shared library plugins | Each physics → one shared lib (e.g. `libweno.so`). |
+| **src/physics/fluids/flux** | Spatial discretisation schemes. | Each sub‑dir → specific optimized numerics. |
+| **src/physics/fluids/sgs** | LES SGS models. | Research mostly done here. |
+| **src/physics/fluids/time** | Time‑integration schemes. | PISO, etc. |
 | **src/kernels** | Optimised Fortran math; reused by plug‑ins. | Vectorised / GPU‑offloaded via OpenMP/CUDA Fortran. |
-| **extern** | Vendored: CGNS, PETSc. | Pulled via `FetchContent`; do **not** modify in‑tree. |
+| **extern** | Vendored: CGNS, PETSc. | Pulled via `FetchContent`/`ExternalProject`; do **not** modify in‑tree. |
 | **tests** | Unit, regression CGNS, etc | CI runs these on every PR. |
 | **examples** | Minimal decks: Taylor–Green, Sod, etc. | Should finish < 1 minute serial. |
 
@@ -118,7 +119,7 @@ source scripts/mpi_env.sh auto
 mpi_exec 4 ./build/bin/solver examples/hello_mesh.yaml
 
 # Or run MPI-labeled tests end-to-end
-./scripts/run_mpi_tests.sh --mode emulate --np 4
+./scripts/run_mpi_tests.sh
 ```
 
 ### 4.6 Docs build & local preview

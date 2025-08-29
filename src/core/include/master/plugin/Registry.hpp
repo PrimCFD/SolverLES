@@ -1,9 +1,9 @@
 #pragma once
+#include "master/plugin/Program.hpp"
 #include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include "master/plugin/Program.hpp"
 
 /**
  * @file Registry.hpp
@@ -25,29 +25,36 @@
  * @endrst
  */
 
+namespace core::master
+{
+struct RunContext;
+}
 
-namespace core::master { struct RunContext; }
+namespace core::master::plugin
+{
 
-namespace core::master::plugin {
+class Registry
+{
+  public:
+    using CreateProgram = std::function<std::unique_ptr<IProgram>(const KV&, const RunContext&)>;
+    using CreateAction = std::function<std::shared_ptr<IAction>(const KV&, const RunContext&)>;
+    using CreateGlobal = std::function<std::shared_ptr<IGlobal>(const KV&, const RunContext&)>;
 
-class Registry {
-public:
-  using CreateProgram = std::function<std::unique_ptr<IProgram>(const KV&, const RunContext&)>;
-  using CreateAction  = std::function<std::shared_ptr<IAction>(const KV&, const RunContext&)>;
-  using CreateGlobal  = std::function<std::shared_ptr<IGlobal>(const KV&, const RunContext&)>;
+    void add_program(std::string key, CreateProgram f) { programs_[std::move(key)] = std::move(f); }
+    void add_action(std::string key, CreateAction f) { actions_[std::move(key)] = std::move(f); }
+    void add_global(std::string key, CreateGlobal f) { globals_[std::move(key)] = std::move(f); }
 
-  void add_program(std::string key, CreateProgram f) { programs_[std::move(key)]=std::move(f); }
-  void add_action (std::string key, CreateAction  f) { actions_ [std::move(key)]=std::move(f); }
-  void add_global (std::string key, CreateGlobal  f) { globals_ [std::move(key)]=std::move(f); }
+    std::unique_ptr<IProgram> make_program(const std::string& key, const KV&,
+                                           const RunContext&) const;
+    std::shared_ptr<IAction> make_action(const std::string& key, const KV&,
+                                         const RunContext&) const;
+    std::shared_ptr<IGlobal> make_global(const std::string& key, const KV&,
+                                         const RunContext&) const;
 
-  std::unique_ptr<IProgram> make_program(const std::string& key, const KV&, const RunContext&) const;
-  std::shared_ptr<IAction>  make_action (const std::string& key, const KV&, const RunContext&) const;
-  std::shared_ptr<IGlobal>  make_global (const std::string& key, const KV&, const RunContext&) const;
-
-private:
-  std::unordered_map<std::string, CreateProgram> programs_;
-  std::unordered_map<std::string, CreateAction>  actions_;
-  std::unordered_map<std::string, CreateGlobal>  globals_;
+  private:
+    std::unordered_map<std::string, CreateProgram> programs_;
+    std::unordered_map<std::string, CreateAction> actions_;
+    std::unordered_map<std::string, CreateGlobal> globals_;
 };
 
 // Plugin entry point

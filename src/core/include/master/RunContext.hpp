@@ -20,22 +20,28 @@
  * @endrst
  */
 
-namespace core {
-namespace memory { class MemoryManager; }
+namespace core
+{
+namespace memory
+{
+    class MemoryManager;
+}
 
-namespace master {
+namespace master
+{
 
-/// Runtime handles shared across the run (MPI, device stream, memory mgr).
-struct RunContext {
-  // Opaque handles so headers stay light; define in the .cpp if needed.
-  void* mpi_comm{nullptr};     // e.g., MPI_Comm*
-  void* device_stream{nullptr}; // e.g., cudaStream_t
-  core::memory::MemoryManager* mem{nullptr};
+    /// Runtime handles shared across the run (MPI, device stream, memory mgr).
+    struct RunContext
+    {
+        // Opaque handles so headers stay light; define in the .cpp if needed.
+        void* mpi_comm{nullptr};      // e.g., MPI_Comm*
+        void* device_stream{nullptr}; // e.g., cudaStream_t
+        core::memory::MemoryManager* mem{nullptr};
 
-  bool cuda_aware_mpi{false};
-  int  world_rank{0};
-  int  world_size{1};
-};
+        bool cuda_aware_mpi{false};
+        int world_rank{0};
+        int world_size{1};
+    };
 
 } // namespace master
 } // namespace core

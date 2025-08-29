@@ -23,30 +23,35 @@
  * @endrst
  */
 
+namespace core::master
+{
 
-namespace core::master {
-
-struct Box3i { std::array<int,3> lo{0,0,0}, hi{0,0,0}; };
-
-struct AnyFieldView {
-  std::string name;
-  void*       host_ptr{nullptr};
-  std::size_t elem_size{0};
-  std::array<int,3> extents{0,0,0};
-  std::array<std::ptrdiff_t,3> strides{0,0,0};
+struct Box3i
+{
+    std::array<int, 3> lo{0, 0, 0}, hi{0, 0, 0};
 };
 
-template<class T>
-struct FieldView {
-  std::string name;
-  T*          data{nullptr};
-  std::array<int,3> extents{0,0,0};
-  std::array<std::ptrdiff_t,3> strides{0,0,0};
+struct AnyFieldView
+{
+    std::string name;
+    void* host_ptr{nullptr};
+    std::size_t elem_size{0};
+    std::array<int, 3> extents{0, 0, 0};
+    std::array<std::ptrdiff_t, 3> strides{0, 0, 0};
 };
 
-struct MeshTileView {
-  Box3i box;          // interior window (no halos)
-  void* stream{nullptr};
+template <class T> struct FieldView
+{
+    std::string name;
+    T* data{nullptr};
+    std::array<int, 3> extents{0, 0, 0};
+    std::array<std::ptrdiff_t, 3> strides{0, 0, 0};
+};
+
+struct MeshTileView
+{
+    Box3i box; // interior window (no halos)
+    void* stream{nullptr};
 };
 
 } // namespace core::master

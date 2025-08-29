@@ -1,7 +1,7 @@
 #pragma once
+#include "master/plugin/Action.hpp"
 #include <memory>
 #include <vector>
-#include "master/plugin/Action.hpp"
 
 /**
  * @file Program.hpp
@@ -25,19 +25,21 @@
  * @endrst
  */
 
-
-namespace core::master::plugin {
+namespace core::master::plugin
+{
 
 // A per-step plan produced by the program
-struct StepPlan {
-  std::vector<std::shared_ptr<IAction>>  tiled;   // tile-wise actions
-  std::vector<std::shared_ptr<IGlobal>>  globals; // global actions
+struct StepPlan
+{
+    std::vector<std::shared_ptr<IAction>> tiled;   // tile-wise actions
+    std::vector<std::shared_ptr<IGlobal>> globals; // global actions
 };
 
 // A program assembles actions (e.g., “explicit RK3” or “operator-split”).
-struct IProgram {
-  virtual ~IProgram() = default;
-  virtual StepPlan plan_step(double dt) = 0; // may change across steps if needed
+struct IProgram
+{
+    virtual ~IProgram() = default;
+    virtual StepPlan plan_step(double dt) = 0; // may change across steps if needed
 };
 
 } // namespace core::master::plugin

@@ -6,7 +6,8 @@ function(add_plugin target)
   set(options)
   set(oneValueArgs)
   set(multiValueArgs SOURCES LINK_LIBS INCLUDE_DIRS DEFINES)
-  cmake_parse_arguments(AP "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+  cmake_parse_arguments(AP "${options}" "${oneValueArgs}" "${multiValueArgs}"
+                        ${ARGN})
 
   if(NOT AP_SOURCES)
     message(FATAL_ERROR "add_plugin(${target}) requires: SOURCES <...>")

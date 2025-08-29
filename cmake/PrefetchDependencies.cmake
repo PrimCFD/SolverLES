@@ -1,14 +1,16 @@
 cmake_minimum_required(VERSION 3.24)
 
 # Ensure the cache has a project name for scripts that read CMakeCache.txt
-# (e.g., scripts/prefetch_third_party.sh). Using LANGUAGES NONE avoids
-# finding compilers during prefetch-only builds.
+# (e.g., scripts/prefetch_third_party.sh). Using LANGUAGES NONE avoids finding
+# compilers during prefetch-only builds.
 if(NOT CMAKE_PROJECT_NAME)
   project(SolverLES LANGUAGES NONE)
 endif()
 
 # Turn on "prefetch-only" behavior inside each Fetch*.cmake
-set(PREFETCH_THIRD_PARTY ON CACHE BOOL "" FORCE)
+set(PREFETCH_THIRD_PARTY
+    ON
+    CACHE BOOL "" FORCE)
 
 include(${CMAKE_SOURCE_DIR}/cmake/FetchUtils.cmake)
 
