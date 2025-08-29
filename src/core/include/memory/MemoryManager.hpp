@@ -103,7 +103,7 @@
 #include <cuda_runtime.h>
 #endif
 
-namespace core
+namespace core::memory
 {
 
 enum class AllocKind : uint8_t
@@ -169,7 +169,7 @@ template <class T> T* MemoryManager::allocate(std::size_t n)
     if (using_unified_memory())
     {
         blk.kind = AllocKind::Unified;
-        blk.host = core::detail::aligned_malloc(bytes); // UM via cudaMallocManaged
+        blk.host = core::memory::aligned_malloc(bytes); // UM via cudaMallocManaged
         blk.device = blk.host;
     }
     else
@@ -183,7 +183,7 @@ template <class T> T* MemoryManager::allocate(std::size_t n)
         blk.host = h;
 #else
         blk.kind = AllocKind::HostAligned;
-        blk.host = core::detail::aligned_malloc(bytes);
+        blk.host = core::memory::aligned_malloc(bytes);
 #endif
         void* d = nullptr;
         if (cudaMalloc(&d, bytes) != cudaSuccess)
@@ -192,7 +192,7 @@ template <class T> T* MemoryManager::allocate(std::size_t n)
             if (blk.host)
                 cudaFreeHost(blk.host);
 #else
-            core::detail::aligned_free(blk.host);
+            core::memory::aligned_free(blk.host);
 #endif
             throw std::bad_alloc{};
         }
@@ -201,7 +201,7 @@ template <class T> T* MemoryManager::allocate(std::size_t n)
 #else
     // CPU-only build
     blk.kind = AllocKind::HostAligned;
-    blk.host = core::detail::aligned_malloc(bytes);
+    blk.host = core::memory::aligned_malloc(bytes);
     blk.device = nullptr;
 #endif
 
@@ -213,4 +213,4 @@ template <class T> T* MemoryManager::allocate(std::size_t n)
     return static_cast<T*>(blk.host);
 }
 
-} // namespace core
+} // namespace core::memory

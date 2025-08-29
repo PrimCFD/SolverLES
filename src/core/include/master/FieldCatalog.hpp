@@ -24,14 +24,6 @@
  * @endrst
  */
 
-namespace core
-{
-namespace mesh
-{
-    class Layout;
-}
-} // namespace core
-
 namespace core::master
 {
 

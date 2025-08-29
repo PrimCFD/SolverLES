@@ -38,6 +38,7 @@ namespace mesh
     class HaloExchange;
     class Boundary;
 } // namespace mesh
+
 namespace master
 {
 

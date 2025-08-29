@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <new>
 
-namespace core
+namespace core::memory
 {
 
 MemoryManager& MemoryManager::instance()
@@ -141,11 +141,11 @@ void MemoryManager::release(void* host_ptr) noexcept
         if (blk.host)
             cudaFreeHost(blk.host);
 #else
-        core::detail::aligned_free(blk.host);
+        core::memory::aligned_free(blk.host);
 #endif
     }
 #else
-    core::detail::aligned_free(blk.host);
+    core::memory::aligned_free(blk.host);
 #endif
     registry_.erase(it);
 }
@@ -170,14 +170,14 @@ MemoryManager::~MemoryManager()
             if (blk.host)
                 cudaFreeHost(blk.host);
 #else
-            core::detail::aligned_free(blk.host);
+            core::memory::aligned_free(blk.host);
 #endif
         }
 #else
-        core::detail::aligned_free(blk.host);
+        core::memory::aligned_free(blk.host);
 #endif
     }
     registry_.clear();
 }
 
-} // namespace core
+} // namespace core::memory

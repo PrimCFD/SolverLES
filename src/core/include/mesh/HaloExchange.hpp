@@ -22,7 +22,7 @@
  * @warning All participating fields must share the same ghost width and extents.
  */
 
-namespace core
+namespace core::mesh
 {
 
 // Exchange the 6 axis-aligned faces (no edges/corners). Works for ng >= 1.
@@ -209,4 +209,4 @@ template <class T> void exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm com
         MPI_Comm_free(&cart);
 }
 
-} // namespace core
+} // namespace core::mesh

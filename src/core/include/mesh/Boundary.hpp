@@ -5,7 +5,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace mesh
+namespace core::mesh
 {
 
 // ---------------------------------------------
@@ -433,4 +433,4 @@ inline void apply_scalar_bc(Array3DView<T> a, Axis ax, int face_sign, BCOp op, T
     }
 }
 
-} // namespace mesh
+} // namespace core::mesh

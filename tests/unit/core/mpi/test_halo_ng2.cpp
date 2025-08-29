@@ -8,8 +8,8 @@
 #include <mpi.h>
 #endif
 
-using core::Field;
-using core::Mesh;
+using core::mesh::Field;
+using core::mesh::Mesh;
 
 TEST_CASE("Halo exchange works for ng=2 (faces)", "[mpi][halo]")
 {
@@ -24,7 +24,7 @@ TEST_CASE("Halo exchange works for ng=2 (faces)", "[mpi][halo]")
     const int nx = 5, ny = 4, nz = 3, ng = 2;
     Mesh mesh{{nx, ny, nz}, ng};
 
-    auto& mm = core::MemoryManager::instance();
+    auto& mm = core::memory::MemoryManager::instance();
     const auto ext = mesh.extents();
     double* raw =
         mm.allocate<double>(static_cast<std::size_t>(ext[0]) * static_cast<std::size_t>(ext[1]) *
@@ -40,7 +40,7 @@ TEST_CASE("Halo exchange works for ng=2 (faces)", "[mpi][halo]")
                                  : -777.0;
 
     // Do the exchange on WORLD
-    core::exchange_ghosts(f, mesh, MPI_COMM_WORLD);
+    core::mesh::exchange_ghosts(f, mesh, MPI_COMM_WORLD);
 
     // Build same cartesian to discover neighbors
     int dims[3] = {0, 0, 0}, periods[3] = {0, 0, 0};

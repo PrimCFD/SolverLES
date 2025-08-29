@@ -26,7 +26,7 @@
  * @note Bounds are not checked in release builds. Prefer unit tests to validate extents.
  */
 
-namespace core
+namespace core::mesh
 {
 
 template <class T> class Field
@@ -66,4 +66,4 @@ template <class T> class Field
     int ng() const noexcept { return ng_; }
 };
 
-} // namespace core
+} // namespace core::mesh

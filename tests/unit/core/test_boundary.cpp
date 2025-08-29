@@ -6,10 +6,10 @@
 
 #include "mesh/Boundary.hpp"
 
-using mesh::Array3DView;
-using mesh::Axis;
-using mesh::BCOp;
-using mesh::MirrorMask;
+using core::mesh::Array3DView;
+using core::mesh::Axis;
+using core::mesh::BCOp;
+using core::mesh::MirrorMask;
 
 using Catch::Approx;
 
@@ -44,7 +44,7 @@ TEST_CASE("Dirichlet face fill", "[boundary][dirichlet]")
                 A.at(i, j, k) = pattern(i, j, k);
 
     const double c = 7.25;
-    mesh::apply_scalar_bc(A, Axis::I, -1, BCOp::Dirichlet, c); // minus-I face
+    core::mesh::apply_scalar_bc(A, Axis::I, -1, BCOp::Dirichlet, c); // minus-I face
 
     // Check ghost layers on minus-I side (i = -1, -2)
     for (int k = 0; k < nz; ++k)
@@ -66,7 +66,7 @@ TEST_CASE("Neumann zero (copy interior)", "[boundary][neumann0]")
             for (int i = 0; i < nx; ++i)
                 A.at(i, j, k) = pattern(i, j, k);
 
-    mesh::apply_scalar_bc(A, Axis::J, +1, BCOp::NeumannZero); // plus-J face
+    core::mesh::apply_scalar_bc(A, Axis::J, +1, BCOp::NeumannZero); // plus-J face
 
     for (int k = 0; k < nz; ++k)
         for (int i = 0; i < nx; ++i)
@@ -88,7 +88,7 @@ TEST_CASE("Extrapolate1 (linear)", "[boundary][extrapolate1]")
                 A.at(i, j, k) = pattern(i, j, k);
 
     // minus-K face extrapolation
-    mesh::apply_scalar_bc(A, Axis::K, -1, BCOp::Extrapolate1);
+    core::mesh::apply_scalar_bc(A, Axis::K, -1, BCOp::Extrapolate1);
 
     for (int j = 0; j < ny; ++j)
         for (int i = 0; i < nx; ++i)
@@ -123,7 +123,7 @@ TEST_CASE("Vector mirror with sign mask", "[boundary][mirror-vector]")
             }
 
     // Mirror across minus-I face with no-slip mask: (-1,+1,+1)
-    mesh::apply_mirror_vector(Ux, Uy, Uz, Axis::I, -1, MirrorMask{{-1, 1, 1}});
+    core::mesh::apply_mirror_vector(Ux, Uy, Uz, Axis::I, -1, MirrorMask{{-1, 1, 1}});
 
     for (int k = 0; k < nz; ++k)
         for (int j = 0; j < ny; ++j)

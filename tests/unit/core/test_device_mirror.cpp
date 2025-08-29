@@ -3,7 +3,7 @@
 
 TEST_CASE("device_ptr/host_ptr invariants", "[memory][mirrors]")
 {
-    auto& mm = core::MemoryManager::instance();
+    auto& mm = core::memory::MemoryManager::instance();
 
 #ifndef HAVE_CUDA
     SECTION("CPU-only: device_ptr is null")

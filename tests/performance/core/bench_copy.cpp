@@ -14,7 +14,7 @@ int main(int argc, char** argv)
                                   : (1u << 24);                         // default 16 MiB
 
     const std::size_t N = BYTES / sizeof(double);
-    auto& mm = core::MemoryManager::instance();
+    auto& mm = core::memory::MemoryManager::instance();
     double* host = mm.allocate<double>(N);
 
 #ifndef HAVE_CUDA

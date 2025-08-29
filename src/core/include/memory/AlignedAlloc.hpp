@@ -18,7 +18,7 @@
 #include <cuda_runtime.h>
 #endif
 
-namespace core::detail
+namespace core::memory
 {
 
 #if defined(USE_CUDA_UM)
@@ -73,4 +73,4 @@ inline void aligned_free(void* p) noexcept
 #endif
 }
 
-} // namespace core::detail
+} // namespace core::memory

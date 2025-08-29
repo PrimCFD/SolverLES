@@ -6,10 +6,10 @@
 int main()
 {
     const int n = 64; // 64³ interior cells
-    core::Mesh M{.local = {n, n, n}, .ng = 2};
-    auto& mm = core::MemoryManager::instance();
+    core::mesh::Mesh M{.local = {n, n, n}, .ng = 2};
+    auto& mm = core::memory::MemoryManager::instance();
     double* raw = mm.allocate<double>(M.volume_with_ghosts());
-    core::Field<double> F{raw, M.extents(), M.ng};
+    core::mesh::Field<double> F{raw, M.extents(), M.ng};
 
     auto [mean, stddev] = bench::run(
         [&]

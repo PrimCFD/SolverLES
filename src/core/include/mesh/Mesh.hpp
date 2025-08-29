@@ -12,7 +12,7 @@
  * The mesh also carries the Cartesian communicator used by halo exchange.
  */
 
-namespace core
+namespace core::mesh
 {
 
 struct Mesh
@@ -32,4 +32,4 @@ struct Mesh
     }
 };
 
-} // namespace core
+} // namespace core::mesh

@@ -74,8 +74,8 @@ Memory residency
 ----------------
 
 Plugins operate on **views** exposing host pointers and strides. When they need the data on the
-device (or back on the host), they call :cpp:func:`core::memory::MemoryManager::to_device()` /
-:cpp:func:`core::memory::MemoryManager::to_host()` with the provided stream. In *Unified Memory*
+device (or back on the host), they call :cpp:func:`core::memory::MemoryManager::to_device` /
+:cpp:func:`core::memory::MemoryManager::to_host` with the provided stream. In *Unified Memory*
 builds, these are **prefetch** operations; in mirrored builds, they are **async copies**.
 
 I/O

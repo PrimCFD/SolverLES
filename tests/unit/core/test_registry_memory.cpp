@@ -1,7 +1,7 @@
 #include "memory/MemoryManager.hpp"
 #include <catch2/catch_all.hpp>
 
-using core::MemoryManager;
+using core::memory::MemoryManager;
 
 TEST_CASE("MemoryManager registry tracks blocks", "[memory][registry]")
 {

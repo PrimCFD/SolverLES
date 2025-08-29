@@ -9,7 +9,7 @@
 
 TEST_CASE("H2D/D2H path preserves bytes", "[memory][copy]")
 {
-    auto& mm = core::MemoryManager::instance();
+    auto& mm = core::memory::MemoryManager::instance();
     constexpr std::size_t N = 1 << 20;
     constexpr std::size_t BYTES = N * sizeof(double);
 

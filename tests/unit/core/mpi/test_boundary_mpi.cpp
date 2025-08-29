@@ -19,14 +19,14 @@ TEST_CASE("is_physical_face sentinel under single-rank MPI", "[boundary][mpi]")
     REQUIRE(size >= 1);
 
     // A missing neighbor is represented by MPI_PROC_NULL (negative).
-    REQUIRE(mesh::is_physical_face(MPI_PROC_NULL));
+    REQUIRE(core::mesh::is_physical_face(MPI_PROC_NULL));
 
     // This is *not* a physical face sentinel; a neighbor rank (even self)
     // is a real neighbor in decomposition terms.
-    REQUIRE_FALSE(mesh::is_physical_face(rank));
+    REQUIRE_FALSE(core::mesh::is_physical_face(rank));
 #else
     // Without MPI we still expect negative to indicate "physical"
-    REQUIRE(mesh::is_physical_face(-1));
-    REQUIRE_FALSE(mesh::is_physical_face(0));
+    REQUIRE(core::mesh::is_physical_face(-1));
+    REQUIRE_FALSE(core::mesh::is_physical_face(0));
 #endif
 }

@@ -6,8 +6,8 @@
 #include "mesh/HaloExchange.hpp"
 #include "mesh/Mesh.hpp"
 
-using core::Field;
-using core::Mesh;
+using core::mesh::Field;
+using core::mesh::Mesh;
 
 TEST_CASE("Halo swap conserves known pattern (3D cart)", "[mpi]")
 {
@@ -34,7 +34,7 @@ TEST_CASE("Halo swap conserves known pattern (3D cart)", "[mpi]")
     Mesh mesh{{nx, ny, nz}, ng};
 
     // Allocate raw storage (including ghosts)
-    auto& mm = core::MemoryManager::instance();
+    auto& mm = core::memory::MemoryManager::instance();
     const std::array<int, 3> ext_with_ghosts = {nx + 2 * ng, ny + 2 * ng, nz + 2 * ng};
     double* raw = mm.allocate<double>(static_cast<std::size_t>(ext_with_ghosts[0]) *
                                       static_cast<std::size_t>(ext_with_ghosts[1]) *
@@ -49,7 +49,7 @@ TEST_CASE("Halo swap conserves known pattern (3D cart)", "[mpi]")
                     (i >= 0 && i < nx && j >= 0 && j < ny && k >= 0 && k < nz) ? double(rank) : 0.0;
 
     // Exercise: do the exchange through the API that takes a communicator
-    core::exchange_ghosts(f, mesh, MPI_COMM_WORLD);
+    core::mesh::exchange_ghosts(f, mesh, MPI_COMM_WORLD);
 
     // Helper lambdas to check a whole face is a constant value
     auto check_x_face = [&](int i0, int expected_rank)
