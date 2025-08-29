@@ -1,70 +1,139 @@
-# extern/ — cached tarballs for offline & reproducible builds
+# `extern/` Cached tarballs for offline & reproducible builds
 
-This directory holds **prefetched source archives** for third‑party deps. When present,
-the build uses them; when absent, it falls back to upstream URLs.
+This directory holds **prefetched source archives** for third‑party dependencies. When an archive is present here, the build consumes it; when absent, CMake falls back to upstream URLs.
 
-**Scripts this README matches:** `scripts/prefetch_third_party.sh`, `scripts/build.sh`,
-`scripts/clean_extern.sh`, `scripts/clean_build.sh`.
+**Relevant pieces in this repo**
+
+* `scripts/prefetch_third_party.sh` — populates and packs third‑party sources into `extern/`.
+* `scripts/clean_extern.sh` — cleans `extern/` except this file.
+* `scripts/clean_build.sh` — cleans `build-*/` can keep `deps_/` in targeted or all `build-*/` directories.
+* `scripts/build.sh` — configures and builds, preferring archives in `extern/` and supporting a fully offline mode.
+* `cmake/PrefetchDependencies.cmake` + `cmake/Fetch*.cmake` — dependency logic (HDF5, CGNS, OpenBLAS, PETSc, Catch2).
 
 ---
 
-## Quick commands (from repo root)
+## Quick start (from repo root)
 
-**Prefetch once (online) → create/update cache**
+**1) Prefetch once (online) → create/update cache**
+
 ```bash
 scripts/prefetch_third_party.sh
 # ⇒ writes extern/*-src.tgz and updates extern/MANIFEST.prefetch + extern/SHA256SUMS
 ```
 
-**Build fully offline using the cache**
+**2) Build using the cache (works offline)**
+
 ```bash
 OFFLINE=1 scripts/build.sh
 ```
 
-**Run * tests (builds if needed)**
-```bash
-scripts/run_*_tests.sh
-```
+**3) Clean third‑party state**
 
-**Clean build dir but keep downloaded sources (_deps)**
 ```bash
-scripts/clean_build.sh --keep-deps
-```
-
-**Wipe extern/ cache (keep this README)**
-```bash
-scripts/clean_extern.sh
+scripts/clean_build.sh  # removes staged sources/installs; next build reuses extern/*
 ```
 
 ---
 
-## What happens under the hood
+## How it works (dependency build logic)
 
-- **Prefetch:** `scripts/prefetch_third_party.sh` configures CMake with
-  `-DPREFETCH_THIRD_PARTY=ON`, populates `_deps/<name>-src`, then packs each source tree
-  into `extern/<name>-src.tgz`. It also writes `MANIFEST.prefetch` and `SHA256SUMS`.
-- **Build:** `scripts/build.sh` scans `extern/` for archives matching `{tar.gz,tgz,tar.xz,tar.bz2,zip}`
-  that contain **Catch2, CGNS, HDF5, PETSc** in the filename. For each match, it extracts
-  into `build/_deps/<name>-src` and sets the corresponding
-  `FETCHCONTENT_SOURCE_DIR_<NAME>` so CMake uses **local sources**.
-- **Offline toggle:** If **all** deps are satisfied from `extern/` (or if `OFFLINE=1`), the
-  build sets `-DFETCHCONTENT_FULLY_DISCONNECTED=ON` to prevent any network access.
-- **Config‑package deps:** Some deps (e.g. **HDF5**) are locally **installed into a small
-  staging prefix** inside `build/_deps/…-install/` during configure so dependents like
-  **CGNS** can `find_package` them without touching the system.
+1. **Prefetch**
+
+   * The script configures CMake with `-DPREFETCH_THIRD_PARTY=ON` (via `cmake/PrefetchDependencies.cmake`).
+   * Each `cmake/Fetch<Name>.cmake` runs a **populate‑only** step and registers a `<name>_src` target.
+   * Populated source trees under `.prefetch/_deps/<name>-src/` are packed as `extern/<name>-src.tgz`.
+   * `extern/MANIFEST.prefetch` lists what was captured; `extern/SHA256SUMS` records integrity hashes.
+
+2. **Build (cache‑first)**
+
+   * `scripts/build.sh` scans `extern/` for archives whose filenames contain one of:
+     **Catch2**, **CGNS**, **HDF5**, **OpenBLAS**, **PETSc**; formats supported: `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, `.zip`.
+   * For each hit, the archive is unpacked to `build/_deps/<name>-src/` and the corresponding
+     `FETCHCONTENT_SOURCE_DIR_<NAME>` is set so CMake uses the **local sources** instead of downloading.
+   * If **all** required deps are satisfied from `extern/` (or export `OFFLINE=1`), the build passes
+     `-DFETCHCONTENT_FULLY_DISCONNECTED=ON` (and `...UPDATES_DISCONNECTED=ON`) to **forbid network access**.
+
+3. **Staged installs for config‑packages**
+
+   * Some deps are **built & installed into a local prefix** under `build/_deps/*-install/` during configure
+     so dependents can `find_package(...)` without touching the system:
+
+     * `HDF5::hdf5` with `HDF5_DIR` set to `build/_deps/hdf5-install/cmake`.
+     * `CGNS::cgns` with `CGNS_DIR` set to `build/_deps/cgns-install/lib/cmake/CGNS`.
+     * `OpenBLAS::OpenBLAS` and convenience `BLAS::BLAS`, `LAPACK::LAPACK` interface targets.
+     * `PETSc` staged under `build/_deps/petsc-install` with `PETSC_DIR` pointing there.
+   * These prefixes are also appended to `CMAKE_PREFIX_PATH` so regular `find_package(Config)` works.
 
 ---
 
-## Tips & troubleshooting
+## Typical workflows
 
-- **Add/replace archives:** Any filename containing the package name works (e.g. `hdf5-foo.tgz`);
-  supported formats: `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, `.zip`.
-- **Force offline:** `OFFLINE=1 scripts/build.sh`.
-- **CMake tries to download:** ensure the expected archives exist in `extern/` **and**
-  remove stale build cache: `scripts/clean_build.sh --keep-deps` (or `rm -rf build/_deps`),
-  then rebuild offline.
-- **HDF5/CGNS not found:** clean `_deps` and reconfigure so the staged HDF5 package dir
-  is recreated and passed to CGNS.
+**Fresh clone → one online prefetch → offline build forever**
+
+```bash
+scripts/prefetch_third_party.sh
+OFFLINE=1 scripts/build.sh
+```
+
+**Air‑gapped or CI without internet**
+
+```bash
+# On a connected host
+scripts/prefetch_third_party.sh
+( cd extern && tar -cf ../extern-cache.tar . )
+
+# Transfer extern-cache.tar alongside the repo on the offline host, then:
+mkdir -p extern && tar -xf extern-cache.tar -C extern
+OFFLINE=1 scripts/build.sh
+```
+
+**Bump a dependency**
+
+```bash
+# Adjust the version/pin in the appropriate cmake/Fetch*.cmake
+scripts/prefetch_third_party.sh
+scripts/clean_build.sh --build
+OFFLINE=1 scripts/build.sh
+```
+
+---
+
+## Adding or replacing cached archives manually
+
+* Drop an archive in `extern/` whose **filename contains the package token** (`hdf5`, `cgns`, `openblas`, `petsc`, `catch2`).
+* Supported formats: `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, `.zip`.
+* Prefer using `scripts/prefetch_third_party.sh` so `MANIFEST.prefetch` and `SHA256SUMS` stay in sync.
+
+**Example layout**
+
+```
+extern/
+  hdf5-1.14.3-src.tgz
+  cgns-4.4.0-src.tgz
+  openblas-0.3.30-src.tgz
+  petsc-3.20.0-src.tgz
+  catch2-3.5.3-src.tgz
+  MANIFEST.prefetch
+  SHA256SUMS
+```
+
+---
+
+## Troubleshooting
+
+* **CMake still tries to download**
+
+  1. Verify the expected archives exist in `extern/` and match the package token.
+  2. Clear stale state: `scripts/clean_build.sh`.
+  3. Re‑run with `OFFLINE=1` to hard‑fail on any attempted network access.
+
+* **HDF5/CGNS/OpenBLAS/PETSc not found at link time**
+
+  * Remove the affected staged directories under `build/_deps/*-install/` and rebuild so package configs are regenerated.
+
+* **Multiple archives for the same package**
+
+  * Keep **one** archive per package in `extern/` to avoid ambiguity during the scan.
 
 ---
 
@@ -72,10 +141,23 @@ scripts/clean_extern.sh
 
 ```
 extern/
-  <name>-src.tgz            # cached source snapshots (created by prefetch script)
-  MANIFEST.prefetch         # human‑readable list
-  SHA256SUMS                # checksums
+  <name>-src.tgz            # cached source snapshots created by the prefetch script
+  MANIFEST.prefetch         # human‑readable list of cached items
+  SHA256SUMS                # integrity checksums
 build/_deps/
   <name>-src/               # unpacked sources used for the build
-  hdf5-install/             # local install prefix for config packages (example)
+  hdf5-install/             # local install prefixes for config‑packages (examples)
+  cgns-install/
+  openblas-install/
+  petsc-install/
 ```
+
+---
+
+## Related environment knobs (used by `scripts/build.sh`)
+
+* `OFFLINE=1` — force `FetchContent` into fully disconnected mode.
+* `BUILD_DIR` — custom build directory (default: `build`).
+* `CMAKE_BUILD_TYPE` — `Debug`/`Release`/`RelWithDebInfo`/`MinSizeRel` (default: `Release`).
+* `EXTRA_CMAKE_ARGS` — extra flags forwarded to CMake (space‑separated).
+* MPI & CUDA toggles (`ENABLE_MPI`, `MPIEXEC_*`, `ENABLE_CUDA`, `USE_CUDA_UM`) are honored if relevant to the build.

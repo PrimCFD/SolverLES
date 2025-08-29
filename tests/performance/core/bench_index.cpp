@@ -1,6 +1,6 @@
-#include "Field.hpp"
-#include "MemoryManager.hpp"
-#include "Mesh.hpp"
+#include "memory/MemoryManager.hpp"
+#include "mesh/Field.hpp"
+#include "mesh/Mesh.hpp"
 #include "simple_bench.hpp"
 
 int main()

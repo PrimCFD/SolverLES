@@ -6,7 +6,7 @@ import re
 # Project info 
 project = "SolverLES"
 author = "RICHARD Anthony"
-release = "0.0.0"
+release = "0.1.0"
 
 # Extensions
 extensions = [

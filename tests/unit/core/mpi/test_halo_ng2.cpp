@@ -1,7 +1,7 @@
-#include "Field.hpp"
-#include "HaloExchange.hpp"
-#include "MemoryManager.hpp"
-#include "Mesh.hpp"
+#include "memory/MemoryManager.hpp"
+#include "mesh/Field.hpp"
+#include "mesh/HaloExchange.hpp"
+#include "mesh/Mesh.hpp"
 #include <catch2/catch_test_macros.hpp>
 
 #ifdef HAVE_MPI

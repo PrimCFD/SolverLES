@@ -1,10 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <mpi.h>
 
-#include "Field.hpp"
-#include "HaloExchange.hpp"
-#include "MemoryManager.hpp"
-#include "Mesh.hpp"
+#include "memory/MemoryManager.hpp"
+#include "mesh/Field.hpp"
+#include "mesh/HaloExchange.hpp"
+#include "mesh/Mesh.hpp"
 
 using core::Field;
 using core::Mesh;

@@ -1,25 +1,23 @@
 cmake_minimum_required(VERSION 3.24)
-project(Prefetch NONE)
 
-get_filename_component(_prefetch_root "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
-list(APPEND CMAKE_MODULE_PATH "${_prefetch_root}")
-
-# Network hygiene — disconnected by default
-if(NOT DEFINED FETCHCONTENT_UPDATES_DISCONNECTED)
-  set(FETCHCONTENT_UPDATES_DISCONNECTED
-      ON
-      CACHE BOOL "Disable URL re‑checks")
+# Ensure the cache has a project name for scripts that read CMakeCache.txt
+# (e.g., scripts/prefetch_third_party.sh). Using LANGUAGES NONE avoids
+# finding compilers during prefetch-only builds.
+if(NOT CMAKE_PROJECT_NAME)
+  project(SolverLES LANGUAGES NONE)
 endif()
 
-# Bring in every third‑party component
+# Turn on "prefetch-only" behavior inside each Fetch*.cmake
+set(PREFETCH_THIRD_PARTY ON CACHE BOOL "" FORCE)
+
+include(${CMAKE_SOURCE_DIR}/cmake/FetchUtils.cmake)
+
+# Populate but do not build. Each file registers a *_src target.
 include(${CMAKE_SOURCE_DIR}/cmake/FetchHDF5.cmake)
 include(${CMAKE_SOURCE_DIR}/cmake/FetchCGNS.cmake)
+include(${CMAKE_SOURCE_DIR}/cmake/FetchOpenBLAS.cmake)
 include(${CMAKE_SOURCE_DIR}/cmake/FetchPETSc.cmake)
 include(${CMAKE_SOURCE_DIR}/cmake/FetchCatch2.cmake)
 
-add_custom_target(prefetch-archives)
-foreach(pkg catch2 cgns hdf5 petsc)
-  if(TARGET ${pkg}-populate)
-    add_dependencies(prefetch-archives ${pkg}-populate)
-  endif()
-endforeach()
+# Aggregate target used by scripts/prefetch_third_party.sh
+fu_make_prefetch_aggregate()

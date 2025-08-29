@@ -31,6 +31,7 @@ option(BUILD_PLUGINS "Build run-time plug-ins" ON)
 option(USE_SYSTEM_PETSC "Use PETSc provided by the system" OFF)
 option(USE_SYSTEM_CGNS "Use CGNS provided by the system" OFF)
 option(USE_SYSTEM_CATCH2 "Use Catch2 provided by the system" OFF)
+option(USE_SYSTEM_BLAS "Use BLAS/LAPACK provided by the system" OFF)
 
 # Make it easy to pre‑download archives (& exit)
 option(PREFETCH_THIRD_PARTY "Download archives into extern/ and exit" OFF)
@@ -70,6 +71,21 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 # Normal mode
 include(CompileOptions)
+
+# BLAS/LAPACK
+if(USE_SYSTEM_BLAS)
+  find_package(BLAS REQUIRED)
+  find_package(LAPACK REQUIRED)
+else()
+  include(FetchOpenBLAS)
+  if(NOT TARGET BLAS::BLAS)
+    add_library(BLAS::BLAS INTERFACE IMPORTED)
+    target_link_libraries(BLAS::BLAS INTERFACE OpenBLAS::openblas)
+  endif()
+  if(NOT TARGET LAPACK::LAPACK)
+    add_library(LAPACK::LAPACK ALIAS BLAS::BLAS)
+  endif()
+endif()
 
 # PETSc
 if(USE_SYSTEM_PETSC)

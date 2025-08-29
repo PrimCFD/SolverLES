@@ -1,5 +1,5 @@
-#include "AlignedAlloc.hpp"
-#include "MemoryManager.hpp"
+#include "memory/AlignedAlloc.hpp"
+#include "memory/MemoryManager.hpp"
 #include <catch2/catch_all.hpp>
 #include <cstdint>
 

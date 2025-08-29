@@ -1,6 +1,4 @@
-# scripts/ — Developer Workflow Cheatsheet
-
----
+# `scripts/` Developer Workflow Cheatsheet
 
 ## TL;DR table
 

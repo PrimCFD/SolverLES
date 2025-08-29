@@ -29,6 +29,7 @@ html_dir="$docs_build_dir/html"
 doctrees_dir="$docs_build_dir/doctrees"
 doxygen_out_dir="$docs_build_dir/_build/doxygen"
 doxygen_xml_dir="$doxygen_out_dir/xml"
+dev_docs_dir="$docs_src/developer"
 
 # Inputs
 force=false
@@ -68,6 +69,12 @@ fi
 if $clean; then
   log "🧹  Cleaning $docs_build_dir and $docs_src/api"
   rm -rf "$docs_build_dir" "$docs_src/api"
+  # Keep developer/ .rst scaffolding, remove everything else (recursively)
+  mkdir -p "$dev_docs_dir"
+  log "🧽  Clearing non-.rst files in $dev_docs_dir (recursive)"
+  find "$dev_docs_dir" -type f ! -name '*.rst' -print -delete
+  # Prune empty directories but keep the root
+  find "$dev_docs_dir" -mindepth 1 -type d -empty -print -delete
 fi
 
 mkdir -p "$docs_build_dir" "$html_dir" "$doctrees_dir" "$doxygen_out_dir"
@@ -123,6 +130,50 @@ if $run_doxygen && $need_doxy; then
 else
   log "⏭️  Skipping Doxygen (no changes detected)"
 fi
+
+# Developers section: copy selected README.md files into docs/developer/
+# Can override the list via DEV_DOCS_SOURCES="path1 path2 ..."
+
+# Default curated list (relative to repo root)
+default_dev_sources=(
+  "README.md"
+  "src/README.md"
+  "src/core/README.md"
+  "scripts/README.md"
+  "extern/README.md"
+)
+
+# Allow overrides
+if [[ -n "${DEV_DOCS_SOURCES:-}" ]]; then
+  # shellcheck disable=SC2206
+  dev_sources=( ${DEV_DOCS_SOURCES} )
+else
+  dev_sources=( "${default_dev_sources[@]}" )
+fi
+
+mkdir -p "$dev_docs_dir"
+# Remove any stale non-.rst files (recursive) before copying
+find "$dev_docs_dir" -type f ! -name '*.rst' -print -delete
+find "$dev_docs_dir" -mindepth 1 -type d -empty -print -delete
+
+# Copy sources preserving directory structure under developer/
+for rel in "${dev_sources[@]}"; do
+  src_path="$repo_root/$rel"
+  if [[ -f "$src_path" ]]; then
+    # Ensure .md suffix
+    case "$rel" in
+      *.md) dest_rel="$rel" ;;
+      *)    dest_rel="${rel}.md" ;;
+    esac
+    dest_dir="$dev_docs_dir/$(dirname "$dest_rel")"
+    mkdir -p "$dest_dir"
+    cp "$src_path" "$dev_docs_dir/$dest_rel"
+    log "📄  Added Developer doc: $rel → developer/$dest_rel"
+  else
+    log "⚠️  Skipping missing developer doc: $rel"
+  fi
+done
+
 
 # Breathe/Exhale see the Doxygen XML path
 export DOXYGEN_XML_DIR="$doxygen_xml_dir"

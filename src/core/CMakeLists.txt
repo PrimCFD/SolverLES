@@ -1,10 +1,14 @@
 cmake_minimum_required(VERSION 3.24)
 
-# Gather headers and sources
-file(GLOB CORE_HEADERS CONFIGURE_DEPENDS include/*.hpp)
-set(CORE_SOURCES memory/MemoryManager.cpp)
+# Public headers (everything under include/)
+file(GLOB_RECURSE CORE_PUBLIC_HEADERS CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp")
 
-add_library(core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
+# Private sources (all .cpp in src/)
+file(GLOB_RECURSE  CORE_SOURCES CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+
+add_library(core STATIC ${CORE_SOURCES} ${CORE_PUBLIC_HEADERS})
 
 # Public include path (build tree and install tree)
 target_include_directories(
@@ -26,6 +30,11 @@ if(ENABLE_CUDA)
   if(USE_CUDA_UM)
     target_compile_definitions(core PUBLIC USE_CUDA_UM)
   endif()
+endif()
+
+# Needed for PluginHost on Linux
+if(UNIX AND NOT APPLE)
+  target_link_libraries(core PUBLIC dl)
 endif()
 
 # Propagate global compile definitions (USE_CUDA_UM, HAVE_MPI, HAVE_CUDA) They

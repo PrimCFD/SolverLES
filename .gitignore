@@ -22,6 +22,9 @@ __pycache__/
 # Doc build
 /docs/api/
 
+/docs/developer/*
+!/docs/developer/index.rst
+
 # Local download of external dependencies
 /extern/*
 !/extern/README.md

@@ -1,1 +1,26 @@
-mesh: dummy_mesh
+mesh:
+  nx: 64
+  ny: 64
+  nz: 64
+  Lx: 1
+  Ly: 1
+  Lz: 1
+  periodic: [false, false, false]
+
+time:
+  dt: 1e-3
+  t_end: 1.0
+  write_every: 0.05
+
+services:
+  - name: poisson
+    plugin: lib/plugins/poisson_petsc.so
+
+physics:
+  - plugin: lib/plugins/fluids_module.so
+    scheme: lib/plugins/flux_central2.so
+    sgs:    lib/plugins/sgs_smag.so
+    time:   lib/plugins/time_piso_incomp.so
+    bc:
+      - { patch: 0, type: wall }
+      - { patch: 1, type: inflow, U: [1, 0, 0] }

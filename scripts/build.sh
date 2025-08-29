@@ -82,6 +82,7 @@ cmake_args=(
   -DENABLE_MPI="${ENABLE_MPI}"
   -DENABLE_CUDA="${ENABLE_CUDA}"
   -DUSE_CUDA_UM="${USE_CUDA_UM}"
+  -DCMAKE_MESSAGE_LOG_LEVEL=WARNING -Wno-dev
 )
 [[ -n "${MPIEXEC_NUMPROC_FLAG:-}" ]] && cmake_args+=( -DMPIEXEC_NUMPROC_FLAG="${MPIEXEC_NUMPROC_FLAG}" )
 [[ -n "${MPIEXEC_PREFLAGS:-}"    ]] && cmake_args+=( -DMPIEXEC_PREFLAGS="${MPIEXEC_PREFLAGS}" )
@@ -89,16 +90,16 @@ cmake_args=(
 [[ -n "${MPIEXEC_EXECUTABLE:-}"  ]] && cmake_args+=( -DMPIEXEC_EXECUTABLE="${MPIEXEC_EXECUTABLE}" )
 [[ -n "${CMAKE_TOOLCHAIN_FILE:-}" ]] && cmake_args+=( -DCMAKE_TOOLCHAIN_FILE="${CMAKE_TOOLCHAIN_FILE}" )
 
-# --- Scan extern/ for pre-fetched archives; wire up FETCHCONTENT_SOURCE_DIR_* like before
+# --- Scan extern/ for pre-fetched archives; wire up FETCHCONTENT_SOURCE_DIR_* 
 declare -A fetch_var=(
   [Catch2]=FETCHCONTENT_SOURCE_DIR_CATCH2
   [CGNS]=FETCHCONTENT_SOURCE_DIR_CGNS
   [HDF5]=FETCHCONTENT_SOURCE_DIR_HDF5
+  [OpenBLAS]=FETCHCONTENT_SOURCE_DIR_OPENBLAS
   [PETSc]=FETCHCONTENT_SOURCE_DIR_PETSC
 )
-packages=(Catch2 CGNS HDF5 PETSc)
+packages=(Catch2 CGNS HDF5 OpenBLAS PETSc)
 
-echo "🔍  Scanning extern/ for pre-fetched archives…"
 all_offline=true
 for pkg in "${packages[@]}"; do
   lc_pkg=${pkg,,}

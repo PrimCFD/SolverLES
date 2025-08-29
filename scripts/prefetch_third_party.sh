@@ -34,7 +34,7 @@ for d in "${prefetch_dir}"/_deps/*-src; do
     -C "$(dirname "$d")" "$(basename "$d")"
   echo "${base}.tgz  ← ${d}" >> "${manifest}"
   if command -v sha256sum >/dev/null; then
-    sha256sum "${tgz}" >> "${checksums}"
+    ( cd "${extern_dir}" && sha256sum "${base}.tgz" ) >> "${checksums}"
   else
     openssl dgst -sha256 "${tgz}" | awk '{print $2"  '"${base}.tgz"'"}' >> "${checksums}"
   fi

@@ -1,99 +1,76 @@
+cmake_minimum_required(VERSION 3.24)
+
 include(FetchContent)
-include(FetchUtils)
+include(ExternalProject)
+include(${CMAKE_SOURCE_DIR}/cmake/FetchUtils.cmake)
 
-if(NOT DEFINED FETCHCONTENT_UPDATES_DISCONNECTED)
-  set(FETCHCONTENT_UPDATES_DISCONNECTED
-      ON
-      CACHE BOOL "Disable URL re-checks for third-party archives")
-endif()
+fu_dep_base(_DEPS_BASE)
 
-set(HDF5_VERSION 1_14_3)
-set(HDF5_TARBALL "hdf5-${HDF5_VERSION}.tar.gz")
-set(_hdf5_fallback_url
-    "https://github.com/HDFGroup/hdf5/archive/refs/tags/${HDF5_TARBALL}")
+# Layout
+set(_hdf5_prefix  "${_DEPS_BASE}/hdf5")           # EP root
+set(_hdf5_build   "${_hdf5_prefix}/build")        # out-of-source build
+set(_hdf5_install "${_DEPS_BASE}/hdf5-install")   # install prefix
 
-resolve_url(${HDF5_TARBALL} _hdf5_url ${_hdf5_fallback_url})
+# Source (prefer extern tarball)
+set(_hdf5_url "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_3.tar.gz")
+fu_url_args("hdf5" "${_hdf5_url}" _H_URL_ARGS)
 
-set(_hdf5_sd_arg)
-if(DEFINED FETCHCONTENT_SOURCE_DIR_HDF5 AND FETCHCONTENT_SOURCE_DIR_HDF5)
-  set(_hdf5_sd_arg SOURCE_DIR "${FETCHCONTENT_SOURCE_DIR_HDF5}")
-endif()
-
-set(_hdf5_install "${FETCHCONTENT_BASE_DIR}/hdf5-install")
-set(_hdf5_ext_build "${FETCHCONTENT_BASE_DIR}/hdf5-ext-build")
-
-FetchContent_Declare(hdf5 URL "${_hdf5_url}" ${_hdf5_sd_arg})
-
+# Prefetch-only mode: populate sources and stop
 if(PREFETCH_THIRD_PARTY)
+  FetchContent_Declare(hdf5 ${_H_URL_ARGS})
   FetchContent_Populate(hdf5)
+  add_custom_target(hdf5_src COMMENT "HDF5 sources are populated")
+  _fu_register_prefetch_target(hdf5_src)
   return()
 endif()
 
-FetchContent_Populate(hdf5)
-FetchContent_GetProperties(hdf5)
+# Configure options – lean build, no tests/tools/examples
+set(_hdf5_cmake_opts
+  -DBUILD_TESTING=OFF
+  -DHDF5_BUILD_EXAMPLES=OFF
+  -DHDF5_BUILD_TOOLS=OFF
+  -DHDF5_BUILD_CPP_LIB=OFF
+  -DHDF5_ENABLE_Z_LIB_SUPPORT=ON
+  -DHDF5_ENABLE_SZIP_SUPPORT=OFF
+  -DBUILD_SHARED_LIBS=ON
+  -DCMAKE_MESSAGE_LOG_LEVEL=WARNING
+  -Wno-dev
+  -DCMAKE_RULE_MESSAGES=OFF
+)
 
-set(_hdf5_config_path "${_hdf5_install}/lib/cmake/hdf5/hdf5-config.cmake")
-if(NOT EXISTS "${_hdf5_config_path}")
-  file(MAKE_DIRECTORY "${_hdf5_ext_build}")
+ExternalProject_Add(hdf5_ep
+  ${_H_URL_ARGS}
+  PREFIX          "${_hdf5_prefix}"
+  UPDATE_COMMAND  ""
+  CMAKE_ARGS      -DCMAKE_INSTALL_PREFIX=${_hdf5_install}
+                  -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                  ${_hdf5_cmake_opts}
+  BINARY_DIR      "${_hdf5_build}"
+  INSTALL_DIR     "${_hdf5_install}"
+  UPDATE_DISCONNECTED ON
+  BUILD_BYPRODUCTS "${_hdf5_install}/lib/libhdf5${CMAKE_SHARED_LIBRARY_SUFFIX}"
+  LOG_DOWNLOAD    1
+  LOG_UPDATE      1
+  LOG_CONFIGURE   1
+  LOG_BUILD       1
+  LOG_INSTALL     1
+)
 
-  set(_hdf5_args
-      -DCMAKE_INSTALL_PREFIX=${_hdf5_install}
-      -DBUILD_SHARED_LIBS=ON
-      -DHDF5_BUILD_HL_LIB=ON
-      -DHDF5_BUILD_TOOLS=OFF
-      -DHDF5_BUILD_EXAMPLES=OFF
-      -DHDF5_ENABLE_Z_LIB_SUPPORT=OFF
-      -DHDF5_ENABLE_SZIP_SUPPORT=OFF
-      -DHDF5_BUILD_TESTING=OFF
-      -DBUILD_TESTING=OFF
-      -DHDF5_ENABLE_PARALLEL=${ENABLE_MPI})
-
-  if(CMAKE_TOOLCHAIN_FILE)
-    list(APPEND _hdf5_args -DCMAKE_TOOLCHAIN_FILE:PATH=${CMAKE_TOOLCHAIN_FILE})
-  endif()
-  if(CMAKE_C_COMPILER)
-    list(APPEND _hdf5_args -DCMAKE_C_COMPILER:FILEPATH=${CMAKE_C_COMPILER})
-  endif()
-  if(CMAKE_CXX_COMPILER)
-    list(APPEND _hdf5_args -DCMAKE_CXX_COMPILER:FILEPATH=${CMAKE_CXX_COMPILER})
-  endif()
-  if(CMAKE_Fortran_COMPILER)
-    list(APPEND _hdf5_args
-         -DCMAKE_Fortran_COMPILER:FILEPATH=${CMAKE_Fortran_COMPILER})
-  endif()
-  if(CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    list(APPEND _hdf5_args -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE})
-  endif()
-
-  execute_process(
-    COMMAND ${CMAKE_COMMAND} -S ${hdf5_SOURCE_DIR} -B ${_hdf5_ext_build}
-            ${_hdf5_args} RESULT_VARIABLE _hdf5_cfg_rv)
-  if(NOT _hdf5_cfg_rv EQUAL 0)
-    message(FATAL_ERROR "Configuring HDF5 failed (rv=${_hdf5_cfg_rv})")
-  endif()
-
-  set(_hdf5_build_cmd ${CMAKE_COMMAND} --build ${_hdf5_ext_build} --target
-                      install)
-  if(CMAKE_CONFIGURATION_TYPES)
-    list(APPEND _hdf5_build_cmd --config Release)
-  endif()
-  execute_process(COMMAND ${_hdf5_build_cmd} RESULT_VARIABLE _hdf5_bld_rv)
-  if(NOT _hdf5_bld_rv EQUAL 0)
-    message(FATAL_ERROR "Building/Installing HDF5 failed (rv=${_hdf5_bld_rv})")
-  endif()
+# Create an imported target HDF5::hdf5
+add_library(HDF5::hdf5 SHARED IMPORTED GLOBAL)
+if(WIN32)
+  set(_hdf5_lib "${_hdf5_install}/bin/hdf5.dll")
+elseif(APPLE)
+  set(_hdf5_lib "${_hdf5_install}/lib/libhdf5.dylib")
+else()
+  set(_hdf5_lib "${_hdf5_install}/lib/libhdf5${CMAKE_SHARED_LIBRARY_SUFFIX}")
 endif()
+set_target_properties(HDF5::hdf5 PROPERTIES
+  IMPORTED_LOCATION             "${_hdf5_lib}"
+  INTERFACE_INCLUDE_DIRECTORIES "${_hdf5_install}/include"
+)
+add_dependencies(HDF5::hdf5 hdf5_ep)
 
-set(HDF5_DIR
-    "${_hdf5_install}/lib/cmake/hdf5"
-    CACHE PATH "" FORCE)
-set(HDF5_ROOT
-    "${_hdf5_install}"
-    CACHE PATH "" FORCE)
+# Make package config discoverable for consumers: find_package(HDF5 CONFIG)
+set(HDF5_DIR "${_hdf5_install}/cmake" CACHE PATH "" FORCE)
 list(APPEND CMAKE_PREFIX_PATH "${_hdf5_install}")
-
-set(_hdf5_install
-    "${_hdf5_install}"
-    PARENT_SCOPE)
-set(_hdf5_ext_build
-    "${_hdf5_ext_build}"
-    PARENT_SCOPE)

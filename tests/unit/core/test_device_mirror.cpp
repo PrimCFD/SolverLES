@@ -1,4 +1,4 @@
-#include "MemoryManager.hpp"
+#include "memory/MemoryManager.hpp"
 #include <catch2/catch_all.hpp>
 
 TEST_CASE("device_ptr/host_ptr invariants", "[memory][mirrors]")

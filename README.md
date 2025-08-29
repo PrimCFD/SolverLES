@@ -32,7 +32,7 @@ SolverLES/
 ├─ src/                      # Solver source code
 │   ├─ core/                 # C++ runtime static lib (orchestration, memory management)
 │   ├─ gui/                  # Qt/VTK front‑end
-│   ├─ plugins/              # Hot‑swappable physics modules dynamic lib
+│   ├─ physics/              # Hot‑swappable physics modules dynamic lib
 │   ├─ kernels/              # Shared Fortran math kernels
 │   ├─ bindings/             # C/Fortran interop helpers
 │   ├─ ipc/                  # Inter-process communication GUI/Solver
@@ -147,8 +147,6 @@ mpi_exec 4 ./build/bin/solver examples/hello_mesh.yaml
 # Fail if any formatter is missing or errors
 STRICT=1 ./scripts/format_all.sh
 ```
-### More details
-See [🛠️ Developer workflow cheatsheet](/scripts/README.md) for further details
 
 ---
 
