@@ -63,6 +63,10 @@ if os.environ.get("SPHINX_STRICT") == "1":
     nitpick_ignore_regex = [
         (r"cpp:identifier", r"^(std::)?u?int(8|16|32|64)_t$"),
         (r"cpp:identifier", r"^MPI_.*$"),
+        # Exhale/Breathe sometimes emit unqualified identifiers for top-level namespaces
+        (r"cpp:identifier", r"^(mesh|io|plugin)(::.*)?$"),
+        (r"cpp:identifier", r"^core(::.*)?$"),
+        (r"cpp:identifier", r"^core::memory(::.*)?$"),
     ]
 
 
