@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     container: ubuntu:24.04
     timeout-minutes: 15
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,6 +52,7 @@ jobs:
   gpu-warmup:
     name: GPU Warmup (NVIDIA container)
     runs-on: [self-hosted, linux, x64]
+    
     steps:
       - run: |
           docker pull nvidia/cuda:12.4.1-devel-ubuntu22.04
@@ -61,10 +63,16 @@ jobs:
     needs: prefetch-deps
     runs-on: ${{ matrix.runs_on }}
     container: ${{ fromJSON(matrix.container) }}
+
+    env: 
+      EXTRA_CMAKE_ARGS: "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+
     timeout-minutes: 60
     continue-on-error: ${{ matrix.allow_fail || false }}
+
     strategy:
       fail-fast: false
+
       matrix:
         include:
           - name: Unit (CPU)
@@ -124,7 +132,6 @@ jobs:
         if: ${{ matrix.test == 'unit' }}
         env:
           OFFLINE: "1"
-          EXTRA_CMAKE_ARGS: "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
         run: |
           set -euo pipefail
           ./scripts/run_unit_tests.sh
@@ -135,7 +142,6 @@ jobs:
           OFFLINE: "1"
           ENABLE_CUDA: "OFF"
           CMAKE_BUILD_TYPE: Release
-          EXTRA_CMAKE_ARGS: "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
         run: |
           set -euo pipefail
           ./scripts/run_perf_tests.sh
@@ -144,7 +150,6 @@ jobs:
         if: ${{ matrix.test == 'mpi' }}
         env:
           OFFLINE: "1"
-          EXTRA_CMAKE_ARGS: "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
         run: |
           set -euo pipefail
           ./scripts/run_mpi_tests.sh --mode ${{ matrix.mpi_mode || 'auto' }} --np ${{ matrix.np || 4 }} --keep-going
@@ -169,6 +174,9 @@ jobs:
     container:
       image: nvidia/cuda:12.4.1-devel-ubuntu22.04
       options: --gpus all
+
+    env: 
+      EXTRA_CMAKE_ARGS: "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
 
     timeout-minutes: 60
     continue-on-error: true
@@ -206,7 +214,6 @@ jobs:
         env:
           OFFLINE: "1"              
           CMAKE_BUILD_TYPE: Release
-          EXTRA_CMAKE_ARGS: "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
         run: |
           ./scripts/run_perf_tests.sh
 
