@@ -73,9 +73,9 @@
  *
  * **Core integration**
  *
- * - :cpp:func:`Master::set_writer` consumes a writer built from ``io`` (XDMF/CGNS/Null).
- * - :cpp:func:`Master::configure_program` consumes ``program.key`` and ``program.params``.
- * - :cpp:class:`FieldCatalog` selections come from ``fields.output``.
+ * - :cpp:func:`core::master::Master::set_writer` consumes a writer built from ``io`` (XDMF/CGNS/Null).
+ * - :cpp:func:`core::master::Master::configure_program` consumes ``program.key`` and ``program.params``.
+ * - :cpp:class:`core::master::FieldCatalog` selections come from ``fields.output``.
  *
  * See the *Core Orchestration & I/O — Developer Guide* for how this flows through Master/Scheduler
  * and writers.  The formatting of this comment block follows our docs style guide
@@ -83,8 +83,6 @@
  * guide*.
  * @endrst
  */
-
-/// \cond DOXYGEN_EXCLUDE
 
 struct AppConfig
 {
@@ -118,8 +116,6 @@ struct AppConfig
         std::string path = "out";
         Precision precision = Precision::Native;
 
-        /// \cond DOXYGEN_EXCLUDE
-
         struct Async
         {
             bool enabled = false;
@@ -134,8 +130,6 @@ struct AppConfig
             std::optional<std::size_t> disk_bytes;
         } preflight;
 
-        /// \endcond
-
     } io;
 
     // plumbing
@@ -146,7 +140,7 @@ struct AppConfig
     std::vector<std::string> fields_output{"rho"};
 };
 
-/// \endcond
+
 
 static inline std::string to_lower(std::string s)
 {

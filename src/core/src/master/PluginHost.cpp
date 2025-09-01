@@ -3,9 +3,11 @@
 #include <stdexcept>
 #include <utility>
 
+/// \cond DOXYGEN_EXCLUDE
+
 #if defined(_WIN32)
 #include <windows.h>
-/// \cond DOXYGEN_EXCLUDE
+
 static void* load_so(const std::string& p)
 {
     return (void*) ::LoadLibraryA(p.c_str());
@@ -19,10 +21,10 @@ static void* load_sym(void* h, const char* s)
 {
     return (void*) ::GetProcAddress((HMODULE) h, s);
 }
-/// \endcond
+
 #else
 #include <dlfcn.h>
-/// \cond DOXYGEN_EXCLUDE
+
 static void* load_so(const std::string& p)
 {
     return ::dlopen(p.c_str(), RTLD_NOW);
@@ -36,16 +38,16 @@ static void* load_sym(void* h, const char* s)
 {
     return ::dlsym(h, s);
 }
-/// \endcond
+
 #endif
+
+/// \endcond
 
 using namespace core::master;
 
 // ----- builtin "noop" program so tests/app can run with no plugins -----------
 namespace
 {
-
-/// \cond DOXYGEN_EXCLUDE
 
 using namespace core::master::plugin;
 
@@ -59,7 +61,7 @@ inline void register_builtin_noop(plugin::Registry& r)
     r.add_program("noop",
                   [](const KV&, const RunContext&) { return std::make_unique<NoopProgram>(); });
 }
-/// \endcond
+
 } // namespace
 // -----------------------------------------------------------------------------
 

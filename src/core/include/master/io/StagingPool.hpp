@@ -36,7 +36,7 @@ class StagingPool
   private:
     struct Block
     {
-        /// \cond DOXYGEN_EXCLUDE
+
         struct Deleter
         {
             void operator()(void* p) const noexcept;
@@ -44,7 +44,7 @@ class StagingPool
 
         std::unique_ptr<void, Deleter> ptr{nullptr};
         std::size_t cap = 0;
-        /// \endcond
+        
     };
 
     std::vector<Block> buffers_;

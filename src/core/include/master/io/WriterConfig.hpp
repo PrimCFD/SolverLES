@@ -59,8 +59,6 @@ struct WriterConfig
     // Compression only where it doesn’t hurt parallel IO (XDMF side)
     bool compress = false;
 
-    /// \cond DOXYGEN_EXCLUDE
-
     struct MPI
     {
         enum class Mode
@@ -78,8 +76,6 @@ struct WriterConfig
         int stride = 0; // 0 = off; every N steps produce small snapshot
         int decimate[3] = {1, 1, 1};
     } monitoring;
-
-    /// \endcond
 
     enum class Preflight
     {

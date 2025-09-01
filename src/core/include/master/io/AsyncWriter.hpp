@@ -35,7 +35,7 @@ namespace core::master::io
 class AsyncWriter : public IWriter
 {
   public:
-    /// \cond DOXYGEN_EXCLUDE
+
     struct Options
     {
         std::size_t max_queue = 2; // 0 = unbounded (not recommended)
@@ -45,8 +45,6 @@ class AsyncWriter : public IWriter
     // No default arg here; provide a delegating ctor instead.
     explicit AsyncWriter(std::unique_ptr<IWriter> sink);
     AsyncWriter(std::unique_ptr<IWriter> sink, Options o);
-
-    /// \endcond
 
     ~AsyncWriter() override { close(); }
 

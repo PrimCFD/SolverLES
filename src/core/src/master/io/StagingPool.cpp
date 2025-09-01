@@ -36,7 +36,6 @@ void StagingPool::reserve(std::size_t count, std::size_t bytes)
     }
 }
 
-/// \cond DOXYGEN_EXCLUDE
 void StagingPool::Block::Deleter::operator()(void* p) const noexcept
 {
 #if defined(_MSC_VER)
@@ -45,7 +44,6 @@ void StagingPool::Block::Deleter::operator()(void* p) const noexcept
     free(p);
 #endif
 }
-/// \encond
 
 StagingPool::~StagingPool() = default;
 

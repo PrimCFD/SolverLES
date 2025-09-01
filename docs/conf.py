@@ -26,6 +26,8 @@ myst_fence_as_directive = ["mermaid"]
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
+suppress_warnings = ["duplicate_declaration.cpp"]
+
 # Theme 
 html_theme = os.environ.get("SPHINX_THEME", "furo")
 if (_Path(__file__).parent / '_static').exists():
