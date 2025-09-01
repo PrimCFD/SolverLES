@@ -1,4 +1,5 @@
 #pragma once
+#include "master/FieldCatalog.hpp"
 #include "master/Views.hpp"
 #include <string>
 #include <string_view>
@@ -7,29 +8,30 @@
 
 /**
  * @file Action.hpp
- * @brief Domain-agnostic plugin actions and phases.
+ * @brief Domain-agnostic plugin actions, phases, and access declarations.
  *
  * @details
- * An :cpp:class:`core::master::plugin::IAction` runs per tile and declares
- * a phase mask and data-access needs. A :cpp:class:`core::master::plugin::IGlobal`
- * runs once per step (reductions, diagnostics).
+ * An :cpp:class:`IAction` runs **per tile** and declares a phase mask and data-access needs.
+ * A :cpp:class:`IGlobal` runs **once per step** (reductions, diagnostics).
  *
- * @rst
  * **Phases**
- *
  * - ``PreExchange``: before halo posts (rare)
- * - ``Interior``: while halos are in flight (interior-only work)
+ * - ``Interior``: while halos are in flight
  * - ``PostExchange``: after halo completion, before BCs
  * - ``PostBC``: after BCs
  * - ``EndStep``: final hooks
+ *
+ * @rst
+ * .. code-block:: cpp
+ *
+ *   struct MyAction : IAction {
+ *     ActionInfo info_{ "my_action", Phase::Interior,
+ *                       Access{ .reads={"rho"}, .writes={"u"}, .halos={{"rho",1}} } };
+ *     const ActionInfo& info() const override { return info_; }
+ *     void execute(const MeshTileView& tile, FieldCatalog& fields, double dt) override;
+ *   };
  * @endrst
  */
-
-namespace core::master
-{
-class FieldCatalog;
-struct RunContext;
-} // namespace core::master
 
 namespace core::master::plugin
 {

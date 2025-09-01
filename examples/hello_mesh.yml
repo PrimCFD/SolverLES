@@ -1,26 +1,57 @@
+#=======================
+# SolverLES config (v0)
+#=======================
+
+
+# Short identifier for outputs (writer will create path/<case>.h5, path/<case>.xmf, etc.)
+case: cavity_64 # default: "case"
+
+
+# Mesh (local box on each rank, ghosts are uniform)
 mesh:
-  nx: 64
-  ny: 64
-  nz: 64
-  Lx: 1
-  Ly: 1
-  Lz: 1
-  periodic: [false, false, false]
+  local: [64, 64, 64] # required (ints)
+  ng: 2 # required (uniform ghost width)
+  periodic: [false, false, false] # optional (reserved)
 
+
+# Time integration and writer cadence
 time:
-  dt: 1e-3
-  t_end: 1.0
-  write_every: 0.05
+  dt: 1.0e-3 # required (seconds)
+  t_end: 1.0 # required (seconds)
+  write_every: # choose one; if both set, 'steps' wins
+    steps: 10 # write every N steps
+    # time: 0.05 # OR every T seconds (converted with ceil(T/dt))
 
-services:
-  - name: poisson
-    plugin: lib/plugins/poisson_petsc.so
 
-physics:
-  - plugin: lib/plugins/fluids_module.so
-    scheme: lib/plugins/flux_central2.so
-    sgs:    lib/plugins/sgs_smag.so
-    time:   lib/plugins/time_piso_incomp.so
-    bc:
-      - { patch: 0, type: wall }
-      - { patch: 1, type: inflow, U: [1, 0, 0] }
+# I/O policy & backend
+io:
+  backend: xdmf # xdmf | cgns | null
+  path: out # output directory
+  precision: native # native | float64 | float32 (packing override)
+  async: # optional background writer
+    enabled: true
+    max_queue: 8 # 0 = unbounded
+    drop_on_overflow: true # drop writes when queue is full (protects cadence)
+  preflight: # optional resource checks (RAM/disk)
+    enabled: true
+    ram_bytes: auto # auto | integer bytes (e.g., "17179869184")
+    disk_bytes: auto # auto | integer bytes
+
+
+# Runtime-loaded physics libraries (in this order)
+plugins:
+- lib: libphysics_fluids.so
+# - lib: libphysics_heat.so
+
+
+# Program selector + free-form KV passed to plugin (strings on both sides)
+program:
+  key: rk3
+  params:
+    cfl: "0.7"
+    # any other plugin-defined keys → strings
+
+
+# Field output selection by name (the app allocates/registers these as doubles for now)
+fields:
+  output: [rho]

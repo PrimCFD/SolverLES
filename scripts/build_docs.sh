@@ -141,6 +141,7 @@ default_dev_sources=(
   "src/core/README.md"
   "scripts/README.md"
   "extern/README.md"
+  "tests/README.md"
 )
 
 # Allow overrides

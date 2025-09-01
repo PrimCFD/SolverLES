@@ -8,20 +8,20 @@
  * @brief Step planning interface that assembles actions into a plan.
  *
  * @details
- * A program returns a :cpp:struct:`core::master::plugin::StepPlan` for the
- * current step (and may vary by sub-step if needed). The scheduler executes
- * that plan while enforcing halo/BC ordering.
+ * A program returns a :cpp:struct:`StepPlan` for the current step. The scheduler executes
+ * that plan while enforcing halo/BC ordering and writer cadence.
  *
  * @rst
  * .. code-block:: cpp
  *
- *    struct RK3 final : IProgram {
- *      StepPlan plan_step(double dt) override {
- *        StepPlan P{};
- *        // push_back shared_ptr<IAction> for each sub-stage
- *        return P;
- *      }
- *    };
+ *   struct RK3 final : IProgram {
+ *     StepPlan plan_step(double dt) override {
+ *       StepPlan P{};
+ *       // P.tiled.push_back(action_stage1);
+ *       // P.globals.push_back(diagnostics);
+ *       return P;
+ *     }
+ *   };
  * @endrst
  */
 

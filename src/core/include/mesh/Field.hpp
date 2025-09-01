@@ -23,7 +23,7 @@
  *   void* cptr = rho.c_ptr(); // pass to Fortran bind(C) kernel
  * @endrst
  *
- * @note Bounds are not checked in release builds. Prefer unit tests to validate extents.
+ * @note Bounds are not checked in release builds, unit tests validate extents.
  */
 
 namespace core::mesh

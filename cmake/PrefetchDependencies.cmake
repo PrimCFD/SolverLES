@@ -20,6 +20,7 @@ include(${CMAKE_SOURCE_DIR}/cmake/FetchCGNS.cmake)
 include(${CMAKE_SOURCE_DIR}/cmake/FetchOpenBLAS.cmake)
 include(${CMAKE_SOURCE_DIR}/cmake/FetchPETSc.cmake)
 include(${CMAKE_SOURCE_DIR}/cmake/FetchCatch2.cmake)
+include(${CMAKE_SOURCE_DIR}/cmake/FetchYamlCpp.cmake)
 
 # Aggregate target used by scripts/prefetch_third_party.sh
 fu_make_prefetch_aggregate()

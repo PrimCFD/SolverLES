@@ -34,3 +34,11 @@ The Markdown sources remain in the repository for optimal GitHub rendering.
    :glob:
 
    extern/README
+
+.. rubric:: tests
+
+.. toctree::
+   :maxdepth: 1
+   :glob:
+
+   tests/README

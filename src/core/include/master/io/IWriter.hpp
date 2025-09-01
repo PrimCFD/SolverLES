@@ -8,44 +8,43 @@
  * @brief Output abstraction used by the scheduler.
  *
  * @details
- * Writers receive a :cpp:struct:`core::master::io::WriteRequest` that contains
- * a set of host-side views and the step/time metadata. The base interface is
- * synchronous; an asynchronous wrapper can be layered later without changing
- * call sites.
+ * Writers receive a :cpp:struct:`WriteRequest` with **host-side** views and step/time metadata.
+ * The base interface is synchronous; use :cpp:class:`AsyncWriter` as a decorator for background
+ * I/O.
  *
  * @rst
- * .. note::
- *    Writers should not mutate field data. Stage/pack into internal buffers
- *    if a format requires reordering.
+ * .. code-block:: cpp
+ *
+ *   using core::master::io::IWriter;
+ *   struct CountingWriter : IWriter {
+ *     int writes = 0;
+ *     void open_case(const std::string&) override {}
+ *     void write(const WriteRequest&) override { ++writes; }
+ *     void close() override {}
+ *   };
  * @endrst
+ *
+ * @note `open_case()` returns `void` (legacy boolean return was removed).
  */
 
-namespace core
+namespace core::master::io
 {
-namespace mesh
+struct WriteRequest
 {
-    class Layout;
-}
+    int step{0};
+    double time{0.0};
+    std::vector<AnyFieldView> fields; // host-side views
+};
 
-namespace master::io
+class IWriter
 {
+  public:
+    virtual ~IWriter() = default;
 
-    struct WriteRequest
-    {
-        int step{0};
-        double time{0.0};
-        std::vector<AnyFieldView> fields; // host-side views (stage to device if needed elsewhere)
-    };
+    // Removed deprecated Layout parameter.
+    virtual void open_case(const std::string& case_name) = 0;
+    virtual void write(const WriteRequest& req) = 0; // blocking in the base interface
+    virtual void close() = 0;
+};
 
-    class IWriter
-    {
-      public:
-        virtual ~IWriter() = default;
-
-        virtual void open_case(const std::string& root, const core::mesh::Layout& layout) = 0;
-        virtual void write(const WriteRequest& req) = 0; // blocking in the base interface
-        virtual void close() = 0;
-    };
-
-} // namespace master::io
-} // namespace core
+} // namespace core::master::io

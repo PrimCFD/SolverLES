@@ -1,6 +1,6 @@
 #include "master/Master.hpp"
 #include "master/io/IWriter.hpp"
-#include "mesh_seams.hpp" // minimal no-op Layout/HaloExchange/Boundary
+#include "mesh/Mesh.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
 
@@ -9,7 +9,7 @@ using namespace core;
 struct CountingWriter : master::io::IWriter
 {
     int opens = 0, writes = 0, closes = 0;
-    void open_case(const std::string&, const mesh::Layout&) override { ++opens; }
+    void open_case(const std::string&) override { ++opens; }
     void write(const master::io::WriteRequest&) override { ++writes; }
     void close() override { ++closes; }
 };
@@ -24,11 +24,12 @@ static void setup_one_field(master::Master& m)
 static void run_case(int steps, int write_every, int expected_writes)
 {
     master::RunContext rc{};
-    mesh::Layout layout; // seams are provided elsewhere in unit_core
-    mesh::HaloExchange halos;
-    mesh::Boundary bcs;
 
-    master::Master m(rc, layout, halos, bcs);
+    mesh::Mesh mesh;
+    mesh.local = {2, 2, 2};
+    mesh.ng = 0;
+
+    master::Master m(rc, mesh);
     setup_one_field(m);
 
     auto writer = std::make_unique<CountingWriter>();

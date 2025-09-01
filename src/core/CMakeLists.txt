@@ -37,6 +37,9 @@ if(UNIX AND NOT APPLE)
   target_link_libraries(core PUBLIC dl)
 endif()
 
+# yaml-cpp
+target_link_libraries(core PUBLIC YAML_CPP::yaml-cpp)
+
 # Propagate global compile definitions (USE_CUDA_UM, HAVE_MPI, HAVE_CUDA) They
 # are already set at directory scope by the root listfile, nothing to do.
 

@@ -1,5 +1,5 @@
 add_executable(solver main.cpp)
-target_link_libraries(solver PRIVATE core dl)
+target_link_libraries(solver PRIVATE core dl YAML_CPP::yaml-cpp)
 
 # RPATH so it finds lib/plugins at runtime
 set_target_properties(solver PROPERTIES INSTALL_RPATH "$ORIGIN/../lib/plugins")

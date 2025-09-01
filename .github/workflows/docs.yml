@@ -39,7 +39,7 @@ jobs:
           python3 -m venv .venv
           . .venv/bin/activate
           python -m pip install -U pip wheel
-          pip install sphinx myst-parser furo breathe exhale
+          pip install sphinx myst-parser furo breathe exhale sphinxcontrib.mermaid
 
       - name: Build docs
         run: |

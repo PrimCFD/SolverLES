@@ -1,6 +1,6 @@
 #include "master/Master.hpp"
 #include "master/io/IWriter.hpp"
-#include "mesh_seams.hpp" // minimal no-op Layout/HaloExchange/Boundary
+#include "mesh/Mesh.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
 
@@ -9,7 +9,7 @@ using namespace core;
 struct CountingWriter : master::io::IWriter
 {
     int opens = 0, writes = 0, closes = 0;
-    void open_case(const std::string&, const mesh::Layout&) override { ++opens; }
+    void open_case(const std::string&) override { ++opens; }
     void write(const master::io::WriteRequest&) override { ++writes; }
     void close() override { ++closes; }
 };
@@ -17,13 +17,15 @@ struct CountingWriter : master::io::IWriter
 TEST_CASE("Scheduler runs builtin noop program and triggers I/O cadence", "[scheduler][noop]")
 {
     master::RunContext rc{};
-    mesh::Layout layout;
-    mesh::HaloExchange halos;
-    mesh::Boundary bcs;
 
-    master::Master m(rc, layout, halos, bcs);
+    // New API: Master requires a Mesh
+    mesh::Mesh mesh;
+    mesh.local = {2, 2, 2};
+    mesh.ng = 0; // no ghosts in this simple test
 
-    // one tiny field selected for output
+    master::Master m(rc, mesh);
+
+    // one tiny field selected for output (totals == interior when ng==0)
     std::vector<double> a(8, 0.0);
     m.fields().register_scalar("a", a.data(), sizeof(double), {2, 2, 2}, {1, 2, 4});
     m.fields().select_for_output("a");

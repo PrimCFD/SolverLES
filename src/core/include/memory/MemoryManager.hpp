@@ -71,7 +71,7 @@
  * @rst
  *.. code-block:: cpp
  *
- *   auto& mm = MemoryManager::instance();
+ *   auto& mm = core::memory::MemoryManager::instance();
  *   // Allocate SoA arrays with ghosts
  *   double* rho = mm.allocate<double>(nx_tot*ny_tot*nz_tot);
  *   // Transfer before a GPU kernel when not using UM

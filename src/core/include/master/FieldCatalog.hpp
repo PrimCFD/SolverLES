@@ -11,15 +11,20 @@
  * @brief Registry of fields and their POD views for plugins and I/O.
  *
  * @details
- * The catalog maps logical names to views and maintains a selection set
- * for output. Ownership of storage remains in the application/core.
+ * The catalog maps **logical names** to :cpp:struct:`AnyFieldView` and maintains a **selection**
+ * used by writers. Ownership of storage remains with the application/core.
  *
  * @rst
  * .. code-block:: cpp
  *
- *    FieldCatalog fc;
- *    fc.register_scalar("rho", rho.data(), sizeof(double), {nx,ny,nz}, {1,sx,sy});
- *    fc.select_for_output("rho");
+ *   FieldCatalog fc;
+ *   fc.register_scalar("rho", rho_ptr, sizeof(double), {nx,ny,nz},
+ *                      { 8, nx*8, nx*ny*8 });
+ *   fc.select_for_output("rho");
+ *
+ *   for (const auto& v : fc.selected_for_output()) { // pass to writer
+ *       // writer.write_view(v);
+ *   }
  *
  * @endrst
  */

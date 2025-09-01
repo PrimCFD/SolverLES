@@ -10,14 +10,11 @@
  * @brief Loader for shared libraries and registry owner.
  *
  * @details
- * The host owns OS handles (``dlopen``/``LoadLibrary``) and exposes helpers
- * to build programs/actions/globals from registered factories. A builtin
- * "noop" program is installed so the solver can run without external plugins.
+ * The host owns OS handles (``dlopen``/``LoadLibrary``) and exposes helpers to build
+ * programs/actions/globals from the registered factories. A builtin **noop** program is
+ * installed so the solver can run without external plugins.
  *
- * @rst
- * .. warning::
- *    On Linux the application must link with ``dl`` to resolve ELF loader calls.
- * @endrst
+ * @warning On Linux the application must link with ``dl`` to resolve ELF loader calls.
  */
 
 namespace core::master

@@ -12,13 +12,15 @@ add_executable(
   test_scheduler_noop.cpp
   test_scheduler_calls.cpp
   test_plugin_register.cpp
-  test_registry_error_master.cpp)
+  test_registry_error_master.cpp
+  test_async_backpressure.cpp
+  test_cgns_roundtrip.cpp
+  test_xdmf_roundtrip.cpp
+  test_preflight.cpp
+  test_writeplan_pack.cpp
+  test_config_yaml.cpp)
 
-# Seam lib
-add_library(mesh_seams STATIC mesh_seams.cpp)
-target_include_directories(mesh_seams PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-
-target_link_libraries(unit_core PRIVATE core Catch2::Catch2WithMain mesh_seams)
+target_link_libraries(unit_core PRIVATE core Catch2::Catch2WithMain)
 
 # Auto-register every TEST_CASE as a CTest test, all labeled "unit"
 register_catch_tests(
@@ -37,7 +39,7 @@ register_catch_tests(
   ".xml")
 
 if(ENABLE_CUDA)
-  add_executable(unit_gpu gpu/test_um_fields.cpp)
+  add_executable(unit_gpu gpu/test_um_fields.cpp gpu/test_io_residency.cpp)
   target_link_libraries(unit_gpu PRIVATE CUDA::cudart core
                                          Catch2::Catch2WithMain)
   target_compile_definitions(unit_gpu PRIVATE HAVE_CUDA)
@@ -63,5 +65,12 @@ if(ENABLE_MPI)
 
   # Run on a single rank to sanity-check "physical face" behavior
   add_mpi_test(core_boundary_mpi_1rank test_boundary_mpi 1)
+
+  # Parralel io tests
+  add_executable(test_io mpi/mpi_main.cpp mpi/test_io_parallel.cpp)
+
+  target_link_libraries(test_io PRIVATE core Catch2::Catch2 MPI::MPI_CXX)
+
+  add_mpi_test(test_io_2rank test_io 2)
 
 endif()

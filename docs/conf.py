@@ -16,8 +16,12 @@ extensions = [
     "sphinx.ext.graphviz",
     "sphinx.ext.todo",
     "sphinx.ext.napoleon",
-    "myst_parser",            # optional: for Markdown in docs/
+    "myst_parser",            # for Markdown in docs/
+    "sphinxcontrib.mermaid",  # for Mermaid in docs/ 
 ]
+
+# MyST: treat ```mermaid as a directive (no Pygments lexer warning)
+myst_fence_as_directive = ["mermaid"]
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]

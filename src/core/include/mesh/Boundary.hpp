@@ -1,43 +1,146 @@
 #pragma once
+#include "Field.hpp" // <-- new: delegate all indexing to Field<T>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
 #include <vector>
 
+/**
+ * @file Boundary.hpp
+ * @ingroup memory
+ * @brief Face-wise ghost–cell boundary operators for structured 3-D fields.
+ *
+ * Provides scalar and vector boundary condition (BC) kernels that fill ghost layers
+ * on the 6 axis-aligned faces of a cartesian block. Indexing is delegated to
+ * `Field<T>` (via the lightweight `Array3DView<T>` adapter) so there is a single
+ * source of truth for memory layout (`layout::Indexer3D` is only accessed by `Field`).
+ *
+ * @section boundary-assumptions Numerical assumptions & conventions
+ *
+ * - **Ghost layers:** uniform width :code:`ng >= 1` on all axes (I,J,K). All functions
+ *   fill **every** ghost layer :code:`l = 1..ng`. Anisotropic ghosts are not required
+ *   at the moment; can be introduced by extending `Field` (BC code stays unchanged).
+ * - **Grid spacing:** unit spacing is assumed along the normal when computing
+ *   one-sided differences; i.e. :math:`\Delta n = 1`. If using physical
+ *   spacing :math:`\Delta n \neq 1`, need to be sclaed outside these helpers.
+ * - **Faces vs. edges/corners:** functions write **faces only**. If applying BCs on
+ *   multiple axes, edges/corners are the result of the last face write ("last write wins").
+ *   If need for a special edge/corner policy for wide stencils, do an explicit pass.
+ * - **Domains with neighbors:** periodicity and inter-rank neighbors are handled by the
+ *   halo exchange. Apply these BCs only on **physical faces** (no neighbor).
+ * - **Preconditions:** interior extent along the operated axis must satisfy
+ *   :code:`n_axis >= 1` (>=2 for `Extrapolate1`). The backing storage must be contiguous.
+ *
+ * @section boundary-ops Boundary operators (semantics & numerical order)
+ *
+ * - **Dirichlet** (`BCOp::Dirichlet`) — set a constant boundary value:
+ *   :math:`f_{\text{ghost}} = c`. No derivative constraints are implied.
+ *
+ * - **NeumannZero** (`BCOp::NeumannZero`) — zero normal derivative,
+ *   implemented as **constant extrapolation** using the nearest interior value:
+ *   :math:`f(-l) = f(0)` on a minus face (and analogously on plus faces).
+ *   This enforces :math:`\partial_n f = 0` with **first-order** accuracy at the face.
+ *
+ * - **Extrapolate1** (`BCOp::Extrapolate1`) — **linear** (first-order one-sided)
+ *   extrapolation using the outward gradient estimated from the first two interior cells:
+ *   on a minus face, :math:`d = f(0) - f(1)`, then
+ *   :math:`f(-l) = f(0) + l\,d,\; l=1..ng`. Requires at least 2 interior cells along
+ *   the operated axis. Accuracy is set by the gradient estimate (**first order**).
+ *
+ * - **Mirror (vector)** (`BCOp::Mirror`) — reflect interior values across the face with
+ *   per-component parity. For a face with outward normal :math:`\hat{n}`, the mirrored
+ *   value is :math:`\mathbf{u}_\text{ghost}(l) = \mathbf{S}\,\mathbf{u}_\text{int}(l-1)`
+ *   where :math:`\mathbf{S}=\mathrm{diag}(s_x,s_y,s_z)` with :math:`s_i\in\{-1,+1\}`.
+ *   Typical slip wall in x: :code:`MirrorMask{ {-1,+1,+1} }` (flip normal, keep tangentials).
+ *   For scalars, `Mirror` is ignored in the dispatcher.
+ *
+ * - **Periodic** (`BCOp::Periodic`) — **no-op** here; handled by the halo exchange.
+ *
+ * @section boundary-complexity Complexity & threading
+ *
+ * Work is :math:`\mathcal{O}(\text{face\_area} \times ng)` per face. Loops are written
+ * to stride contiguously in the fastest (I) dimension inside the innermost loop.
+ * Threading over the two in-face indices is safe provided the same cells are not written
+ * concurrently by multiple faces.
+ *
+ * @rst
+ *.. code-block:: cpp
+ *
+ *   using core::mesh::Axis;
+ *   using core::mesh::BCOp;
+ *   using core::mesh::Array3DView;
+ *   using core::mesh::MirrorMask;
+ *
+ *   // Build views from existing Field<T> (uniform ng inferred)
+ *   Array3DView<double> rho(rho_field);
+ *   Array3DView<double> ux (ux_field), uy(uy_field), uz(uz_field);
+ *
+ *   // Scalar BCs
+ *   apply_scalar_bc(rho, Axis::I, -1, BCOp::NeumannZero);   // x- face: ∂n f = 0 (1st order)
+ *   apply_scalar_bc(rho, Axis::K, +1, BCOp::Extrapolate1);  // z+ face: linear extrapolation
+ *   apply_scalar_bc(rho, Axis::J, -1, BCOp::Dirichlet, 0.0);// y- face: f = 0
+ *
+ *   // Vector mirror (slip wall on x faces)
+ *   MirrorMask slip_x{{-1, +1, +1}};
+ *   apply_mirror_vector(ux, uy, uz, Axis::I, -1, slip_x);   // x- face
+ *   apply_mirror_vector(ux, uy, uz, Axis::I, +1, slip_x);   // x+ face
+ * @endrst
+ *
+ * @note These routines operate on **faces only**.
+ */
+
 namespace core::mesh
 {
 
 // ---------------------------------------------
-// Lightweight 3D view for contiguous arrays with halos
+// Lightweight 3D view that delegates to Field<T>
 // (row-major: i fastest, then j, then k)
 // ---------------------------------------------
 template <class T> struct Array3DView
 {
     static_assert(!std::is_const_v<T>, "Use a non-const T for Array3DView.");
-    T* data = nullptr;          // base pointer
-    int nx = 0, ny = 0, nz = 0; // interior extents
-    int hx = 0, hy = 0, hz = 0; // halo width per axis
+
+    // Delegation target
+    Field<T>* f = nullptr;
+
+    // Interior extents and halos kept for geometry loops
+    int nx = 0, ny = 0, nz = 0;
+    int hx = 0, hy = 0, hz = 0;
+
+    Array3DView() = default;
+
+    // Build from a Field<T> (uniform ghosts inferred from Field)
+    explicit Array3DView(Field<T>& field) : f(&field)
+    {
+        const int ng = field.ng();
+        const auto e = field.extents(); // totals including ghosts
+        nx = e[0] - 2 * ng;
+        ny = e[1] - 2 * ng;
+        nz = e[2] - 2 * ng;
+        hx = hy = hz = ng;
+    }
+
+    // Build from a Field<T> with explicit interior extents (still uniform ghosts)
+    Array3DView(Field<T>& field, int nx_in, int ny_in, int nz_in, int ng)
+        : f(&field), nx(nx_in), ny(ny_in), nz(nz_in), hx(ng), hy(ng), hz(ng)
+    {
+    }
 
     // number of cells including halos per axis
     int sx() const noexcept { return nx + 2 * hx; }
     int sy() const noexcept { return ny + 2 * hy; }
     int sz() const noexcept { return nz + 2 * hz; }
 
-    // linear index for (i,j,k) where i∈[-hx, nx+hx-1], etc.
+    // linear index for (i,j,k) computed via Field (no Layout math here)
     inline std::size_t index(int i, int j, int k) const noexcept
     {
-        const int ii = i + hx;
-        const int jj = j + hy;
-        const int kk = k + hz;
-        return static_cast<std::size_t>(ii) +
-               static_cast<std::size_t>(sx()) *
-                   (static_cast<std::size_t>(jj) +
-                    static_cast<std::size_t>(sy()) * static_cast<std::size_t>(kk));
+        // Pointer arithmetic relative to Field base; relies on Field::operator()
+        return static_cast<std::size_t>(&((*f)(i, j, k)) - f->raw());
     }
 
-    inline T& at(int i, int j, int k) noexcept { return data[index(i, j, k)]; }
-    inline const T& at(int i, int j, int k) const noexcept { return data[index(i, j, k)]; }
+    inline T& at(int i, int j, int k) noexcept { return (*f)(i, j, k); }
+    inline const T& at(int i, int j, int k) const noexcept { return (*f)(i, j, k); }
 };
 
 // ---------------------------------------------

@@ -4,6 +4,7 @@
 #include "master/RunContext.hpp"
 #include "master/Scheduler.hpp"
 #include "master/io/IWriter.hpp"
+#include "mesh/Mesh.hpp"
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -18,61 +19,56 @@
  * @rst
  * .. code-block:: cpp
  *
- *    core::master::TimeControls tc;
- *    tc.dt = 1e-3;
- *    tc.t_end = 1.0;
- *    tc.write_every = 10;
- *    m.run(tc);
+ *   core::master::RunContext rc{};
+ *   core::mesh::Mesh mesh{ .local={nx,ny,nz}, .ng=ng };
+ *   core::master::Master M(rc, mesh);
+ *
+ *   M.fields().register_scalar("rho", rho_ptr, sizeof(double), {nx,ny,nz},
+ *                              {8, nx*8, nx*ny*8});
+ *   M.fields().select_for_output("rho");
+ *
+ *   auto W = std::make_unique<core::master::io::XdmfHdf5Writer>(cfg);
+ *   M.set_writer(std::move(W));
+ *
+ *   M.load_plugin_library("libphysics.so");
+ *   M.configure_program("noop", {}); // builtin
+ *
+ *   core::master::TimeControls tc{.dt=1e-3, .t_end=1.0, .write_every=10};
+ *   M.run(tc);
+ *
  * @endrst
  *
  */
 
-namespace core
+namespace core::master
 {
-namespace mesh
+class Master
 {
-    class Layout;
-    class HaloExchange;
-    class Boundary;
-} // namespace mesh
+  public:
+    Master(RunContext rc, const core::mesh::Mesh& mesh);
 
-namespace master
-{
+    FieldCatalog& fields() noexcept { return fields_; }
 
-    class Master
+    void set_writer(std::unique_ptr<io::IWriter> w)
     {
-      public:
-        Master(RunContext rc, const mesh::Layout& layout, mesh::HaloExchange& halos,
-               mesh::Boundary& bcs);
+        writer_ = std::move(w);
+        if (writer_) // rebind to avoid dangling refs
+            sched_ = std::make_unique<Scheduler>(rc_, fields_, *writer_, mesh_);
+    }
 
-        FieldCatalog& fields() noexcept { return fields_; }
-        void set_writer(std::unique_ptr<io::IWriter> w)
-        {
-            writer_ = std::move(w);
-            // Rebind scheduler to the new writer to avoid dangling references.
-            if (writer_)
-            {
-                sched_ = std::make_unique<Scheduler>(rc_, layout_, halos_, bcs_, fields_, *writer_);
-            }
-        }
+    // Plugins
+    void load_plugin_library(const std::filesystem::path& lib) { plugins_.load_library(lib); }
+    void configure_program(const std::string& key, const plugin::KV& cfg);
 
-        // Plugins
-        void load_plugin_library(const std::filesystem::path& lib) { plugins_.load_library(lib); }
-        void configure_program(const std::string& key, const plugin::KV& cfg);
+    void run(const TimeControls& tc);
 
-        void run(const TimeControls& tc);
+  private:
+    RunContext rc_;
+    core::mesh::Mesh mesh_;
+    FieldCatalog fields_;
+    PluginHost plugins_;
+    std::unique_ptr<io::IWriter> writer_;
+    std::unique_ptr<Scheduler> sched_;
+};
 
-      private:
-        RunContext rc_;
-        const mesh::Layout& layout_;
-        mesh::HaloExchange& halos_;
-        mesh::Boundary& bcs_;
-
-        FieldCatalog fields_;
-        PluginHost plugins_;
-        std::unique_ptr<io::IWriter> writer_;
-        std::unique_ptr<Scheduler> sched_;
-    };
-
-} // namespace master
-} // namespace core
+} // namespace core::master

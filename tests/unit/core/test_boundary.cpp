@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
@@ -5,26 +6,18 @@
 #include <vector>
 
 #include "mesh/Boundary.hpp"
+#include "mesh/Field.hpp"
 
 using core::mesh::Array3DView;
 using core::mesh::Axis;
 using core::mesh::BCOp;
+using core::mesh::Field;
 using core::mesh::MirrorMask;
 
 using Catch::Approx;
 
 namespace
 {
-template <class T>
-Array3DView<T> make_view(std::vector<T>& buf, int nx, int ny, int nz, int hx, int hy, int hz)
-{
-    const std::size_t total = static_cast<std::size_t>(nx + 2 * hx) *
-                              static_cast<std::size_t>(ny + 2 * hy) *
-                              static_cast<std::size_t>(nz + 2 * hz);
-    REQUIRE(buf.size() >= total);
-    return Array3DView<T>{buf.data(), nx, ny, nz, hx, hy, hz};
-}
-
 inline double pattern(int i, int j, int k)
 {
     return i + 10.0 * j + 100.0 * k;
@@ -33,9 +26,13 @@ inline double pattern(int i, int j, int k)
 
 TEST_CASE("Dirichlet face fill", "[boundary][dirichlet]")
 {
-    const int nx = 4, ny = 3, nz = 2, hx = 2, hy = 1, hz = 1;
-    std::vector<double> a((nx + 2 * hx) * (ny + 2 * hy) * (nz + 2 * hz), -99.0);
-    auto A = make_view(a, nx, ny, nz, hx, hy, hz);
+    const int nx = 4, ny = 3, nz = 2;
+    const int hx = 2, hy = 1, hz = 1;
+    const int ng = std::max({hx, hy, hz}); // Boundary.hpp assumes uniform ghosts
+
+    std::vector<double> a((nx + 2 * ng) * (ny + 2 * ng) * (nz + 2 * ng), -99.0);
+    Field<double> f(a.data(), {nx + 2 * ng, ny + 2 * ng, nz + 2 * ng}, ng);
+    Array3DView<double> A(f, nx, ny, nz, ng);
 
     // initialize interior
     for (int k = 0; k < nz; ++k)
@@ -57,9 +54,13 @@ TEST_CASE("Dirichlet face fill", "[boundary][dirichlet]")
 
 TEST_CASE("Neumann zero (copy interior)", "[boundary][neumann0]")
 {
-    const int nx = 5, ny = 4, nz = 3, hx = 1, hy = 2, hz = 1;
-    std::vector<double> a((nx + 2 * hx) * (ny + 2 * hy) * (nz + 2 * hz), -99.0);
-    auto A = make_view(a, nx, ny, nz, hx, hy, hz);
+    const int nx = 5, ny = 4, nz = 3;
+    const int hx = 1, hy = 2, hz = 1;
+    const int ng = std::max({hx, hy, hz});
+
+    std::vector<double> a((nx + 2 * ng) * (ny + 2 * ng) * (nz + 2 * ng), -99.0);
+    Field<double> f(a.data(), {nx + 2 * ng, ny + 2 * ng, nz + 2 * ng}, ng);
+    Array3DView<double> A(f, nx, ny, nz, ng);
 
     for (int k = 0; k < nz; ++k)
         for (int j = 0; j < ny; ++j)
@@ -78,9 +79,13 @@ TEST_CASE("Neumann zero (copy interior)", "[boundary][neumann0]")
 
 TEST_CASE("Extrapolate1 (linear)", "[boundary][extrapolate1]")
 {
-    const int nx = 3, ny = 3, nz = 5, hx = 1, hy = 1, hz = 2;
-    std::vector<double> a((nx + 2 * hx) * (ny + 2 * hy) * (nz + 2 * hz), -99.0);
-    auto A = make_view(a, nx, ny, nz, hx, hy, hz);
+    const int nx = 3, ny = 3, nz = 5;
+    const int hx = 1, hy = 1, hz = 2;
+    const int ng = std::max({hx, hy, hz});
+
+    std::vector<double> a((nx + 2 * ng) * (ny + 2 * ng) * (nz + 2 * ng), -99.0);
+    Field<double> f(a.data(), {nx + 2 * ng, ny + 2 * ng, nz + 2 * ng}, ng);
+    Array3DView<double> A(f, nx, ny, nz, ng);
 
     for (int k = 0; k < nz; ++k)
         for (int j = 0; j < ny; ++j)
@@ -103,14 +108,21 @@ TEST_CASE("Extrapolate1 (linear)", "[boundary][extrapolate1]")
 
 TEST_CASE("Vector mirror with sign mask", "[boundary][mirror-vector]")
 {
-    const int nx = 5, ny = 2, nz = 2, hx = 2, hy = 1, hz = 1;
-    std::vector<double> ux((nx + 2 * hx) * (ny + 2 * hy) * (nz + 2 * hz), -9.0);
+    const int nx = 5, ny = 2, nz = 2;
+    const int hx = 2, hy = 1, hz = 1;
+    const int ng = std::max({hx, hy, hz});
+
+    std::vector<double> ux((nx + 2 * ng) * (ny + 2 * ng) * (nz + 2 * ng), -9.0);
     std::vector<double> uy(ux.size(), -9.0);
     std::vector<double> uz(ux.size(), -9.0);
 
-    auto Ux = make_view(ux, nx, ny, nz, hx, hy, hz);
-    auto Uy = make_view(uy, nx, ny, nz, hx, hy, hz);
-    auto Uz = make_view(uz, nx, ny, nz, hx, hy, hz);
+    Field<double> Fx(ux.data(), {nx + 2 * ng, ny + 2 * ng, nz + 2 * ng}, ng);
+    Field<double> Fy(uy.data(), {nx + 2 * ng, ny + 2 * ng, nz + 2 * ng}, ng);
+    Field<double> Fz(uz.data(), {nx + 2 * ng, ny + 2 * ng, nz + 2 * ng}, ng);
+
+    Array3DView<double> Ux(Fx, nx, ny, nz, ng);
+    Array3DView<double> Uy(Fy, nx, ny, nz, ng);
+    Array3DView<double> Uz(Fz, nx, ny, nz, ng);
 
     // interior: simple pattern per component
     for (int k = 0; k < nz; ++k)

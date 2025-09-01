@@ -8,7 +8,7 @@ namespace core::master::io
 class NullWriter final : public IWriter
 {
   public:
-    void open_case(const std::string&, const core::mesh::Layout&) override {}
+    void open_case(const std::string&) override {}
     void write(const WriteRequest&) override {}
     void close() override {}
 };

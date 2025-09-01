@@ -1,6 +1,7 @@
 #pragma once
 #include "master/Views.hpp"
 #include "master/plugin/Program.hpp"
+#include "mesh/Mesh.hpp"
 #include <memory>
 
 /**
@@ -8,10 +9,9 @@
  * @brief Time loop and phase runner.
  *
  * @details
- * The scheduler advances time, overlaps halo exchanges with interior work,
- * applies boundary conditions, and triggers writer calls at a configured cadence.
- * It executes the :cpp:struct:`core::master::plugin::StepPlan` provided by the
- * selected program.
+ * The scheduler advances time, overlaps halo exchanges with interior work, applies boundary
+ * conditions, and triggers writer calls at a configured cadence. It executes the
+ * :cpp:struct:`core::master::plugin::StepPlan` provided by the selected program.
  *
  * @rst
  * .. graphviz::
@@ -28,51 +28,42 @@
  *      halos1 -> interior -> halos2 -> bcs -> post -> io;
  *    }
  * @endrst
+ *
+ * @note MPI calls are compiled only with ``HAVE_MPI``. Non-MPI builds treat exchange as a no-op.
  */
 
-namespace core
-{
-namespace mesh
-{
-    class Layout;
-    class HaloExchange;
-    class Boundary;
-} // namespace mesh
-
-namespace master
+namespace core::master
 {
 
-    class FieldCatalog;
-    namespace io
-    {
-        class IWriter;
-    }
+struct RunContext;
+class FieldCatalog;
+namespace io
+{
+    class IWriter;
+}
 
-    struct TimeControls
-    {
-        double dt{0.0};
-        double t_end{0.0};
-        int write_every{0};
-    };
+struct TimeControls
+{
+    double dt{0.0};
+    double t_end{0.0};
+    int write_every{0};
+};
 
-    class Scheduler
-    {
-      public:
-        Scheduler(const RunContext& rc, const mesh::Layout& layout, mesh::HaloExchange& halos,
-                  mesh::Boundary& bcs, FieldCatalog& fields, io::IWriter& writer);
+class Scheduler
+{
+  public:
+    Scheduler(const RunContext& rc, FieldCatalog& fields, io::IWriter& writer,
+              const core::mesh::Mesh& mesh);
 
-        void set_program(std::unique_ptr<plugin::IProgram> program);
-        void run(const TimeControls& tc);
+    void set_program(std::unique_ptr<plugin::IProgram> program);
+    void run(const TimeControls& tc);
 
-      private:
-        const RunContext& rc_;
-        const mesh::Layout& layout_;
-        mesh::HaloExchange& halos_;
-        mesh::Boundary& bcs_;
-        FieldCatalog& fields_;
-        io::IWriter& writer_;
-        std::unique_ptr<plugin::IProgram> program_;
-    };
+  private:
+    const RunContext& rc_;
+    FieldCatalog& fields_;
+    io::IWriter& writer_;
+    const core::mesh::Mesh& mesh_;
+    std::unique_ptr<plugin::IProgram> program_;
+};
 
-} // namespace master
-} // namespace core
+} // namespace core::master
