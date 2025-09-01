@@ -1,6 +1,3 @@
-# cmake/FetchUtils.cmake
-cmake_minimum_required(VERSION 3.24)
-
 # Internal accumulator for prefetch-only targets
 function(_fu_register_prefetch_target tgt)
   get_property(_acc GLOBAL PROPERTY SOLVERLES_PREFETCH_TARGETS)

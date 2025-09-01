@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.24)
-
 # Ensure the cache has a project name for scripts that read CMakeCache.txt
 # (e.g., scripts/prefetch_third_party.sh). Using LANGUAGES NONE avoids finding
 # compilers during prefetch-only builds.

@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.24)
-
 include(FetchContent)
 include(ExternalProject)
 include(${CMAKE_SOURCE_DIR}/cmake/FetchUtils.cmake)

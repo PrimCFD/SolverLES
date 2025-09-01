@@ -8,7 +8,7 @@ This directory holds **prefetched source archives** for third‑party dependenci
 * `scripts/clean_extern.sh` — cleans `extern/` except this file.
 * `scripts/clean_build.sh` — cleans `build-*/` can keep `deps_/` in targeted or all `build-*/` directories.
 * `scripts/build.sh` — configures and builds, preferring archives in `extern/` and supporting a fully offline mode.
-* `cmake/PrefetchDependencies.cmake` + `cmake/Fetch*.cmake` — dependency logic (HDF5, CGNS, OpenBLAS, PETSc, Catch2).
+* `cmake/PrefetchDependencies.cmake` + `cmake/Fetch*.cmake` — dependency logic (HDF5, CGNS, OpenBLAS, PETSc, Catch2, yaml-cpp).
 
 ---
 
@@ -47,7 +47,7 @@ scripts/clean_build.sh  # removes staged sources/installs; next build reuses ext
 2. **Build (cache‑first)**
 
    * `scripts/build.sh` scans `extern/` for archives whose filenames contain one of:
-     **Catch2**, **CGNS**, **HDF5**, **OpenBLAS**, **PETSc**; formats supported: `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, `.zip`.
+     **Catch2**, **CGNS**, **HDF5**, **OpenBLAS**, **PETSc**, **yaml-cpp**; formats supported: `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, `.zip`.
    * For each hit, the archive is unpacked to `build/_deps/<name>-src/` and the corresponding
      `FETCHCONTENT_SOURCE_DIR_<NAME>` is set so CMake uses the **local sources** instead of downloading.
    * If **all** required deps are satisfied from `extern/` (or export `OFFLINE=1`), the build passes
@@ -100,7 +100,7 @@ OFFLINE=1 scripts/build.sh
 
 ## Adding or replacing cached archives manually
 
-* Drop an archive in `extern/` whose **filename contains the package token** (`hdf5`, `cgns`, `openblas`, `petsc`, `catch2`).
+* Drop an archive in `extern/` whose **filename contains the package token** (`hdf5`, `cgns`, `openblas`, `petsc`, `catch2`, `yaml-cpp`).
 * Supported formats: `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, `.zip`.
 * Prefer using `scripts/prefetch_third_party.sh` so `MANIFEST.prefetch` and `SHA256SUMS` stay in sync.
 
@@ -108,11 +108,12 @@ OFFLINE=1 scripts/build.sh
 
 ```
 extern/
-  hdf5-1.14.3-src.tgz
-  cgns-4.4.0-src.tgz
-  openblas-0.3.30-src.tgz
-  petsc-3.20.0-src.tgz
-  catch2-3.5.3-src.tgz
+  hdf5-src.tgz
+  cgns-src.tgz
+  openblas-src.tgz
+  petsc-src.tgz
+  catch2-src.tgz
+  yaml-cpp-src.tgz
   MANIFEST.prefetch
   SHA256SUMS
 ```
@@ -127,7 +128,7 @@ extern/
   2. Clear stale state: `scripts/clean_build.sh`.
   3. Re‑run with `OFFLINE=1` to hard‑fail on any attempted network access.
 
-* **HDF5/CGNS/OpenBLAS/PETSc not found at link time**
+* **HDF5/CGNS/OpenBLAS/PETSc/yaml-cpp not found at link time**
 
   * Remove the affected staged directories under `build/_deps/*-install/` and rebuild so package configs are regenerated.
 

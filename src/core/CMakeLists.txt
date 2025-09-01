@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.24)
-
 # Public headers (everything under include/)
 file(GLOB_RECURSE CORE_PUBLIC_HEADERS CONFIGURE_DEPENDS
      "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp")
