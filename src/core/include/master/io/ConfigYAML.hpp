@@ -30,7 +30,7 @@
  *    mesh:
  *      local: [nx, ny, nz]          # interior sizes (ints), per-rank
  *      ng: 2                        # uniform ghost width
- *      periodic: [false,false,false]# reserved (not yet wired)
+ *      periodic: [false,false,false]# reserved
  *
  *    time:
  *      dt: 1.0e-3                   # seconds
@@ -73,8 +73,10 @@
  *
  * **Core integration**
  *
- * - :cpp:func:`core::master::Master::set_writer` consumes a writer built from ``io`` (XDMF/CGNS/Null).
- * - :cpp:func:`core::master::Master::configure_program` consumes ``program.key`` and ``program.params``.
+ * - :cpp:func:`core::master::Master::set_writer` consumes a writer built from ``io``
+ * (XDMF/CGNS/Null).
+ * - :cpp:func:`core::master::Master::configure_program` consumes ``program.key`` and
+ * ``program.params``.
  * - :cpp:class:`core::master::FieldCatalog` selections come from ``fields.output``.
  *
  * See the *Core Orchestration & I/O — Developer Guide* for how this flows through Master/Scheduler
@@ -115,6 +117,8 @@ struct AppConfig
         Backend backend = Backend::Null;
         std::string path = "out";
         Precision precision = Precision::Native;
+        // XDMF XML index version selector for the XDMF backend ("v2" or "v3")
+        std::string xdmf_version = "v2";
 
         struct Async
         {
@@ -139,8 +143,6 @@ struct AppConfig
     std::unordered_map<std::string, std::string> program_params{}; // <— map, not vector
     std::vector<std::string> fields_output{"rho"};
 };
-
-
 
 static inline std::string to_lower(std::string s)
 {
@@ -223,6 +225,15 @@ inline AppConfig load_config_from_yaml(const std::string& path)
             cfg.io.path = n.as<std::string>();
         if (auto n = I["precision"])
             cfg.io.precision = parse_precision(n.as<std::string>());
+        if (auto n = I["xdmf_version"])
+        {
+            auto v = to_lower(n.as<std::string>());
+            // accept only v2 or v3; keep default otherwise
+            if (v == "v2" || v == "2")
+                cfg.io.xdmf_version = "v2";
+            else if (v == "v3" || v == "3")
+                cfg.io.xdmf_version = "v3";
+        }
 
         if (auto A = I["async"])
         {

@@ -3,6 +3,7 @@
 #include "master/plugin/Program.hpp"
 #include "mesh/Mesh.hpp"
 #include <memory>
+#include <string>
 
 /**
  * @file Scheduler.hpp
@@ -47,6 +48,7 @@ struct TimeControls
     double dt{0.0};
     double t_end{0.0};
     int write_every{0};
+    std::string case_name{"case"};
 };
 
 class Scheduler

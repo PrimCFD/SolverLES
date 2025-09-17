@@ -28,8 +28,8 @@ src/core/
 │  │  ├─ WritePlan.hpp             # per-field layout/size plan synthesized from views
 │  │  ├─ StagingPool.hpp           # page-aligned reusable host buffers
 │  │  ├─ AsyncWriter.hpp           # threaded decorator w/ backpressure
-│  │  ├─ XdmfHdf5Writer.hpp        # HDF5 data + XDMF XML index (SOLVERLES_WITH_XDMF)
-│  │  ├─ CGNSWriter.hpp            # CGNS writer (SOLVERLES_WITH_CGNS)
+│  │  ├─ XdmfHdf5Writer.hpp        # HDF5 data + XDMF XML index 
+│  │  ├─ CGNSWriter.hpp            # CGNS writer 
 │  │  ├─ ConfigYAML.hpp            # YAML input parser with yaml-cpp
 │  │  ├─ NullWriter.hpp            # no-op writer for testing core / fallback if no writer
 │  │  └─ Preflight.hpp             # RAM/disk sanity checks
@@ -48,8 +48,7 @@ src/core/
 **Notes**
 
 * Public headers avoid `<mpi.h>`, HDF5, CGNS, CUDA, etc. Those are included only in `.cpp` files
-  and guarded by build flags (e.g., `HAVE_MPI`, `SOLVERLES_WITH_XDMF`, `SOLVERLES_WITH_CGNS`,
-  `HAVE_CUDA`, `USE_CUDA_UM`).
+  and guarded by build flags (e.g., `HAVE_MPI`, `HAVE_CUDA`, `USE_CUDA_UM`).
 * Everything exposed to plugins/writers uses **trivial/ABI-stable** types.
 
 ---
@@ -341,9 +340,9 @@ logical extents, **byte** strides, contiguity, and per-field byte counts. Writer
 
 ### Built-in writers
 
-* **XdmfHdf5Writer** (`SOLVERLES_WITH_XDMF`): writes datasets per step to HDF5 and maintains an
+* **XdmfHdf5Writer** : writes datasets per step to HDF5 and maintains an
   XDMF XML index.
-* **CGNSWriter** (`SOLVERLES_WITH_CGNS`): writes a structured zone, then per-step FlowSolutions.
+* **CGNSWriter** : writes a structured zone, then per-step FlowSolutions.
 
 Both use `WriterConfig` (backend, precision override, output path, series policy, compression, …).
 
@@ -363,8 +362,6 @@ based on policy.
 
 * **MPI:** `HAVE_MPI` enables halo exchange; communicator is `RunContext::mpi_comm` (opaque in
   headers, cast in `.cpp`).
-* **XDMF/HDF5:** `SOLVERLES_WITH_XDMF` compiles the HDF5/XDMF writer.
-* **CGNS:** `SOLVERLES_WITH_CGNS` compiles the CGNS writer.
 * **CUDA / UM:** `HAVE_CUDA`, `USE_CUDA_UM` control MemoryManager paths (UM vs mirrored), prefetch,
   pinned host staging, and CUDA-aware MPI choices.
 

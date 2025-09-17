@@ -2,11 +2,10 @@
 #include "master/Views.hpp"
 #include "master/io/WriterConfig.hpp"
 #include "master/io/XdmfHdf5Writer.hpp"
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#ifdef SOLVERLES_WITH_XDMF
 #include <hdf5.h>
-#endif
 
 #include <filesystem>
 #include <string>
@@ -15,8 +14,8 @@
 using namespace core::master;
 using namespace core::master::io;
 namespace fs = std::filesystem;
+using Catch::Approx;
 
-#ifdef SOLVERLES_WITH_XDMF
 static std::vector<double> h5_read_3d(const std::string& file, const std::string& dset, int& nx,
                                       int& ny, int& nz, bool want_double)
 {
@@ -37,7 +36,8 @@ static std::vector<double> h5_read_3d(const std::string& file, const std::string
     hid_t t = H5Dget_type(d);
     bool is_f64 = H5Tequal(t, H5T_IEEE_F64LE) > 0;
     bool is_f32 = H5Tequal(t, H5T_IEEE_F32LE) > 0;
-    REQUIRE(is_f64 || is_f32);
+    const bool ok = (is_f64 || is_f32);
+    REQUIRE(ok);
 
     std::vector<double> out(std::size_t(nx) * ny * nz);
     if (is_f64)
@@ -68,14 +68,9 @@ static std::vector<double> h5_read_3d(const std::string& file, const std::string
     H5Fclose(f);
     return out;
 }
-#endif
 
 TEST_CASE("XDMF/HDF5 roundtrip: two scalar fields, 1 timestep", "[io][xdmf]")
 {
-#ifndef SOLVERLES_WITH_XDMF
-    SUCCEED("XDMF/HDF5 disabled at build time");
-    return;
-#else
     const int nx = 6, ny = 4, nz = 2;
     std::vector<double> a(std::size_t(nx) * ny * nz), b(a.size());
     auto idx = [=](int i, int j, int k)
@@ -115,14 +110,16 @@ TEST_CASE("XDMF/HDF5 roundtrip: two scalar fields, 1 timestep", "[io][xdmf]")
     r.time = 0.0;
     auto sel = fc.selected_for_output();
     r.fields.assign(sel.begin(), sel.end());
-    REQUIRE(W.write(r));
+    W.write(r);
     W.close();
 
     // Read back via HDF5
     std::string h5 = (outdir / "xdmf_rt.h5").string();
     int rx = 0, ry = 0, rz = 0;
     auto A = h5_read_3d(h5, "/Step_000000/A", rx, ry, rz, /*want_double=*/false);
-    REQUIRE(rx == nx && ry == ny && rz == nz);
+    REQUIRE(rx == nx);
+    REQUIRE(ry == ny);
+    REQUIRE(rz == nz);
     for (int k = 0; k < nz; ++k)
         for (int j = 0; j < ny; ++j)
             for (int i = 0; i < nx; ++i)
@@ -133,5 +130,4 @@ TEST_CASE("XDMF/HDF5 roundtrip: two scalar fields, 1 timestep", "[io][xdmf]")
         for (int j = 0; j < ny; ++j)
             for (int i = 0; i < nx; ++i)
                 REQUIRE(B[idx(i, j, k)] == Approx(100 + i - j + 0.25 * k).margin(1e-6));
-#endif
 }

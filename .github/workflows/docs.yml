@@ -1,9 +1,7 @@
 name: Docs
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch: # Manual run to avoid flooding gh-pages deployements
 
 concurrency:
   group: docs-${{ github.ref }}
@@ -14,10 +12,11 @@ permissions:
   pages: write
   id-token: write
 
-# Ensure Bash inside containers (fixes: "Illegal option -o pipefail")
+# Ensure Bash inside containers
 defaults:
   run:
     shell: bash
+
 
 jobs:
   docs:

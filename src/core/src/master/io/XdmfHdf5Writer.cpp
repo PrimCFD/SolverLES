@@ -12,9 +12,7 @@
 #include <string>
 #include <vector>
 
-#ifdef SOLVERLES_WITH_XDMF
 #include <hdf5.h>
-#endif
 
 namespace core::master::io
 {
@@ -24,10 +22,9 @@ namespace fs = std::filesystem;
 
 struct XdmfHdf5Writer::Impl
 {
-#ifdef SOLVERLES_WITH_XDMF
     hid_t file = -1;
     hid_t xfer_plist = -1;
-#endif
+
     std::string h5_path;
     std::string xmf_path;
 
@@ -40,12 +37,10 @@ struct XdmfHdf5Writer::Impl
     std::vector<std::string> field_names;
 };
 
-#ifdef SOLVERLES_WITH_XDMF
 static hid_t h5_dtype(std::size_t bytes)
 {
     return bytes == 8 ? H5T_IEEE_F64LE : H5T_IEEE_F32LE;
 }
-#endif
 
 static inline bool is_contig(const AnyFieldView& v, std::size_t elem_size)
 {
@@ -107,7 +102,6 @@ XdmfHdf5Writer::~XdmfHdf5Writer()
 
 void XdmfHdf5Writer::open_case(const std::string& case_name)
 {
-#ifdef SOLVERLES_WITH_XDMF
     fs::create_directories(cfg_.path);
     impl_->h5_path = cfg_.path + "/" + case_name + ".h5";
     impl_->xmf_path = cfg_.path + "/" + case_name + ".xmf";
@@ -121,14 +115,10 @@ void XdmfHdf5Writer::open_case(const std::string& case_name)
     impl_->planned = false;
     impl_->step_index = 0;
     impl_->times.clear();
-#else
-    (void) case_name;
-#endif
 }
 
 void XdmfHdf5Writer::write(const WriteRequest& req)
 {
-#ifdef SOLVERLES_WITH_XDMF
     if (!impl_->opened)
         return;
 
@@ -149,11 +139,11 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
     }
 
     impl_->times.push_back(req.time);
-    const int step = impl_->step_index++;
+    const int step_idx = impl_->step_index++;
 
     // group /Step_xxxxxx
     char gname[64];
-    std::snprintf(gname, sizeof(gname), "Step_%06d", req.step);
+    std::snprintf(gname, sizeof(gname), "Step_%06d", step_idx);
     hid_t g = H5Gcreate2(impl_->file, gname, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     if (g < 0)
         return;
@@ -178,16 +168,16 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
             // direct
         }
         else if (view.elem_size == 8 && fp.shape.elem_size == 4)
-        {
-            pack_cast_3d<float, double>(static_cast<float*>(staging),
+        { // Src=double -> Dst=float
+            pack_cast_3d<double, float>(static_cast<float*>(staging),
                                         static_cast<const double*>(view.host_ptr), fp.shape.nx,
                                         fp.shape.ny, fp.shape.nz, view.strides[0], view.strides[1],
                                         view.strides[2]);
             src = staging;
         }
         else if (view.elem_size == 4 && fp.shape.elem_size == 8)
-        {
-            pack_cast_3d<double, float>(static_cast<double*>(staging),
+        { // Src=float  -> Dst=double
+            pack_cast_3d<float, double>(static_cast<double*>(staging),
                                         static_cast<const float*>(view.host_ptr), fp.shape.nx,
                                         fp.shape.ny, fp.shape.nz, view.strides[0], view.strides[1],
                                         view.strides[2]);
@@ -223,10 +213,13 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
     H5Sclose(space);
     H5Gclose(g);
 
-    // rewrite XDMF index
-    const int vx = impl_->nx + 1, vy = impl_->ny + 1, vz = impl_->nz + 1;
+    // rewrite XDMF index (v2 or v3)
+    const int cx = impl_->nx, cy = impl_->ny, cz = impl_->nz;
+    auto version_str = (cfg_.xdmf_version == WriterConfig::XdmfVersion::V2) ? "2.0" : "3.0";
+    auto topo_token =
+        (cfg_.xdmf_version == WriterConfig::XdmfVersion::V2) ? "3DCORECTMESH" : "3DCoRectMesh";
     std::ofstream xmf(impl_->xmf_path, std::ios::trunc);
-    xmf << R"(<?xml version="1.0" ?>)" << "\n<Xdmf Version=\"3.0\">\n  <Domain>\n"
+    xmf << R"(<?xml version="1.0" ?>)" << "\n<Xdmf Version=\"" << version_str << "\">\n  <Domain>\n"
         << "    <Grid Name=\"TimeSeries\" GridType=\"Collection\" CollectionType=\"Temporal\">\n";
     for (int s = 0; s < impl_->step_index; ++s)
     {
@@ -234,38 +227,34 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
         std::snprintf(stepname, sizeof(stepname), "Step_%06d", s);
         xmf << "      <Grid Name=\"" << stepname << "\" GridType=\"Uniform\">\n"
             << "        <Time Value=\"" << impl_->times[s] << "\"/>\n"
-            << "        <Topology TopologyType=\"3DCoRectMesh\" Dimensions=\"" << vz << " " << vy
-            << " " << vx << "\"/>\n"
+            << "        <Topology TopologyType=\"" << topo_token << "\" Dimensions=\"" << (cz + 1)
+            << " " << (cy + 1) << " " << (cx + 1) << "\"/>\n"
             << "        <Geometry GeometryType=\"ORIGIN_DXDYDZ\">\n"
             << "          <DataItem Dimensions=\"3\" NumberType=\"Float\" Precision=\"8\" "
                "Format=\"XML\">0 0 0</DataItem>\n"
             << "          <DataItem Dimensions=\"3\" NumberType=\"Float\" Precision=\"8\" "
                "Format=\"XML\">1 1 1</DataItem>\n"
             << "        </Geometry>\n";
-        for (const auto& fname : impl_->field_names)
+        for (std::size_t i = 0; i < plan_.fields.size(); ++i)
         {
-            xmf << "        <Attribute Name=\"" << fname
+            const auto& fp = plan_.fields[i];
+            const auto& fname = fp.shape.name;
+            xmf << " <Attribute Name=\"" << fname
                 << "\" AttributeType=\"Scalar\" Center=\"Cell\">\n"
-                << "          <DataItem Dimensions=\"" << impl_->nz << " " << impl_->ny << " "
-                << impl_->nx << "\" NumberType=\"Float\" Precision=\""
-                << (cfg_.precision == WriterConfig::Precision::Float64 ? 8 : 4)
-                << "\" Format=\"HDF\">" << fs::path(impl_->h5_path).filename().string() << ":"
+                << " <DataItem Dimensions=\"" << impl_->nz << " " << impl_->ny << " " << impl_->nx
+                << "\" NumberType=\"Float\" Precision=\"" << fp.shape.elem_size
+                << "\" Format=\"HDF\">" << fs::path(impl_->h5_path).filename().string() << ":/"
                 << stepname << "/" << fname << "</DataItem>\n"
-                << "        </Attribute>\n";
+                << " </Attribute>\n";
         }
         xmf << "      </Grid>\n";
     }
     xmf << "    </Grid>\n  </Domain>\n</Xdmf>\n";
     xmf.close();
-
-#else
-    (void) req;
-#endif
 }
 
 void XdmfHdf5Writer::close()
 {
-#ifdef SOLVERLES_WITH_XDMF
     if (impl_)
     {
         if (impl_->xfer_plist >= 0)
@@ -280,7 +269,6 @@ void XdmfHdf5Writer::close()
         }
         impl_->opened = false;
     }
-#endif
 }
 
 } // namespace core::master::io

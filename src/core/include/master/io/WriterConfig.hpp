@@ -59,6 +59,14 @@ struct WriterConfig
     // Compression only where it doesn’t hurt parallel IO (XDMF side)
     bool compress = false;
 
+    // XDMF XML version selector (affects only the XML index; HDF5 stays the same)
+    enum class XdmfVersion
+    {
+        V2,
+        V3
+    };
+    XdmfVersion xdmf_version = XdmfVersion::V2; // default
+
     struct MPI
     {
         enum class Mode

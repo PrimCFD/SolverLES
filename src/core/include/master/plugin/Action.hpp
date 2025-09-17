@@ -80,6 +80,23 @@ struct IAction
     virtual void execute(const MeshTileView& tile, FieldCatalog& fields, double dt) = 0;
 };
 
+// Convenience base: stores ActionInfo and implements info().
+// New actions can inherit from ActionBase to avoid boilerplate.
+struct ActionBase : IAction
+{
+    ActionBase() = default;
+    explicit ActionBase(ActionInfo info) : info_(std::move(info)) {}
+    ActionBase(std::string name, Phase phases, Access access = {})
+        : info_{std::move(name), phases, std::move(access)}
+    {
+    }
+
+    const ActionInfo& info() const final override { return info_; }
+
+  protected:
+    ActionInfo info_{};
+};
+
 // Global action: reductions, solvers, etc. (no tiling)
 struct IGlobal
 {

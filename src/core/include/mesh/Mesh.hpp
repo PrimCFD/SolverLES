@@ -19,6 +19,7 @@ struct Mesh
 {
     std::array<int, 3> local{}; // interior sizes
     int ng = 0;
+    std::array<bool, 3> periodic{false, false, false}; // x,y,z periodicity
 
     std::array<int, 3> extents() const
     {

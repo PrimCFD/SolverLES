@@ -8,6 +8,7 @@ Master::Master(RunContext rc, const core::mesh::Mesh& mesh) : rc_(rc), mesh_(mes
 {
     if (!writer_)
         writer_ = std::make_unique<io::NullWriter>();
+    // Initial scheduler bound to the current writer (NullWriter until app calls set_writer)
     sched_ = std::make_unique<Scheduler>(rc_, fields_, *writer_, mesh_);
 }
 
@@ -19,6 +20,8 @@ void Master::configure_program(const std::string& key, const plugin::KV& cfg)
 
 void Master::run(const TimeControls& tc)
 {
+    if (!sched_) // defensive
+        sched_ = std::make_unique<Scheduler>(rc_, fields_, *writer_, mesh_);
     sched_->run(tc);
 }
 

@@ -8,14 +8,13 @@
 
 /**
  * @file XdmfHdf5Writer.hpp
- * @brief HDF5 datasets per step + XDMF XML index (guarded by SOLVERLES_WITH_XDMF).
+ * @brief HDF5 datasets per step + XDMF XML index.
  *
  * @details
  * On the first write, builds a :cpp:struct:`WritePlan` and a :cpp:class:`StagingPool`. Each
  * step writes datasets into the HDF5 file under `/Step_xxxxxx`, then rewrites an XDMF XML index
  * referencing those datasets. Precision down-cast is applied during packing if configured.
  *
- * @note Includes HDF5 headers only when `SOLVERLES_WITH_XDMF` is defined.
  */
 
 namespace core::master::io

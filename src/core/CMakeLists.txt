@@ -38,6 +38,18 @@ endif()
 # yaml-cpp
 target_link_libraries(core PUBLIC YAML_CPP::yaml-cpp)
 
+# --- I/O backends: HDF5 + CGNS ----------------------------------
+
+# Enable the XDMF/HDF5 writer when HDF5 is available
+if(TARGET HDF5::hdf5)
+  target_link_libraries(core PUBLIC HDF5::hdf5)
+endif()
+
+# Enable the CGNS writer when CGNS is available
+if(TARGET CGNS::cgns)
+  target_link_libraries(core PUBLIC CGNS::cgns)
+endif()
+
 # Propagate global compile definitions (USE_CUDA_UM, HAVE_MPI, HAVE_CUDA) They
 # are already set at directory scope by the root listfile, nothing to do.
 

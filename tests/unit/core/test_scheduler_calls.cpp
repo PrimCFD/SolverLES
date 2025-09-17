@@ -52,16 +52,16 @@ static void run_case(int steps, int write_every, int expected_writes)
 
 TEST_CASE("Scheduler I/O cadence edge cases", "[scheduler][io]")
 {
-    SECTION("write_every=2 over 3 steps -> writes at steps 0 and 2")
+    SECTION("write_every=2 over 3 steps -> write at step 2 only")
     {
-        run_case(/*steps=*/3, /*write_every=*/2, /*expected_writes=*/2);
+        run_case(/*steps=*/3, /*write_every=*/2, /*expected_writes=*/1);
     }
     SECTION("write_every=1 -> write every step (3)")
     {
         run_case(/*steps=*/3, /*write_every=*/1, /*expected_writes=*/3);
     }
-    SECTION("write_every > nSteps -> only step 0 write")
+    SECTION("write_every > nSteps -> no writes")
     {
-        run_case(/*steps=*/3, /*write_every=*/100, /*expected_writes=*/1);
+        run_case(/*steps=*/3, /*write_every=*/100, /*expected_writes=*/0);
     }
 }

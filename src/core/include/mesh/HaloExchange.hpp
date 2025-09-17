@@ -36,7 +36,7 @@ template <class T> void exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm com
     int size = 1;
     MPI_Comm_size(comm, &size);
     int dims[3] = {0, 0, 0};
-    int periods[3] = {0, 0, 0};
+    int periods[3] = {m.periodic[0] ? 1 : 0, m.periodic[1] ? 1 : 0, m.periodic[2] ? 1 : 0};
     MPI_Dims_create(size, 3, dims);
     MPI_Comm cart = MPI_COMM_NULL;
     MPI_Cart_create(comm, 3, dims, periods, /*reorder=*/1, &cart);

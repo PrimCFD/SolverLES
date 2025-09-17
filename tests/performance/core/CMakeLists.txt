@@ -1,9 +1,22 @@
+set(SIMPLE_BENCH_HDR ${CMAKE_SOURCE_DIR}/tests/performance/simple_bench.hpp)
+
 # Binaries
-add_executable(bench_allocate bench_allocate.cpp simple_bench.hpp)
-add_executable(bench_index bench_index.cpp simple_bench.hpp)
-add_executable(bench_copy bench_copy.cpp simple_bench.hpp)
-add_executable(bench_overhead bench_overhead.cpp simple_bench.hpp)
-add_executable(bench_io_write bench_io_write.cpp simple_bench.hpp)
+add_executable(bench_allocate bench_allocate.cpp ${SIMPLE_BENCH_HDR})
+add_executable(bench_index bench_index.cpp ${SIMPLE_BENCH_HDR})
+add_executable(bench_copy bench_copy.cpp ${SIMPLE_BENCH_HDR})
+add_executable(bench_overhead bench_overhead.cpp ${SIMPLE_BENCH_HDR})
+add_executable(bench_io_write bench_io_write.cpp ${SIMPLE_BENCH_HDR})
+
+target_include_directories(bench_allocate
+                           PRIVATE ${CMAKE_SOURCE_DIR}/tests/performance)
+target_include_directories(bench_index
+                           PRIVATE ${CMAKE_SOURCE_DIR}/tests/performance)
+target_include_directories(bench_copy
+                           PRIVATE ${CMAKE_SOURCE_DIR}/tests/performance)
+target_include_directories(bench_overhead
+                           PRIVATE ${CMAKE_SOURCE_DIR}/tests/performance)
+target_include_directories(bench_io_write
+                           PRIVATE ${CMAKE_SOURCE_DIR}/tests/performance)
 
 target_link_libraries(bench_allocate PRIVATE core)
 target_link_libraries(bench_index PRIVATE core)

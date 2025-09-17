@@ -1,46 +1,29 @@
-# Helper to build runtime plugins cleanly, with correct PETSc ordering.
+# Simple helper to declare a physics plugin.
+#
+# add_physics_plugin( TARGET   physics_fluids SOURCES  src/a.cpp;src/b.cpp
+# KERNELS  kernels/x.f90;kernels/y.f90 INCLUDE  include LINK core;PETSC::petsc )
+function(add_physics_plugin)
+  cmake_parse_arguments(APP "" "TARGET;INCLUDE" "SOURCES;KERNELS;LINK" ${ARGN})
 
-include_guard(GLOBAL)
-
-function(add_plugin target)
-  set(options)
-  set(oneValueArgs)
-  set(multiValueArgs SOURCES LINK_LIBS INCLUDE_DIRS DEFINES)
-  cmake_parse_arguments(AP "${options}" "${oneValueArgs}" "${multiValueArgs}"
-                        ${ARGN})
-
-  if(NOT AP_SOURCES)
-    message(FATAL_ERROR "add_plugin(${target}) requires: SOURCES <...>")
+  if(NOT APP_TARGET)
+    message(FATAL_ERROR "add_physics_plugin: TARGET is required")
   endif()
 
-  add_library(${target} SHARED ${AP_SOURCES})
-  target_compile_features(${target} PRIVATE cxx_std_23)
+  set(_all_sources ${APP_SOURCES} ${APP_KERNELS})
+  add_library(${APP_TARGET} SHARED ${_all_sources})
 
-  if(AP_INCLUDE_DIRS)
-    target_include_directories(${target} PRIVATE ${AP_INCLUDE_DIRS})
+  if(APP_INCLUDE)
+    target_include_directories(
+      ${APP_TARGET} PRIVATE ${APP_INCLUDE} ${CMAKE_SOURCE_DIR}/src/core/include)
+  else()
+    target_include_directories(${APP_TARGET}
+                               PRIVATE ${CMAKE_SOURCE_DIR}/src/core/include)
   endif()
 
-  if(AP_DEFINES)
-    target_compile_definitions(${target} PRIVATE ${AP_DEFINES})
+  if(APP_LINK)
+    target_link_libraries(${APP_TARGET} PRIVATE ${APP_LINK})
   endif()
 
-  if(AP_LINK_LIBS)
-    target_link_libraries(${target} PRIVATE ${AP_LINK_LIBS})
-  endif()
-
-  # Project-wide warnings/options hook (if you have it)
-  if(COMMAND project_apply_common_warnings)
-    project_apply_common_warnings(${target})
-  endif()
-
-  # --- PETSc ordering: if this plugin links PETSC::petsc, depend on it.
-  if(TARGET PETSC::petsc)
-    get_target_property(_ll ${target} LINK_LIBRARIES)
-    if(_ll)
-      string(REPLACE ";" ";" _ll_sc ";${_ll};")
-      if(_ll_sc MATCHES ";PETSC::petsc;")
-        add_dependencies(${target} PETSC::petsc)
-      endif()
-    endif()
-  endif()
+  set_target_properties(${APP_TARGET} PROPERTIES OUTPUT_NAME ${APP_TARGET}
+                                                 POSITION_INDEPENDENT_CODE ON)
 endfunction()

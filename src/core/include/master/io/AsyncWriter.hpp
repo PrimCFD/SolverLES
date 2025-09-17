@@ -35,7 +35,6 @@ namespace core::master::io
 class AsyncWriter : public IWriter
 {
   public:
-
     struct Options
     {
         std::size_t max_queue = 2; // 0 = unbounded (not recommended)

@@ -124,6 +124,11 @@ if(USE_SYSTEM_HDF5)
   find_package(HDF5 CONFIG REQUIRED)
 else()
   include(FetchHDF5)
+
+  if(DEFINED _hdf5_install)
+    file(MAKE_DIRECTORY "${_hdf5_install}/include" "${_hdf5_install}/lib")
+  endif()
+
   if(NOT TARGET HDF5::hdf5 AND TARGET hdf5)
     add_library(HDF5::hdf5 ALIAS hdf5)
   endif()
@@ -134,12 +139,23 @@ if(USE_SYSTEM_CGNS)
   find_package(CGNS CONFIG REQUIRED)
 else()
   include(FetchCGNS)
+
+  if(DEFINED _cgns_install)
+    file(MAKE_DIRECTORY "${_cgns_install}/include" "${_cgns_install}/lib")
+  endif()
+
   if(NOT TARGET CGNS::cgns)
     if(TARGET cgns_shared)
       add_library(CGNS::cgns ALIAS cgns_shared)
     elseif(TARGET cgns_static)
       add_library(CGNS::cgns ALIAS cgns_static)
     endif()
+  endif()
+
+  # If the fetch module defines an EP target called 'cgns', make the alias
+  # depend on it.
+  if(TARGET cgns AND TARGET CGNS::cgns)
+    add_dependencies(CGNS::cgns cgns)
   endif()
 endif()
 

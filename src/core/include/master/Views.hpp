@@ -1,4 +1,5 @@
 #pragma once
+#include "mesh/Mesh.hpp"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -54,6 +55,30 @@ struct MeshTileView
 {
     Box3i box; // interior window (no halos)
     void* stream{nullptr};
+    const core::mesh::Mesh* mesh = nullptr;
 };
+
+inline AnyFieldView make_interior_copy(const AnyFieldView& v, int ng)
+{
+    AnyFieldView out = v; // copy metadata
+    const int nx_i = v.extents[0] - 2 * ng;
+    const int ny_i = v.extents[1] - 2 * ng;
+    const int nz_i = v.extents[2] - 2 * ng;
+
+    // Basic sanity (optional: turn into asserts)
+    if (nx_i <= 0 || ny_i <= 0 || nz_i <= 0)
+        return out; // leave unchanged
+
+    out.extents = {nx_i, ny_i, nz_i};
+
+    // byte-wise pointer bump: p + ng*sx + ng*sy + ng*sz
+    auto* b = static_cast<unsigned char*>(v.host_ptr);
+    b += std::size_t(ng) * std::size_t(v.strides[0]);
+    b += std::size_t(ng) * std::size_t(v.strides[1]);
+    b += std::size_t(ng) * std::size_t(v.strides[2]);
+    out.host_ptr = b;
+
+    return out;
+}
 
 } // namespace core::master

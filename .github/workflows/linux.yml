@@ -13,7 +13,7 @@ concurrency:
 permissions:
   contents: read
 
-# Ensure Bash inside containers (fixes: "Illegal option -o pipefail")
+# Ensure Bash inside containers
 defaults:
   run:
     shell: bash
@@ -58,7 +58,7 @@ jobs:
           docker pull nvidia/cuda:12.4.1-devel-ubuntu22.04
           docker run --rm --gpus all nvidia/cuda:12.4.1-devel-ubuntu22.04 nvidia-smi
 
-  tests:
+  tests: # Regression tests WIP
     name: ${{ matrix.name }}
     needs: prefetch-deps
     runs-on: ${{ matrix.runs_on }}

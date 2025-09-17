@@ -40,11 +40,11 @@ TEST_CASE("Scheduler runs builtin noop program and triggers I/O cadence", "[sche
     master::TimeControls tc;
     tc.dt = 0.1;
     tc.t_end = 0.3;     // 3 steps
-    tc.write_every = 2; // steps 0 and 2 → 2 writes
+    tc.write_every = 2; // write on cadence multiples after stepping: step 2 → 1 write
 
     m.run(tc);
 
     REQUIRE(wptr->opens == 1);
-    REQUIRE(wptr->writes == 2);
+    REQUIRE(wptr->writes == 1);
     REQUIRE(wptr->closes == 1);
 }

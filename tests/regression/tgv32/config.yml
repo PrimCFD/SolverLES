@@ -1,0 +1,50 @@
+case: tgv_32
+
+mesh:
+  local: [32, 32, 32]
+  ng: 2
+  periodic: [true, true, true] 
+
+time:
+  dt: 5.0e-2
+  t_end: 5.0
+  write_every: { steps: 1 }
+
+io:
+  backend: cgns
+  path: "@OUT_DIR@"
+  precision: native
+  async: { enabled: false }
+  preflight: { enabled: false }
+
+plugins:
+  - lib: libphysics_fluids.so
+
+program:
+  key: les
+  params:
+    # operator spacings (2π box / 32)
+    dx: "0.19634954084936207"
+    dy: "0.19634954084936207"
+    dz: "0.19634954084936207"
+
+    # TGV initializer extents & amplitude
+    Lx: "6.283185307179586"
+    Ly: "6.283185307179586"
+    Lz: "6.283185307179586"
+    U0: "1.0"
+
+    rho: "1"
+    nu:  "1.0e-1"
+    Cs:  "0.0"
+
+    time_scheme: "be"
+    #fe_iters: "3"
+    be_rtol: "1e-6"  # (only used if time_scheme=be)
+    be_max_iters: "100"
+    adv_blend: "0.0"
+    p_iters: "0"                 # keep Poisson off for a diffusion test
+    init: "taylor_green"
+
+fields:
+  output: [u, v, w, p, nu_t]

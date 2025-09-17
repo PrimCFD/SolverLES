@@ -8,11 +8,11 @@ option(ENABLE_TESTS_REGRESSION "Build regression tests" ON)
 
 # Add suites
 if(ENABLE_TESTS_UNIT OR ENABLE_TESTS_MPI)
-  add_subdirectory(unit/core)
+  add_subdirectory(unit)
 endif()
 
 if(ENABLE_TESTS_PERF)
-  add_subdirectory(performance/core)
+  add_subdirectory(performance)
 endif()
 
 if(ENABLE_TESTS_REGRESSION)

@@ -1,5 +1,6 @@
 #include "master/Scheduler.hpp"
 #include "master/FieldCatalog.hpp"
+#include "master/HaloOps.hpp"
 #include "master/RunContext.hpp"
 #include "master/io/IWriter.hpp"
 #include "master/plugin/Program.hpp"
@@ -9,60 +10,10 @@
 
 #include <cmath>
 
-// Only include the MPI-based halo exchange when MPI is enabled.
-#ifdef HAVE_MPI
-#include "mesh/HaloExchange.hpp"
-#endif
-
 namespace core::master
 {
 using plugin::has;
 using plugin::Phase;
-
-// ------------------------------------------------------------------
-// Halo exchange helper:
-//  - When HAVE_MPI: exchange ghosts for all registered fields.
-//  - Otherwise: no-op (builds without MPI).
-// ------------------------------------------------------------------
-namespace
-{
-#ifdef HAVE_MPI
-    static void exchange_all_fields(FieldCatalog& cat, const core::mesh::Mesh& m,
-                                    void* mpi_comm_void)
-    {
-        // RunContext.mpi_comm is stored opaquely as void*; cast only in MPI builds.
-        MPI_Comm comm = static_cast<MPI_Comm>(mpi_comm_void);
-
-        for (const AnyFieldView& v : cat.all_views())
-        {
-            const auto e = v.extents;
-            if (v.elem_size == sizeof(double))
-            {
-                core::mesh::Field<double> f(static_cast<double*>(v.host_ptr), e, m.ng);
-                core::mesh::exchange_ghosts(f, m, comm);
-            }
-            else if (v.elem_size == sizeof(float))
-            {
-                core::mesh::Field<float> f(static_cast<float*>(v.host_ptr), e, m.ng);
-                core::mesh::exchange_ghosts(f, m, comm);
-            }
-            else
-            {
-                // Extend with more primitive types if needed (e.g., int32).
-            }
-        }
-    }
-#else
-    static void exchange_all_fields(FieldCatalog&, const core::mesh::Mesh&, void*)
-    {
-        // No MPI: nothing to do.
-    }
-#endif
-} // namespace
-
-// ------------------------------------------------------------------
-// Scheduler
-// ------------------------------------------------------------------
 
 Scheduler::Scheduler(const RunContext& rc, FieldCatalog& fields, io::IWriter& writer,
                      const core::mesh::Mesh& mesh)
@@ -80,8 +31,8 @@ void Scheduler::run(const TimeControls& tc)
     if (!program_)
         return; // nothing to do
 
-    // Writer API without deprecated Layout parameter.
-    writer_.open_case("output");
+    // Writer API
+    writer_.open_case(tc.case_name.c_str());
 
     const int steps =
         (tc.dt > 0.0 && tc.t_end > 0.0) ? static_cast<int>(std::llround(tc.t_end / tc.dt)) : 0;
@@ -92,6 +43,7 @@ void Scheduler::run(const TimeControls& tc)
     tile.box.lo = {0, 0, 0};
     tile.box.hi = {mesh_.local[0], mesh_.local[1], mesh_.local[2]};
     tile.stream = rc_.device_stream;
+    tile.mesh = &mesh_;
 
     for (int s = 0; s < steps; ++s, t += tc.dt)
     {
@@ -137,13 +89,15 @@ void Scheduler::run(const TimeControls& tc)
                 g->run(fields_, tc.dt);
 
         // I/O cadence
-        if (tc.write_every > 0 && (s % tc.write_every == 0))
+        const int out_step = s + 1;
+        const double out_time = (s + 1) * tc.dt; // state *after* this step
+        if (tc.write_every > 0 && (out_step % tc.write_every == 0))
         {
             io::WriteRequest req;
-            req.step = s;
-            req.time = t;
+            req.step = out_step;
+            req.time = out_time;
             for (const auto& v : fields_.selected_for_output())
-                req.fields.push_back(v);
+                req.fields.push_back(make_interior_copy(v, mesh_.ng));
             writer_.write(req);
         }
     }

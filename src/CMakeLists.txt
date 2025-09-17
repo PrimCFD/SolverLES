@@ -1,8 +1,7 @@
 add_subdirectory(core)
-add_subdirectory(kernels)
 
 # Physics stacks (each may provide plugins and helper libs)
-# add_subdirectory(physics)
+add_subdirectory(physics)
 
 add_subdirectory(apps/solver) # solver
 

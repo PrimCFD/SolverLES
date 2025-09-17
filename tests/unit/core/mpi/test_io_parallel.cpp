@@ -4,12 +4,8 @@
 #include "master/io/WriterConfig.hpp"
 #include <catch2/catch_test_macros.hpp>
 
-#if defined(SOLVERLES_WITH_XDMF)
-#include "master/io/XdmfHdf5Writer.hpp"
-#endif
-#if defined(SOLVERLES_WITH_CGNS)
 #include "master/io/CGNSWriter.hpp"
-#endif
+#include "master/io/XdmfHdf5Writer.hpp"
 
 #include <filesystem>
 #include <string>
@@ -65,13 +61,6 @@ TEST_CASE("MPI I/O: gather on root then write once", "[io][mpi][2rank]")
     // Root writes; broadcast status so others don't hang if I/O fails.
     int io_status = 1; // 1=success, 0=failure, 2=skipped (no backend)
 
-#if !defined(SOLVERLES_WITH_XDMF) && !defined(SOLVERLES_WITH_CGNS)
-    if (rank == 0)
-    {
-        WARN("No I/O backend enabled (XDMF/CGNS); skipping MPI I/O test.");
-        io_status = 2;
-    }
-#else
     if (rank == 0)
     {
         try
@@ -91,19 +80,13 @@ TEST_CASE("MPI I/O: gather on root then write once", "[io][mpi][2rank]")
             fs::create_directories(outdir);
             cfg.path = outdir.string();
 
-            // Prefer XDMF if available, otherwise CGNS.
+            // XDMF
             std::unique_ptr<IWriter> W;
-#if defined(SOLVERLES_WITH_XDMF)
             cfg.backend = WriterConfig::Backend::XDMF;
             cfg.precision = WriterConfig::Precision::Float32; // realistic cast path
             W = std::make_unique<XdmfHdf5Writer>(cfg);
             const fs::path xmf = outdir / "mpi_io.xmf";
             const fs::path h5 = outdir / "mpi_io.h5";
-#else
-            cfg.backend = WriterConfig::Backend::CGNS;
-            W = std::make_unique<CGNSWriter>(cfg);
-            const fs::path cgns = outdir / "mpi_io.cgns";
-#endif
 
             W->open_case("mpi_io");
 
@@ -116,19 +99,14 @@ TEST_CASE("MPI I/O: gather on root then write once", "[io][mpi][2rank]")
             W->write(req);
             W->close();
 
-#if defined(SOLVERLES_WITH_XDMF)
             REQUIRE(fs::exists(outdir / "mpi_io.xmf"));
             REQUIRE(fs::exists(outdir / "mpi_io.h5"));
-#else
-            REQUIRE(fs::exists(outdir / "mpi_io.cgns"));
-#endif
         }
         catch (...)
         {
             io_status = 0;
         }
     }
-#endif // backends
 
     // Tell everyone whether root succeeded (or skipped).
     MPI_Bcast(&io_status, 1, MPI_INT, 0, MPI_COMM_WORLD);

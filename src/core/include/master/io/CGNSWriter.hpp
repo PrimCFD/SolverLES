@@ -8,14 +8,13 @@
 
 /**
  * @file CGNSWriter.hpp
- * @brief Structured CGNS writer (guarded by SOLVERLES_WITH_CGNS).
+ * @brief Structured CGNS writer.
  *
  * @details
  * Creates a structured zone once, then writes per-step FlowSolutions. Uses a
  * :cpp:struct:`WritePlan` and :cpp:class:`StagingPool` for packing and optional precision
  * conversion.
  *
- * @note Includes CGNS headers only when `SOLVERLES_WITH_CGNS` is defined.
  */
 
 namespace core::master::io

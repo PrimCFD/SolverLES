@@ -104,6 +104,7 @@ int main(int argc, char** argv)
     core::mesh::Mesh mesh;
     mesh.local = cfg.local;
     mesh.ng = cfg.ng;
+    mesh.periodic = cfg.periodic;
 
     // 4) App façade
     Master master(rc, mesh);
@@ -122,6 +123,16 @@ int main(int argc, char** argv)
         wcfg.precision = WriterConfig::Precision::Float64;
     }
     // (If Precision::Native, leave wcfg.precision at its default)
+
+    // Optional XDMF version (accept strings "v2"/"v3" or booly flag in your YAML)
+    if (cfg.io.xdmf_version == "v2")
+    {
+        wcfg.xdmf_version = WriterConfig::XdmfVersion::V2;
+    }
+    else if (cfg.io.xdmf_version == "v3")
+    {
+        wcfg.xdmf_version = WriterConfig::XdmfVersion::V3;
+    } // else keep default
 
     // 6) Construct concrete writer (+optional async) and attach to Master
     std::unique_ptr<IWriter> sink;
@@ -233,6 +244,7 @@ int main(int argc, char** argv)
     tc.dt = cfg.dt;
     tc.t_end = cfg.t_end;
     tc.write_every = cfg.write_every_steps;
+    tc.case_name = cfg.case_name;
     master.run(tc);
 
     // 11) Cleanup
