@@ -158,7 +158,7 @@ All CI is always built from clean slate (containerized) to check the whole pipel
 
 * **linux.yml** – GCC 13 / Clang 18 matrix; runs unit, performance & regression tests (GPU tests need hosted runner).
 * **style.yml** – clang‑format, fprettify, cmake‑lint.
-* **docs.yml** – builds Sphinx docs, pushes to `gh-pages`. (run on github manually)
+* **docs.yml** – builds Sphinx docs, pushes to `gh-pages`. (run on GitHub manually)
 
 ---
 
