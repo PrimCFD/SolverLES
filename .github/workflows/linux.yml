@@ -118,7 +118,8 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             cmake ninja-build build-essential gfortran git \
-            python3 python3-venv python3-pip
+            python3 python3-venv python3-pip \
+            libgomp1 libomp-dev
 
       - name: Install MPI (when needed)
         if: ${{ matrix.test == 'mpi' }}
@@ -197,7 +198,8 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             cmake ninja-build build-essential gfortran git \
-            python3 python3-venv python3-pip
+            python3 python3-venv python3-pip \
+            libgomp1 libomp-dev
 
       - name: Install newer CMake via pip (alt)
         run: |

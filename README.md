@@ -78,7 +78,7 @@ This project ships convenience scripts in `scripts/` for reliable, repeatable de
   - Formatters: `clang-format`, `fprettify`, `cmake-format`. (if using a Python virtual environment, run `source venv/bin/activate`)
 
 
-> Tip: CI uses recent GCC/Clang on Linux; matching that locally avoids surprises (see §5 CI). System GCC + OpenMP typically is the HPC setup.
+> Tip: CI uses recent gcc on Linux, might be tweaking required for clang; matching that locally avoids surprises (see §5 CI). System gcc + OpenMP typically is the HPC setup.
 
 ### 4.2 Fast path (CPU, Release)
 ```bash
