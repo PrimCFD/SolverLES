@@ -4,6 +4,8 @@ extern "C"
 {
 #endif
 
+    void fluids_kernels_free_scratch();
+
     void sgs_smagorinsky_c(const double* u, const double* v, const double* w, int nx_tot,
                            int ny_tot, int nz_tot, int ng, double dx, double dy, double dz,
                            double Cs, double* nu_t_out);

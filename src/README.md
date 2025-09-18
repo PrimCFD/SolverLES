@@ -36,7 +36,7 @@ src/
 
 ## Big picture
 
-* The **core** owns: run loop & phases, halo/BC call sites, field registry/views, memory residency, and writer cadence.
+* The **core** owns: run loop & phases, halo/BC call sites, field registry/views, memory residency, and writer cadence. Programs may invoke BCs internally at sub-stage granularity; the PostBC phase is an optional final sweep.
 * **Plugins** contribute:
 
   * **Actions** — coarse‑grained kernels that run per **tile** and declare their *Access* & required halo depths.

@@ -23,7 +23,7 @@ set -euo pipefail
 
 BUILD_DIR=${BUILD_DIR:-build-regression}
 SKIP_BUILD=${SKIP_BUILD:-0}
-CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-Debug}
+CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-Release}
 CTEST_PARALLEL_LEVEL=${CTEST_PARALLEL_LEVEL:-$(command -v nproc >/dev/null && nproc || echo 2)}
 CTEST_TIMEOUT=${CTEST_TIMEOUT:-900}
 REPORT_DIR=${REPORT_DIR:-"${BUILD_DIR}/test-reports/regression"}

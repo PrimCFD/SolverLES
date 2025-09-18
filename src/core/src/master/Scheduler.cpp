@@ -5,8 +5,9 @@
 #include "master/io/IWriter.hpp"
 #include "master/plugin/Program.hpp"
 
-#include "mesh/Field.hpp" // typed Field<T> view (no MPI)
-#include "mesh/Mesh.hpp"  // mesh::Mesh for extents/ghosts
+#include "master/Views.hpp" // AnyFieldView, MeshTileView, make_interior_copy
+#include "mesh/Field.hpp"   // typed Field<T> view (no MPI)
+#include "mesh/Mesh.hpp"    // mesh::Mesh for extents/ghosts
 
 #include <cmath>
 
@@ -69,8 +70,6 @@ void Scheduler::run(const TimeControls& tc)
         for (auto& g : plan.globals)
             if (has(g->phases(), Phase::PostExchange))
                 g->run(fields_, tc.dt);
-
-        // (Optional) BCs hook: once you provide a config, call mesh::apply_* here.
 
         // PostBC
         for (auto& a : plan.tiled)

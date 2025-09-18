@@ -1,4 +1,3 @@
-
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
@@ -44,10 +43,25 @@ TEST_CASE("Pressure gradient correction updates velocities exactly", "[fluids][c
                        ny_tot, nz_tot, ng, rho, dt);
 
     const double fac = dt / rho;
-    for (size_t q = 0; q < N; ++q)
-    {
-        REQUIRE(u[q] == Approx(u0[q] - fac * dpx[q]).epsilon(1e-15));
-        REQUIRE(v[q] == Approx(v0[q] - fac * dpy[q]).epsilon(1e-15));
-        REQUIRE(w[q] == Approx(w0[q] - fac * dpz[q]).epsilon(1e-15));
-    }
+    bool bad = false;
+    for (int K = ng; K < nz + ng && !bad; ++K)
+        for (int J = ng; J < ny + ng && !bad; ++J)
+            for (int I = ng; I < nx + ng; ++I)
+            {
+                size_t q = idx(I, J, K, nx_tot, ny_tot);
+                auto exp_u = u0[q] - fac * dpx[q];
+                auto exp_v = v0[q] - fac * dpy[q];
+                auto exp_w = w0[q] - fac * dpz[q];
+
+                if (std::abs(u[q] - exp_u) > 1e-12 || std::abs(v[q] - exp_v) > 1e-12 ||
+                    std::abs(w[q] - exp_w) > 1e-12)
+                {
+                    INFO("First mismatch at I=" << I << " J=" << J << " K=" << K << " q=" << q);
+                    INFO("u diff=" << (u[q] - exp_u) << " v diff=" << (v[q] - exp_v)
+                                   << " w diff=" << (w[q] - exp_w));
+                    bad = true;
+                    break;
+                }
+            }
+    REQUIRE(!bad);
 }

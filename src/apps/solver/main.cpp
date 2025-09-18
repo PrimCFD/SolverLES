@@ -22,10 +22,17 @@
 #include <utility>
 #include <vector>
 
+#include <cstdlib>
+#include <fstream> // for std::ifstream (CPU topology probe)
+#include <omp.h>
+#include <set> // if you use std::set in the topology code
+#include <thread>
+
 #ifdef HAVE_MPI
 #include <mpi.h>
 #endif
 #ifdef __linux__
+#include <sched.h>
 #include <sys/sysinfo.h>
 #endif
 
@@ -77,8 +84,106 @@ template <class Assoc> static core::master::plugin::KV make_kv(const Assoc& para
     return kv;
 }
 
+// -------- OpenMP/CPU setup & warm-up helpers --------------------------------
+static int count_available_logical_cpus()
+{
+#ifdef __linux__
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    if (sched_getaffinity(0, sizeof(mask), &mask) == 0)
+        return CPU_COUNT(&mask);
+#endif
+    unsigned n = std::thread::hardware_concurrency();
+    return n ? static_cast<int>(n) : 1;
+}
+
+// Best-effort physical core count on Linux; falls back to logical
+static int detect_physical_cores_linux()
+{
+#ifdef __linux__
+    try
+    {
+        namespace fs = std::filesystem;
+        std::set<std::pair<int, int>> pkg_core;
+        for (const auto& e : fs::directory_iterator("/sys/devices/system/cpu"))
+        {
+            if (!e.is_directory())
+                continue;
+            const std::string name = e.path().filename().string();
+            if (name.rfind("cpu", 0) != 0)
+                continue;
+            const std::string topo = (e.path() / "topology").string();
+            std::ifstream f1(topo + "/physical_package_id"), f2(topo + "/core_id");
+            if (!f1 || !f2)
+                continue;
+            int pkg = -1, core = -1;
+            f1 >> pkg;
+            f2 >> core;
+            if (pkg >= 0 && core >= 0)
+                pkg_core.emplace(pkg, core);
+        }
+        if (!pkg_core.empty())
+            return static_cast<int>(pkg_core.size());
+    }
+    catch (...)
+    {
+    }
+#endif
+    return count_available_logical_cpus();
+}
+
+static void setenv_if_empty(const char* k, const char* v)
+{
+    if (!std::getenv(k))
+        setenv(k, v, 1);
+}
+
+static void setup_openmp_defaults()
+{
+    // Choose threads = physical cores when we can; else logical
+    const int n_phys = detect_physical_cores_linux();
+    const int n_log = count_available_logical_cpus();
+    const int n_thr = std::max(1, n_phys > 0 ? n_phys : n_log);
+
+    // Respect user overrides; otherwise set sane defaults
+    {
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "%d", n_thr);
+        setenv_if_empty("OMP_NUM_THREADS", buf);
+    }
+    setenv_if_empty("OMP_PLACES", "cores");
+    setenv_if_empty("OMP_PROC_BIND", "close");
+    setenv_if_empty("OMP_DYNAMIC", "FALSE");
+
+    // Apply programmatically too (in case env was empty)
+    omp_set_dynamic(0);
+    omp_set_num_threads(n_thr);
+}
+
+static void print_omp_summary()
+{
+    const char* nt = std::getenv("OMP_NUM_THREADS");
+    const char* pl = std::getenv("OMP_PLACES");
+    const char* pb = std::getenv("OMP_PROC_BIND");
+    std::cerr << "OpenMP: threads=" << (nt ? nt : "?") << " places=" << (pl ? pl : "?")
+              << " bind=" << (pb ? pb : "?");
+    std::cerr << " (max_threads=" << omp_get_max_threads() << ")";
+    std::cerr << "\n";
+}
+
+template <class T> static void parallel_fill(T* p, std::size_t n, T val)
+{
+#pragma omp parallel for schedule(static)
+    for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(n); ++i)
+        p[i] = val;
+}
+
 int main(int argc, char** argv)
 {
+
+    setup_openmp_defaults();
+    print_omp_summary();
+
     // 1) Parse YAML config
     const std::string cfg_path = (argc > 1) ? argv[1] : "case.yaml";
     const AppConfig cfg = load_config_from_yaml(cfg_path);
@@ -188,10 +293,15 @@ int main(int argc, char** argv)
     const std::size_t elem = sizeof(double);
     for (auto& f : owned)
     {
-        std::fill_n(f.ptr, (std::size_t) nx_tot * ny_tot * nz_tot, 0.0);
+        // First-touch + zero in parallel (NUMA-friendly)
+        const std::size_t N = (std::size_t) nx_tot * ny_tot * nz_tot;
+        parallel_fill(f.ptr, N, 0.0);
         fc.register_scalar(f.name.c_str(), f.ptr, elem, {nx_tot, ny_tot, nz_tot},
                            strides_bytes(nx_tot, ny_tot, nz_tot, elem));
         fc.select_for_output(f.name.c_str());
+
+        // If using Unified Memory, prefetch to CPU so the first step doesn't fault-migrate
+        rc.mem->to_host(f.ptr, N * sizeof(double), nullptr);
     }
 
     // 9) Optional preflight (RAM/disk estimate)

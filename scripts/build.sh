@@ -52,9 +52,17 @@ NPROCS=${NPROCS:-$(
   echo 2
 )}
 
+# --- OpenMP runtime defaults (honor user overrides if already set)
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-$NPROCS}"
+export OMP_PLACES="${OMP_PLACES:-cores}"
+export OMP_PROC_BIND="${OMP_PROC_BIND:-close}"
+export OMP_DYNAMIC="${OMP_DYNAMIC:-FALSE}"
+# Optional (Intel runtime): uncomment for very steady latency
+# export KMP_BLOCKTIME="${KMP_BLOCKTIME:-0}"
+
 # --- Defaults (overridable)
 CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
-BUILD_TESTS="${BUILD_TESTS:-ON}"
+BUILD_TESTS="${BUILD_TESTS:-OFF}"
 ENABLE_MPI="${ENABLE_MPI:-OFF}"
 ENABLE_CUDA="${ENABLE_CUDA:-OFF}"
 USE_CUDA_UM="${USE_CUDA_UM:-OFF}" 
@@ -156,6 +164,10 @@ echo "🧰 Generator:         ${generator}"
 echo "🔧 Build type:        ${CMAKE_BUILD_TYPE}"
 echo "🧪 Build tests:       ${BUILD_TESTS}"
 echo "🧵 Parallel jobs:     ${NPROCS}"
+echo "🧵 OMP_NUM_THREADS:   ${OMP_NUM_THREADS}"
+echo "📍 OMP_PLACES:        ${OMP_PLACES}"
+echo "🧲 OMP_PROC_BIND:     ${OMP_PROC_BIND}"
+echo "🌀 OMP_DYNAMIC:       ${OMP_DYNAMIC}"
 [[ -n "${MPIEXEC_PREFLAGS:-}" ]] && echo "🚀 MPI pref.:          ${MPIEXEC_PREFLAGS}"
 [[ -n "${EXTRA_CMAKE_ARGS:-}" ]] && echo "➕ Extra CMake args:   ${EXTRA_CMAKE_ARGS}"
 [[ "${OFFLINE:-0}" == "1" || "$all_offline" == true ]] && echo "📦 FetchContent:       disconnected"

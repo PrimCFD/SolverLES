@@ -60,6 +60,7 @@ struct LESProgram final : core::master::plugin::IProgram
     explicit LESProgram(const core::master::plugin::KV& kv, const core::master::RunContext& rc);
     core::master::plugin::StepPlan plan_step(double dt) override;
     bool did_init_ = false;
+    ~LESProgram();
 
   private:
     Params p_;

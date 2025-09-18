@@ -70,14 +70,15 @@ SolverLES/
 This project ships convenience scripts in `scripts/` for reliable, repeatable developer workflows (builds, docs, MPI, offline vendor cache, cleaning, formatting). See the cheatsheet in that folder for details.  
 
 ### 4.1 Prerequisites
-- **CMake ≥ 3.24**, a C/C++/Fortran toolchain; **Ninja** is recommended.  
+- **CMake ≥ 3.24**, a C/C++/Fortran toolchain; **Ninja** is recommended.
+- **Parrallel stack** (OpenMP) technically overridable but no gains.
 - Optional/when needed:
-  - **MPI stack** (Open MPI/MPICH) for MPI builds and tests.
+  - **MPI stack** (Open MPI) for MPI builds and tests.
   - **Doxygen** and **Sphinx** (`sphinx-build`) for docs.
   - Formatters: `clang-format`, `fprettify`, `cmake-format`. (if using a Python virtual environment, run `source venv/bin/activate`)
 
 
-> Tip: CI uses recent GCC/Clang on Linux; matching that locally avoids surprises (see §5 CI).  
+> Tip: CI uses recent GCC/Clang on Linux; matching that locally avoids surprises (see §5 CI). System GCC + OpenMP typically is the HPC setup.
 
 ### 4.2 Fast path (CPU, Release)
 ```bash

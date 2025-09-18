@@ -42,14 +42,6 @@ set(FETCHCONTENT_FULLY_DISCONNECTED
     OFF
     CACHE BOOL "Never attempt to reach the network even if URLs are missing")
 
-# Third–party dependencies that every target needs
-find_package(OpenMP)
-if(OpenMP_CXX_FOUND)
-  message(STATUS "OpenMP enabled")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-  set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
-endif()
-
 option(ENABLE_MPI "Build with MPI support" ON)
 if(ENABLE_MPI)
   find_package(MPI REQUIRED)
@@ -73,6 +65,44 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 # Normal mode
 include(CompileOptions)
+
+# Third–party dependencies that every target needs
+
+# OpenMP System-only OpenMP (no vendoring)
+find_package(OpenMP REQUIRED) # expects libgomp/libomp present on the node
+
+# Prove it actually links
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_LIBRARIES OpenMP::OpenMP_CXX)
+check_cxx_source_compiles(
+  "
+  #include <omp.h>
+  int main(){
+    int n=0;
+    #pragma omp parallel reduction(+:n)
+    for(int i=0;i<32;++i) n+=i;
+    return n==496 ? 0 : 1;
+  }"
+  OMP_LINKS_OK)
+
+if(NOT OMP_LINKS_OK)
+  message(
+    FATAL_ERROR
+      "OpenMP was detected but failed to link. On this cluster, load a toolchain module, e.g.:
+       module load gcc/12   # libgomp
+     or
+       module load llvm/18  # libomp
+     Then re-configure.")
+endif()
+
+# Wire flags like your other deps
+if(OpenMP_CXX_FOUND)
+  message(STATUS "OpenMP enabled (system runtime)")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+endif()
+if(OpenMP_Fortran_FOUND)
+  set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+endif()
 
 # BLAS/LAPACK
 if(USE_SYSTEM_BLAS)
