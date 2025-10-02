@@ -13,15 +13,27 @@ extern "C"
     void divergence_c(const double* u, const double* v, const double* w, int nx_tot, int ny_tot,
                       int nz_tot, int ng, double dx, double dy, double dz, double* div_out);
 
+    void divergence_rhie_chow_c(const double* u, const double* v, const double* w, const double* p,
+                                const double* rho, int nx_tot, int ny_tot, int nz_tot, int ng,
+                                double dx, double dy, double dz, double dt, double* div);
+
     void gradp_c(const double* p, int nx_tot, int ny_tot, int nz_tot, int ng, double dx, double dy,
                  double dz, double* dpx, double* dpy, double* dpz);
 
     void poisson_jacobi_c(const double* rhs, int nx_tot, int ny_tot, int nz_tot, int ng, double dx,
                           double dy, double dz, int iters, double* p_io);
 
+    void poisson_jacobi_varcoef_c(const double* rhs, const double* beta, int nx_tot, int ny_tot,
+                                  int nz_tot, int ng, double dx, double dy, double dz, int iters,
+                                  double* p);
+
     void correct_velocity_c(double* u, double* v, double* w, const double* dpx, const double* dpy,
                             const double* dpz, int nx_tot, int ny_tot, int nz_tot, int ng,
                             double rho, double dt);
+
+    void correct_velocity_varrho_c(double* u, double* v, double* w, const double* dpx,
+                                   const double* dpy, const double* dpz, int nx_tot, int ny_tot,
+                                   int nz_tot, int ng, const double* rho, double dt);
 
     // FE (one shot)
     void diffuse_velocity_fe_c(const double* u, const double* v, const double* w,

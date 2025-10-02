@@ -110,6 +110,69 @@ contains
     end do
   end subroutine divergence_c
 
+  subroutine divergence_rhie_chow_c(u, v, w, p, rho, nx_tot, ny_tot, nz_tot, &
+                                    ng, dx, dy, dz, dt, div) &
+    bind(C, name="divergence_rhie_chow_c")
+    use, intrinsic :: iso_c_binding
+    implicit none
+    integer(c_int), value :: nx_tot, ny_tot, nz_tot, ng
+    real(c_double), value :: dx, dy, dz, dt
+    real(c_double), intent(in)  :: u(*), v(*), w(*), p(*), rho(*)
+    real(c_double), intent(out) :: div(*)
+
+    integer :: i, j, k, nx, ny, nz
+    integer(c_size_t) :: c, ip, im, jp, jm, kp, km, sx, sy, sz
+    integer(c_size_t) :: c0
+    real(c_double) :: fx, fy, fz
+    real(c_double) :: u_e, u_w, v_n, v_s, w_t, w_b
+    real(c_double) :: rho_e, rho_w, rho_n, rho_s, rho_t, rho_b
+    real(c_double) :: D_e, D_w, D_n, D_s, D_t, D_b
+
+    nx = nx_tot-2*ng; ny = ny_tot-2*ng; nz = nz_tot-2*ng
+    fx = 1.0d0/dx; fy = 1.0d0/dy; fz = 1.0d0/dz
+
+    sx = 1_c_size_t
+    sy = int(nx_tot, c_size_t)
+    sz = sy*int(ny_tot, c_size_t)
+
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,c0,c,ip,im,jp,jm,kp,km,&
+    !$omp   u_e,u_w,v_n,v_s,w_t,w_b,rho_e,rho_w,rho_n,rho_s,rho_t,rho_b,D_e,D_w,D_n,D_s,D_t,D_b)
+    do k = 0, nz-1
+      do j = 0, ny-1
+        c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
+        c = c0
+        !$omp simd linear(c:1)
+        do i = 0, nx-1
+          ip = c+sx; im = c-sx
+          jp = c+sy; jm = c-sy
+          kp = c+sz; km = c-sz
+
+          ! Face densities (simple arithmetic average)
+          rho_e = 0.5d0*(rho(c)+rho(ip)); rho_w = 0.5d0*(rho(c)+rho(im))
+          rho_n = 0.5d0*(rho(c)+rho(jp)); rho_s = 0.5d0*(rho(c)+rho(jm))
+          rho_t = 0.5d0*(rho(c)+rho(kp)); rho_b = 0.5d0*(rho(c)+rho(km))
+
+          D_e = dt/max(rho_e, 1.0d-300); D_w = dt/max(rho_w, 1.0d-300)
+          D_n = dt/max(rho_n, 1.0d-300); D_s = dt/max(rho_s, 1.0d-300)
+          D_t = dt/max(rho_t, 1.0d-300); D_b = dt/max(rho_b, 1.0d-300)
+
+          ! RC face velocities (no area scaling; consistent with divergence_c)
+          u_e = 0.5d0*(u(c)+u(ip))-D_e*(p(ip)-p(c))*fx
+          u_w = 0.5d0*(u(im)+u(c))-D_w*(p(c)-p(im))*fx
+
+          v_n = 0.5d0*(v(c)+v(jp))-D_n*(p(jp)-p(c))*fy
+          v_s = 0.5d0*(v(jm)+v(c))-D_s*(p(c)-p(jm))*fy
+
+          w_t = 0.5d0*(w(c)+w(kp))-D_t*(p(kp)-p(c))*fz
+          w_b = 0.5d0*(w(km)+w(c))-D_b*(p(c)-p(km))*fz
+
+          div(c) = (u_e-u_w)*fx+(v_n-v_s)*fy+(w_t-w_b)*fz
+          c = c+1_c_size_t
+        end do
+      end do
+    end do
+  end subroutine divergence_rhie_chow_c
+
   subroutine poisson_jacobi_c(rhs, nx_tot, ny_tot, nz_tot, ng, dx, dy, dz, iters, p) &
     bind(C, name="poisson_jacobi_c")
     implicit none
@@ -174,6 +237,70 @@ contains
     !$omp end parallel
 
   end subroutine poisson_jacobi_c
+
+  subroutine poisson_jacobi_varcoef_c(rhs, beta, nx_tot, ny_tot, nz_tot, &
+                                      ng, dx, dy, dz, iters, p) &
+    bind(C, name="poisson_jacobi_varcoef_c")
+    use, intrinsic :: iso_c_binding
+    implicit none
+    integer(c_int), value :: nx_tot, ny_tot, nz_tot, ng, iters
+    real(c_double), value :: dx, dy, dz
+    real(c_double), intent(in)    :: rhs(*), beta(*)
+    real(c_double), intent(inout) :: p(*)
+
+    integer :: i, j, k, nx, ny, nz, iter
+    real(c_double) :: ax, ay, az, denom, be, bw, bn, bs, bt, bb
+    integer(c_size_t) :: c, ip, im, jp, jm, kp, km, sx, sy, sz, c0, Ntot
+
+    nx = nx_tot-2*ng; ny = ny_tot-2*ng; nz = nz_tot-2*ng
+    Ntot = int(nx_tot, c_size_t)*int(ny_tot, c_size_t)*int(nz_tot, c_size_t)
+
+    if (.not. allocated(pn_scratch)) then
+      allocate (pn_scratch(Ntot))
+    else if (size(pn_scratch) /= int(Ntot)) then
+      deallocate (pn_scratch); allocate (pn_scratch(Ntot))
+    end if
+
+    ax = 1.0d0/(dx*dx); ay = 1.0d0/(dy*dy); az = 1.0d0/(dz*dz)
+    sx = 1_c_size_t; sy = int(nx_tot, c_size_t); sz = sy*int(ny_tot, c_size_t)
+
+    !$omp parallel default(shared) private(iter,i,j,k,c,c0,ip,im,jp,jm,kp,km,be,bw,bn,bs,bt,bb,denom)
+    do iter = 1, iters
+      !$omp do collapse(2) schedule(static)
+      do k = 0, nz-1
+        do j = 0, ny-1
+          c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
+          c = c0
+          !$omp simd linear(c:1)
+          do i = 0, nx-1
+            ip = c+sx; im = c-sx; jp = c+sy; jm = c-sy; kp = c+sz; km = c-sz
+            be = 0.5d0*(beta(c)+beta(ip)); bw = 0.5d0*(beta(c)+beta(im))
+            bn = 0.5d0*(beta(c)+beta(jp)); bs = 0.5d0*(beta(c)+beta(jm))
+            bt = 0.5d0*(beta(c)+beta(kp)); bb = 0.5d0*(beta(c)+beta(km))
+
+            denom = ax*(be+bw)+ay*(bn+bs)+az*(bt+bb)
+            pn_scratch(c) = (ax*(be*p(ip)+bw*p(im))+ay*(bn*p(jp)+bs*p(jm)) &
+                             +az*(bt*p(kp)+bb*p(km))-rhs(c))/denom
+            c = c+1_c_size_t
+          end do
+        end do
+      end do
+
+      !$omp do collapse(2) schedule(static)
+      do k = 0, nz-1
+        do j = 0, ny-1
+          c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
+          c = c0
+          !$omp simd linear(c:1)
+          do i = 0, nx-1
+            p(c) = pn_scratch(c)
+            c = c+1_c_size_t
+          end do
+        end do
+      end do
+    end do
+    !$omp end parallel
+  end subroutine poisson_jacobi_varcoef_c
 
   subroutine gradp_c(p, nx_tot, ny_tot, nz_tot, ng, dx, dy, &
                      dz, dpx, dpy, dpz) bind(C, name="gradp_c")
@@ -246,6 +373,39 @@ contains
       end do
     end do
   end subroutine correct_velocity_c
+
+  subroutine correct_velocity_varrho_c(u, v, w, dpx, dpy, dpz, nx_tot, ny_tot, nz_tot, &
+                                       ng, rho, dt) &
+    bind(C, name="correct_velocity_varrho_c")
+    use, intrinsic :: iso_c_binding
+    implicit none
+    integer(c_int), value :: nx_tot, ny_tot, nz_tot, ng
+    real(c_double), value :: dt
+    real(c_double), intent(inout) :: u(*), v(*), w(*)
+    real(c_double), intent(in)    :: dpx(*), dpy(*), dpz(*), rho(*)
+    integer :: i, j, k, nx, ny, nz
+    integer(c_size_t) :: sx, sy, sz, c0, c
+    real(c_double) :: fac
+
+    nx = nx_tot-2*ng; ny = ny_tot-2*ng; nz = nz_tot-2*ng
+    sx = 1_c_size_t; sy = int(nx_tot, c_size_t); sz = sy*int(ny_tot, c_size_t)
+
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,c0,c,fac)
+    do k = 0, nz-1
+      do j = 0, ny-1
+        c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
+        c = c0
+        !$omp simd linear(c:1)
+        do i = 0, nx-1
+          fac = dt/max(rho(c), 1.0d-300)
+          u(c) = u(c)-fac*dpx(c)
+          v(c) = v(c)-fac*dpy(c)
+          w(c) = w(c)-fac*dpz(c)
+          c = c+sx
+        end do
+      end do
+    end do
+  end subroutine correct_velocity_varrho_c
 
   ! =========================
   ! FE: single explicit step

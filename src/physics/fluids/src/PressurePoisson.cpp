@@ -28,8 +28,9 @@ static inline int to_i(const std::string& s, int dflt)
 }
 
 PressurePoisson::PressurePoisson(double rho, double dx, double dy, double dz, int iters,
-                                 void* mpi_comm)
-    : rho_(rho), dx_(dx), dy_(dy), dz_(dz), iters_(iters), mpi_comm_(mpi_comm)
+                                 bool use_rhie_chow, void* mpi_comm)
+    : rho_(rho), dx_(dx), dy_(dy), dz_(dz), iters_(iters), use_rhie_chow_(use_rhie_chow),
+      mpi_comm_(mpi_comm)
 {
     info_.name = "pressure_poisson";
     info_.phases = plugin::Phase::PostExchange;
@@ -38,15 +39,34 @@ PressurePoisson::PressurePoisson(double rho, double dx, double dy, double dz, in
 std::shared_ptr<plugin::IAction> make_poisson(const plugin::KV& kv,
                                               const core::master::RunContext& rc)
 {
+    auto lower = [](std::string s)
+    {
+        std::transform(s.begin(), s.end(), s.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        return s;
+    };
+
     auto get = [&](const char* k, const char* dflt) -> std::string
     {
         if (auto it = kv.find(k); it != kv.end())
             return it->second;
         return dflt;
     };
+
+    auto to_b = [&](const std::string& s, bool dflt) -> bool
+    {
+        auto v = lower(s);
+        if (v == "1" || v == "true" || v == "on" || v == "yes")
+            return true;
+        if (v == "0" || v == "false" || v == "off" || v == "no")
+            return false;
+        return dflt;
+    };
+
     return std::make_shared<PressurePoisson>(
         to_d(get("rho", "1.0"), 1.0), to_d(get("dx", "1.0"), 1.0), to_d(get("dy", "1.0"), 1.0),
-        to_d(get("dz", "1.0"), 1.0), to_i(get("p_iters", "80"), 80), rc.mpi_comm);
+        to_d(get("dz", "1.0"), 1.0), to_i(get("p_iters", "80"), 80),
+        to_b(get("rhie_chow", "false"), false), rc.mpi_comm);
 }
 
 void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, double dt)
@@ -75,19 +95,64 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
 
     core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
 
-    // RHS = (rho/dt) * div(u*)
-    divergence_c(static_cast<const double*>(vu.host_ptr), static_cast<const double*>(vv.host_ptr),
-                 static_cast<const double*>(vw.host_ptr), nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_,
-                 div_.data());
-    const double scale = rho_ / dt;
-    for (double& x : div_)
-        x *= scale;
+    // Build RHS using either plain divergence or Rhie–Chow face velocities.
+    // If rho is a field => variable-coefficient Poisson with beta=1/rho and RHS=(1/dt)*div(u*).
+    // Else constant-coefficient Poisson with RHS=(rho/dt)*div(u*).
+    const std::size_t N = (std::size_t) nx_tot * ny_tot * nz_tot;
+
+    const bool have_rho_field = fields.contains("rho");
+    const double eps = 1.0e-300;
+
+    const double* u = static_cast<const double*>(vu.host_ptr);
+    const double* v = static_cast<const double*>(vv.host_ptr);
+    const double* w = static_cast<const double*>(vw.host_ptr);
+    double* p_ptr = static_cast<double*>(vp.host_ptr);
+
+    std::vector<double> rho_buf; // used either as beta source or as const-ρ array for RC
+    const double* rho_ptr = nullptr;
+    if (have_rho_field)
+    {
+        auto vr = fields.view("rho");
+        rho_ptr = static_cast<const double*>(vr.host_ptr);
+    }
+    else
+    {
+        // synthesize constant-ρ buffer if RC is requested
+        if (use_rhie_chow_)
+        {
+            rho_buf.assign(N, rho_);
+            rho_ptr = rho_buf.data();
+        }
+    }
+
+    if (use_rhie_chow_ && rho_ptr)
+    {
+        // RC divergence (uses p and ρ)
+        divergence_rhie_chow_c(u, v, w, p_ptr, rho_ptr, nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_,
+                               dt, div_.data());
+    }
+    else
+    {
+        // Plain central divergence
+        divergence_c(u, v, w, nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_, div_.data());
+    }
+
+    if (have_rho_field)
+    {
+        // variable-coefficient Poisson: ∇·(β∇p)= (1/dt) div(u*), with β=1/ρ
+        for (double& x : div_)
+            x *= (1.0 / dt);
+    }
+    else
+    {
+        // constant-coefficient: Δp = (ρ/dt) div(u*)
+        for (double& x : div_)
+            x *= (rho_ / dt);
+    }
 
     // Solve Laplacian(p) = RHS with Jacobi, exchanging halos each sweep
     if (!tile.mesh)
         throw std::runtime_error("[fluids.poisson] tile.mesh is null; Scheduler must set it.");
-
-    auto* p_ptr = static_cast<double*>(vp.host_ptr);
 
     // If p_iters == 0, skip solve but ensure halos are consistent for corrector
     if (iters_ == 0)
@@ -99,11 +164,27 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
     }
 
     const int kmax = std::max(1, iters_);
-    for (int k = 0; k < kmax; ++k)
+    if (have_rho_field)
     {
-        poisson_jacobi_c(div_.data(), nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_, /*iters=*/1,
-                         p_ptr);
-        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"p"});
+        // variable-coefficient: build beta = 1 / rho
+        beta_.resize(N);
+        for (std::size_t i = 0; i < N; ++i)
+            beta_[i] = 1.0 / std::max(rho_ptr[i], eps);
+        for (int k = 0; k < kmax; ++k)
+        {
+            poisson_jacobi_varcoef_c(div_.data(), beta_.data(), nx_tot, ny_tot, nz_tot, ng, dx_,
+                                     dy_, dz_, /*iters=*/1, p_ptr);
+            core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"p"});
+        }
+    }
+    else
+    {
+        for (int k = 0; k < kmax; ++k)
+        {
+            poisson_jacobi_c(div_.data(), nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_, /*iters=*/1,
+                             p_ptr);
+            core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"p"});
+        }
     }
 
     // Remove global mean (fixes Neumann nullspace), then exchange once more

@@ -7,7 +7,10 @@ add_executable(
   test_program_plan.cpp
   test_correct_velocity.cpp
   test_poisson.cpp
-  test_diffuse_be.cpp)
+  test_diffuse_be.cpp
+  test_divergence_rhie_chow.cpp
+  test_poisson_varcoef.cpp
+  test_correct_velocity_varrho.cpp)
 
 # Link: plugin + core + Catch2
 target_link_libraries(unit_fluids PRIVATE physics_fluids core

@@ -59,9 +59,21 @@ void Corrector::execute(const MeshTileView& tile, FieldCatalog& fields, double d
     gradp_c(static_cast<const double*>(vp.host_ptr), nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_,
             dpx.data(), dpy.data(), dpz.data());
 
-    correct_velocity_c(static_cast<double*>(vu.host_ptr), static_cast<double*>(vv.host_ptr),
-                       static_cast<double*>(vw.host_ptr), dpx.data(), dpy.data(), dpz.data(),
-                       nx_tot, ny_tot, nz_tot, ng, rho_, dt);
+    if (fields.contains("rho"))
+    {
+        auto vr = fields.view("rho");
+        const double* rho = static_cast<const double*>(vr.host_ptr);
+        correct_velocity_varrho_c(static_cast<double*>(vu.host_ptr),
+                                  static_cast<double*>(vv.host_ptr),
+                                  static_cast<double*>(vw.host_ptr), dpx.data(), dpy.data(),
+                                  dpz.data(), nx_tot, ny_tot, nz_tot, ng, rho, dt);
+    }
+    else
+    {
+        correct_velocity_c(static_cast<double*>(vu.host_ptr), static_cast<double*>(vv.host_ptr),
+                           static_cast<double*>(vw.host_ptr), dpx.data(), dpy.data(), dpz.data(),
+                           nx_tot, ny_tot, nz_tot, ng, rho_, dt);
+    }
 }
 
 } // namespace fluids

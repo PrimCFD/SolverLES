@@ -10,7 +10,8 @@ namespace fluids
 
 struct PressurePoisson final : core::master::plugin::IAction
 {
-    PressurePoisson(double rho, double dx, double dy, double dz, int iters, void* mpi_comm);
+    PressurePoisson(double rho, double dx, double dy, double dz, int iters, bool use_rhie_chow,
+                    void* mpi_comm);
 
     const core::master::plugin::ActionInfo& info() const noexcept override { return info_; }
     void execute(const core::master::MeshTileView& tile, core::master::FieldCatalog& fields,
@@ -21,6 +22,8 @@ struct PressurePoisson final : core::master::plugin::IAction
     double rho_, dx_, dy_, dz_;
     int iters_;
     std::vector<double> div_; // scratch divergence
+    bool use_rhie_chow_{true};
+    std::vector<double> beta_;
     void* mpi_comm_ = nullptr;
 };
 

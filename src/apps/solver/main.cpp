@@ -229,7 +229,7 @@ int main(int argc, char** argv)
     }
     // (If Precision::Native, leave wcfg.precision at its default)
 
-    // Optional XDMF version (accept strings "v2"/"v3" or booly flag in your YAML)
+    // Optional XDMF version (accept strings "v2"/"v3" or booly flag in YAML)
     if (cfg.io.xdmf_version == "v2")
     {
         wcfg.xdmf_version = WriterConfig::XdmfVersion::V2;

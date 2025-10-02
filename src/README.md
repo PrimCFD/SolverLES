@@ -132,33 +132,34 @@ The solver app reads a YAML file and passes **string keys** to the registry. Exa
 
 ```yaml
 #=======================
-# SolverLES config (v0)
+# SolverLES config (v0.5)
 #=======================
 
 
 # Short identifier for outputs (writer will create path/<case>.h5, path/<case>.xmf, etc.)
-case: cavity_64 # default: "case"
+case: hello_mesh
 
 
 # Mesh (local box on each rank, ghosts are uniform)
 mesh:
-  local: [64, 64, 64] # required (ints)
+  local: [32, 32, 32] # required (ints)
   ng: 2 # required (uniform ghost width)
   periodic: [false, false, false] # optional (reserved)
 
 
 # Time integration and writer cadence
 time:
-  dt: 1.0e-3 # required (seconds)
+  dt: 5.0e-2 # required (seconds)
   t_end: 1.0 # required (seconds)
   write_every: # choose one; if both set, 'steps' wins
-    steps: 10 # write every N steps
+    steps: 1 # write every N steps
     # time: 0.05 # OR every T seconds (converted with ceil(T/dt))
 
 
 # I/O policy & backend
 io:
   backend: xdmf # xdmf | cgns | null
+  xdmf_version : v3 # xdmf version
   path: out # output directory
   precision: native # native | float64 | float32 (packing override)
   async: # optional background writer
@@ -179,15 +180,40 @@ plugins:
 
 # Program selector + free-form KV passed to plugin (strings on both sides)
 program:
-  key: rk3
+  key: les
   params:
+    dx: "1"
+    dy: "1" 
+    dz: "1"
+    rho: "1"
+    nu: "1e-3"
+    Cs: "0.16"
+    alpha_u: "0.7"
+    alpha_p: "0.3"
+
+    time_scheme: "be"         # "fe" (MVP) or "be" (residual-driven)
+    #fe_iters: "1"             # fixed FE sweeps per step (use 2–3 if you want an extra polish)
+    be_rtol: "1e-3"  # (only used if time_scheme=be)
+    be_max_iters: "50"
+    p_iters: "3" # Poisson iterations (0 => writes p=0)
+
+    adv_blend: "0.0"
     cfl: "0.7"
-    # any other plugin-defined keys → strings
+
+    bc.u.west:   "dirichlet:0"
+    bc.u.east:   "dirichlet:0"
+    bc.u.south:  "dirichlet:0"
+    bc.u.north:  "dirichlet:1"   # moving lid
+    bc.u.bottom: "dirichlet:0"
+    bc.u.top:    "dirichlet:0"
+    bc.v.*: "dirichlet:0" # * => all faces
+    bc.w.*: "dirichlet:0"
+    bc.p.*: "neumann:0"
 
 
-# Field output selection by name (the app allocates/registers these as doubles for now)
+# Field output selection by name (the app allocates/registers these as doubles)
 fields:
-  output: [rho]
+  output: [u, v, w, p, nu_t]
 ```
 
 ---
