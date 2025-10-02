@@ -6,7 +6,7 @@ extern "C"
 
     void fluids_kernels_free_scratch();
 
-    void sgs_smagorinsky_c(const double* u, const double* v, const double* w, int nx_tot,
+    void sgs_smagorinsky_mac_c(const double* u, const double* v, const double* w, int nx_tot,
                            int ny_tot, int nz_tot, int ng, double dx, double dy, double dz,
                            double Cs, double* nu_t_out);
 
@@ -68,6 +68,11 @@ extern "C"
                                         const double* nu_eff, int nx_tot, int ny_tot, int nz_tot,
                                         int ng, double dx, double dy, double dz, double dt,
                                         double* res2, double* rhs2);
+
+    void advect_velocity_kk3_c(const double* u, const double* v, const double* w,
+                           int nx_tot, int ny_tot, int nz_tot, int ng,
+                           double dx, double dy, double dz, double blend,
+                           double* nu_u, double* nu_v, double* nu_w);
 
 #ifdef __cplusplus
 }

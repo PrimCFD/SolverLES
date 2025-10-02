@@ -66,6 +66,11 @@ std::shared_ptr<plugin::IAction> make_predictor(const plugin::KV& kv,
         be_solver_str == "jacobi" ? Predictor::BESolver::Jacobi : Predictor::BESolver::RBGS;
     P->set_be_controls(be_iters, be_rtol, rc.mpi_comm,
                        be_solver); // Keep MPI communicator (opaque) for halo_ops
+    const double adv_blend = to_d(get("adv_blend", "0.0"), 0.0);
+    P->set_adv_blend(adv_blend);
+    const std::string adv = to_lower(get("advect", "on"));
+    const bool adv_on = !(adv == "0" || adv == "false" || adv == "off" || adv == "no");
+    P->set_advect_enabled(adv_on);
     return P;
 }
 
@@ -110,6 +115,18 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
 
     if (!tile.mesh)
         throw std::runtime_error("[fluids.predictor] tile.mesh is null; Scheduler must set it.");
+
+    // ---- Advection: KK3 tendency N(u) = -(u·∇)u on faces (explicit) ----
+    std::vector<double> Nu, Nv, Nw;
+    if (advect_enabled_) {
+        Nu.assign(N, 0.0); Nv.assign(N, 0.0); Nw.assign(N, 0.0);
+        advect_velocity_kk3_c(static_cast<const double*>(vu.host_ptr),
+                            static_cast<const double*>(vv.host_ptr),
+                            static_cast<const double*>(vw.host_ptr),
+                            nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_, adv_blend_,
+                            Nu.data(), Nv.data(), Nw.data());
+    }
+
     core::mesh::Mesh mesh_like = *tile.mesh;
     // Ensure local & ng match the current field
     mesh_like.local = {nx_tot - 2 * ng, ny_tot - 2 * ng, nz_tot - 2 * ng};
@@ -125,6 +142,15 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
         diffuse_velocity_fe_c(u_ptr, v_ptr, w_ptr, nu_eff.data(), nx_tot, ny_tot, nz_tot, ng, dx_,
                               dy_, dz_, dt, us_.data(), vs_.data(), ws_.data());
 
+        // Add advection explicitly (AB1/Euler): u^{n+1} = u^n + dt*νΔu^n + dt*N(u^n)
+        if (advect_enabled_) {
+            for (std::size_t q = 0; q < N; ++q) {
+                us_[q] += dt * Nu[q];
+                vs_[q] += dt * Nv[q];
+                ws_[q] += dt * Nw[q];
+            }
+        }
+
         std::memcpy(u_ptr, us_.data(), N * sizeof(double));
         std::memcpy(v_ptr, vs_.data(), N * sizeof(double));
         std::memcpy(w_ptr, ws_.data(), N * sizeof(double));
@@ -137,6 +163,15 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
     // Initial guess u^(0) := u^n; ensure halos are consistent before first sweep
     core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
 
+    // Incorporate explicit advection (AB1): RHS = u^n + dt*N(u^n)
+    if (advect_enabled_) {
+        for (std::size_t q = 0; q < N; ++q) {
+            urhs[q] += dt * Nu[q];
+            vrhs[q] += dt * Nv[q];
+            wrhs[q] += dt * Nw[q];
+        }
+    }
+
     const int kmax = std::max(1, be_max_iters_);
     const double rtol = (be_rtol_ > 0.0 ? be_rtol_ : 1e-8);
 
@@ -148,6 +183,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
             diffuse_velocity_be_sweep_c(urhs.data(), vrhs.data(), wrhs.data(), u_ptr, v_ptr, w_ptr,
                                         nu_eff.data(), nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_,
                                         dt, us_.data(), vs_.data(), ws_.data());
+
             std::copy_n(us_.data(), N, u_ptr);
             std::copy_n(vs_.data(), N, v_ptr);
             std::copy_n(ws_.data(), N, w_ptr);

@@ -34,6 +34,9 @@ struct Predictor final : core::master::plugin::IAction
     void execute(const core::master::MeshTileView& tile, core::master::FieldCatalog& fields,
                  double dt) override;
 
+    void set_adv_blend(double v) { adv_blend_ = std::max(0.0, std::min(1.0, v)); }
+    void set_advect_enabled(bool b) { advect_enabled_ = b; }
+
   private:
     core::master::plugin::ActionInfo info_;
     double rho_, nu_, dx_, dy_, dz_;
@@ -44,6 +47,8 @@ struct Predictor final : core::master::plugin::IAction
     double be_rtol_ = 1e-8;
     void* mpi_comm_ = nullptr;            // opaque; valid only in MPI builds
     BESolver be_solver_ = BESolver::RBGS; // default: RBGS (faster than Jacobi)
+    double adv_blend_ = 0.0;
+    bool advect_enabled_ = true;
 };
 
 std::shared_ptr<core::master::plugin::IAction> make_predictor(const core::master::plugin::KV& kv,

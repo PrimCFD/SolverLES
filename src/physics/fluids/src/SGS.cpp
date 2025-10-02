@@ -68,7 +68,7 @@ void SGS::execute(const MeshTileView& tile, FieldCatalog& fields, double)
         nu_t = scratch_.data();
     }
 
-    sgs_smagorinsky_c(u, v, w, nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_, Cs_, nu_t);
+    sgs_smagorinsky_mac_c(u, v, w, nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_, Cs_, nu_t);
 }
 
 } // namespace fluids

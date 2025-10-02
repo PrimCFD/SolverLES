@@ -43,6 +43,7 @@ program:
     be_rtol: "1e-6"  # (only used if time_scheme=be)
     be_max_iters: "100"
     adv_blend: "0.0"
+    advect: "off"
     p_iters: "0"                 # keep Poisson off for a diffusion test
     init: "taylor_green"
 

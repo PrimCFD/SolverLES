@@ -48,6 +48,21 @@ static inline bool is_contig(const AnyFieldView& v, std::size_t elem_size)
            sz == (std::ptrdiff_t)(elem_size * nx * ny);
 }
 
+// Small helper to infer CGNS GridLocation from field extents relative to the cell counts
+static inline GridLocation_t infer_location(int fnx, int fny, int fnz, int nx, int ny, int nz)
+{
+    if (fnx == nx && fny == ny && fnz == nz)
+        return CellCenter;
+    if (fnx == nx + 1 && fny == ny && fnz == nz)
+        return IFaceCenter;
+    if (fnx == nx && fny == ny + 1 && fnz == nz)
+        return JFaceCenter;
+    if (fnx == nx && fny == ny && fnz == nz + 1)
+        return KFaceCenter;
+    // Fallback: treat anything else as Vertex to avoid lying; readers can still consume raw arrays
+    return Vertex;
+}
+
 template <class SrcT, class DstT>
 static void pack_cast_3d(DstT* __restrict d, const SrcT* __restrict s, int nx, int ny, int nz,
                          std::ptrdiff_t sx, std::ptrdiff_t sy, std::ptrdiff_t sz)
@@ -276,15 +291,46 @@ void CGNSWriter::write(const WriteRequest& req)
     std::snprintf(solname, sizeof(solname), "FlowSolutionAtStep%06d", s + 1);
     impl_->sol_names.emplace_back(solname);
 
-    int sol_id{};
-    if (cg_sol_write(impl_->file, impl_->base, impl_->zone, solname, CellCenter, &sol_id))
-        return;
+    // We may need multiple FlowSolution nodes per step (one per GridLocation)
+    // Name them deterministically and lazily create on first use.
+    // Keep a canonical solution name for iterative metadata (prefer CellCenter).
+    int sol_cell = 0, sol_i = 0, sol_j = 0, sol_k = 0, sol_other = 0;
+    auto get_or_make_sol = [&](GridLocation_t loc) -> int {
+        const char* tag =
+            (loc == CellCenter)   ? "Cell"
+          : (loc == IFaceCenter)  ? "IFace"
+          : (loc == JFaceCenter)  ? "JFace"
+          : (loc == KFaceCenter)  ? "KFace"
+                                  : "Vertex";
+        char name[80];
+        std::snprintf(name, sizeof(name), "%s_%s", solname, tag);
+        int* slot = (loc == CellCenter) ? &sol_cell
+                  : (loc == IFaceCenter) ? &sol_i
+                  : (loc == JFaceCenter) ? &sol_j
+                  : (loc == KFaceCenter) ? &sol_k
+                                         : &sol_other;
+        if (*slot == 0)
+        {
+            if (cg_sol_write(impl_->file, impl_->base, impl_->zone, name, loc, slot))
+                return 0;
+        }
+        return *slot;
+    };
 
     // Fields
+    bool have_cell_solution = false;
     for (std::size_t i = 0; i < plan_.fields.size(); ++i)
     {
         const auto& fp = plan_.fields[i];
         const auto& view = req.fields[i];
+        // Decide location from extents
+        GridLocation_t loc = infer_location(fp.shape.nx, fp.shape.ny, fp.shape.nz,
+                                            impl_->nx, impl_->ny, impl_->nz);
+        int sol_id = get_or_make_sol(loc);
+        if (sol_id == 0)
+            return;
+        if (loc == CellCenter)
+            have_cell_solution = true;
         DataType_t dtype = (fp.shape.elem_size == 8)   ? RealDouble
                            : (fp.shape.elem_size == 4) ? RealSingle
                                                        : DataTypeNull;
@@ -330,7 +376,15 @@ void CGNSWriter::write(const WriteRequest& req)
         }
     }
 
-    // NOTE: no iterative metadata update here; we finalize once in close()
+    // NOTE: we keep only one pointer per step in iterative metadata.
+    // Prefer Cell solution; otherwise point to the first created one.
+    if (have_cell_solution)
+    {
+        char solname_cell[80];
+        std::snprintf(solname_cell, sizeof(solname_cell), "%s_Cell", solname);
+        impl_->sol_names.back() = solname_cell;
+    }
+    // else impl_->sol_names already contains the base name; finalize_iter_meta will use it.
 }
 
 void CGNSWriter::close()

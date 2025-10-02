@@ -6,8 +6,8 @@ mesh:
   periodic: [false, false, false]
 
 time:
-  dt: 5.0e-1
-  t_end: 5.0
+  dt: 1.0e-2
+  t_end: 2.0
   write_every:
     steps: 1
 
@@ -25,9 +25,9 @@ plugins:
 program:
   key: les
   params:
-    dx: "1"
-    dy: "1"
-    dz: "1"
+    dx: "0.03125"
+    dy: "0.03125"
+    dz: "0.03125"
 
     rho: "1"
     nu: "1e-3"
@@ -38,7 +38,7 @@ program:
     time_scheme: "fe"
     fe_iters: "3" 
 
-    adv_blend: "0.0"
+    adv_blend: "0.25"
 
     bc.u.west: "dirichlet:0"
     bc.u.east: "dirichlet:0"

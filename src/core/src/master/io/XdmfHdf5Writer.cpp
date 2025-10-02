@@ -50,6 +50,19 @@ static inline bool is_contig(const AnyFieldView& v, std::size_t elem_size)
            sz == (std::ptrdiff_t)(elem_size * nx * ny);
 }
 
+static inline const char* xmf_center_for(int fnx, int fny, int fnz, int nx, int ny, int nz)
+{
+    if (fnx == nx && fny == ny && fnz == nz)
+        return "Cell";
+    // XDMF supports "Face" center for staggered face data on structured grids
+    if ((fnx == nx + 1 && fny == ny && fnz == nz) ||
+        (fnx == nx && fny == ny + 1 && fnz == nz) ||
+        (fnx == nx && fny == ny && fnz == nz + 1))
+        return "Face";
+    // Conservative fallback
+    return "Node";
+}
+
 template <class SrcT, class DstT>
 static void pack_cast_3d(DstT* __restrict d, const SrcT* __restrict s, int nx, int ny, int nz,
                          std::ptrdiff_t sx, std::ptrdiff_t sy, std::ptrdiff_t sz)
@@ -239,8 +252,10 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
         {
             const auto& fp = plan_.fields[i];
             const auto& fname = fp.shape.name;
+            const char* center = xmf_center_for(fp.shape.nx, fp.shape.ny, fp.shape.nz,
+                                                impl_->nx, impl_->ny, impl_->nz);
             xmf << " <Attribute Name=\"" << fname
-                << "\" AttributeType=\"Scalar\" Center=\"Cell\">\n"
+                << "\" AttributeType=\"Scalar\" Center=\"" << center << "\">\n"
                 << " <DataItem Dimensions=\"" << impl_->nz << " " << impl_->ny << " " << impl_->nx
                 << "\" NumberType=\"Float\" Precision=\"" << fp.shape.elem_size
                 << "\" Format=\"HDF\">" << fs::path(impl_->h5_path).filename().string() << ":/"
