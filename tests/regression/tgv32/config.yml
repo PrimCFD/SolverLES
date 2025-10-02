@@ -38,8 +38,6 @@ program:
     nu:  "1.0e-1"
     Cs:  "0.0"
 
-    rhie_chow: on
-
     time_scheme: "be"
     #fe_iters: "3"
     be_rtol: "1e-6"  # (only used if time_scheme=be)

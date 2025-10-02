@@ -74,104 +74,63 @@ contains
     end do
   end subroutine sgs_smagorinsky_c
 
-  subroutine divergence_c(u, v, w, nx_tot, ny_tot, nz_tot, ng, dx, dy, &
-                          dz, div) bind(C, name="divergence_c")
+  subroutine divergence_mac_c(u, v, w, &
+                              nxu_tot, nyu_tot, nzu_tot, &
+                              nxv_tot, nyv_tot, nzv_tot, &
+                              nxw_tot, nyw_tot, nzw_tot, &
+                              nxc_tot, nyc_tot, nzc_tot, &
+                              ng, dx, dy, dz, div) bind(C, name="divergence_mac_c")
+    use, intrinsic :: iso_c_binding
     implicit none
-    integer(c_int), value :: nx_tot, ny_tot, nz_tot, ng
+    integer(c_int), value :: nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot
+    integer(c_int), value :: nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot, ng
     real(c_double), value :: dx, dy, dz
     real(c_double), intent(in)  :: u(*), v(*), w(*)
     real(c_double), intent(out) :: div(*)
-    integer :: i, j, k, nx, ny, nz
+
+    integer :: i, j, k, nxc, nyc, nzc
+    integer(c_size_t) :: sxu, syu, szu, sxv, syv, szv, sxw, syw, szw, sxc, syc, szc
+    integer(c_size_t) :: cC0, cC, cu0, cv0, cw0, cu_w, cu_e, cv_s, cv_n, cw_b, cw_t
     real(c_double) :: fx, fy, fz
-    integer(c_size_t) :: c, ip, im, jp, jm, kp, km, sx, sy, sz
-    integer(c_size_t) :: c0
 
-    nx = nx_tot-2*ng; ny = ny_tot-2*ng; nz = nz_tot-2*ng
+    nxc = nxc_tot-2*ng; nyc = nyc_tot-2*ng; nzc = nzc_tot-2*ng
     fx = 1.0d0/dx; fy = 1.0d0/dy; fz = 1.0d0/dz
-    sx = 1_c_size_t
-    sy = int(nx_tot, c_size_t)
-    sz = sy*int(ny_tot, c_size_t)
 
-    !$omp parallel do collapse(2) schedule(static) private(i,j,k,c,c0,ip,im,jp,jm,kp,km)
-    do k = 0, nz-1
-      do j = 0, ny-1
-        c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
-        c = c0
-        !$omp simd linear(c:1)
-        do i = 0, nx-1
-          ip = c+sx; im = c-sx
-          jp = c+sy; jm = c-sy
-          kp = c+sz; km = c-sz
+    sxu = 1_c_size_t; syu = int(nxu_tot, c_size_t); szu = syu*int(nyu_tot, c_size_t)
+    sxv = 1_c_size_t; syv = int(nxv_tot, c_size_t); szv = syv*int(nyv_tot, c_size_t)
+    sxw = 1_c_size_t; syw = int(nxw_tot, c_size_t); szw = syw*int(nyw_tot, c_size_t)
+    sxc = 1_c_size_t; syc = int(nxc_tot, c_size_t); szc = syc*int(nyc_tot, c_size_t)
 
-          div(c) = (u(ip)-u(im))*0.5d0*fx+(v(jp)-v(jm))*0.5d0*fy+(w(kp)-w(km))*0.5d0*fz
-          c = c+1_c_size_t
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cC0,cC,cu0,cv0,cw0,cu_w,cu_e,cv_s,cv_n,cw_b,cw_t)
+    do k = 0, nzc-1
+      do j = 0, nyc-1
+        ! base indices at (i=0) for this j,k
+        cC0 = 1_c_size_t+int(ng, c_size_t)+syc*int(j+ng, c_size_t)+szc*int(k+ng, c_size_t)
+        cu0 = 1_c_size_t+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
+        cv0 = 1_c_size_t+int(ng, c_size_t)+szv*int(k+ng, c_size_t)
+        cw0 = 1_c_size_t+int(ng, c_size_t)+syw*int(j+ng, c_size_t)
+
+        cC = cC0
+        !$omp simd linear(cC:1)
+        do i = 0, nxc-1
+          ! u-faces: west at i -> (ng+i), east -> +1
+          cu_w = cu0+int(ng+i, c_size_t)
+          cu_e = cu_w+sxu
+
+          ! v-faces: south at j -> (ng+j), north -> +syv
+          cv_s = (1_c_size_t+int(ng+i, c_size_t)+syv*int(ng+j, c_size_t)+szv*int(k+ng, c_size_t))
+          cv_n = cv_s+syv
+
+          ! w-faces: bottom at k -> (ng+k), top -> +szw
+          cw_b = (1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(ng+k, c_size_t))
+          cw_t = cw_b+szw
+
+          div(cC) = (u(cu_e)-u(cu_w))*fx+(v(cv_n)-v(cv_s))*fy+(w(cw_t)-w(cw_b))*fz
+          cC = cC+sxc
         end do
       end do
     end do
-  end subroutine divergence_c
-
-  subroutine divergence_rhie_chow_c(u, v, w, p, rho, nx_tot, ny_tot, nz_tot, &
-                                    ng, dx, dy, dz, dt, div) &
-    bind(C, name="divergence_rhie_chow_c")
-    use, intrinsic :: iso_c_binding
-    implicit none
-    integer(c_int), value :: nx_tot, ny_tot, nz_tot, ng
-    real(c_double), value :: dx, dy, dz, dt
-    real(c_double), intent(in)  :: u(*), v(*), w(*), p(*), rho(*)
-    real(c_double), intent(out) :: div(*)
-
-    integer :: i, j, k, nx, ny, nz
-    integer(c_size_t) :: c, ip, im, jp, jm, kp, km, sx, sy, sz
-    integer(c_size_t) :: c0
-    real(c_double) :: fx, fy, fz
-    real(c_double) :: u_e, u_w, v_n, v_s, w_t, w_b
-    real(c_double) :: rho_e, rho_w, rho_n, rho_s, rho_t, rho_b
-    real(c_double) :: D_e, D_w, D_n, D_s, D_t, D_b
-
-    nx = nx_tot-2*ng; ny = ny_tot-2*ng; nz = nz_tot-2*ng
-    fx = 1.0d0/dx; fy = 1.0d0/dy; fz = 1.0d0/dz
-
-    sx = 1_c_size_t
-    sy = int(nx_tot, c_size_t)
-    sz = sy*int(ny_tot, c_size_t)
-
-    !$omp parallel do collapse(2) schedule(static) private(i,j,k,c0,c,ip,im,jp,jm,kp,km,&
-    !$omp   u_e,u_w,v_n,v_s,w_t,w_b,rho_e,rho_w,rho_n,rho_s,rho_t,rho_b,D_e,D_w,D_n,D_s,D_t,D_b)
-    do k = 0, nz-1
-      do j = 0, ny-1
-        c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
-        c = c0
-        !$omp simd linear(c:1)
-        do i = 0, nx-1
-          ip = c+sx; im = c-sx
-          jp = c+sy; jm = c-sy
-          kp = c+sz; km = c-sz
-
-          ! Face densities (simple arithmetic average)
-          rho_e = 0.5d0*(rho(c)+rho(ip)); rho_w = 0.5d0*(rho(c)+rho(im))
-          rho_n = 0.5d0*(rho(c)+rho(jp)); rho_s = 0.5d0*(rho(c)+rho(jm))
-          rho_t = 0.5d0*(rho(c)+rho(kp)); rho_b = 0.5d0*(rho(c)+rho(km))
-
-          D_e = dt/max(rho_e, 1.0d-300); D_w = dt/max(rho_w, 1.0d-300)
-          D_n = dt/max(rho_n, 1.0d-300); D_s = dt/max(rho_s, 1.0d-300)
-          D_t = dt/max(rho_t, 1.0d-300); D_b = dt/max(rho_b, 1.0d-300)
-
-          ! RC face velocities (no area scaling; consistent with divergence_c)
-          u_e = 0.5d0*(u(c)+u(ip))-D_e*(p(ip)-p(c))*fx
-          u_w = 0.5d0*(u(im)+u(c))-D_w*(p(c)-p(im))*fx
-
-          v_n = 0.5d0*(v(c)+v(jp))-D_n*(p(jp)-p(c))*fy
-          v_s = 0.5d0*(v(jm)+v(c))-D_s*(p(c)-p(jm))*fy
-
-          w_t = 0.5d0*(w(c)+w(kp))-D_t*(p(kp)-p(c))*fz
-          w_b = 0.5d0*(w(km)+w(c))-D_b*(p(c)-p(km))*fz
-
-          div(c) = (u_e-u_w)*fx+(v_n-v_s)*fy+(w_t-w_b)*fz
-          c = c+1_c_size_t
-        end do
-      end do
-    end do
-  end subroutine divergence_rhie_chow_c
+  end subroutine divergence_mac_c
 
   subroutine poisson_jacobi_c(rhs, nx_tot, ny_tot, nz_tot, ng, dx, dy, dz, iters, p) &
     bind(C, name="poisson_jacobi_c")
@@ -302,110 +261,199 @@ contains
     !$omp end parallel
   end subroutine poisson_jacobi_varcoef_c
 
-  subroutine gradp_c(p, nx_tot, ny_tot, nz_tot, ng, dx, dy, &
-                     dz, dpx, dpy, dpz) bind(C, name="gradp_c")
+  subroutine gradp_faces_c(p, nxc_tot, nyc_tot, nzc_tot, ng, dx, dy, dz, &
+                           dpx_u, nxu_tot, nyu_tot, nzu_tot, &
+                           dpy_v, nxv_tot, nyv_tot, nzv_tot, &
+                           dpz_w, nxw_tot, nyw_tot, nzw_tot) bind(C, name="gradp_faces_c")
+    use, intrinsic :: iso_c_binding
     implicit none
-    integer(c_int), value :: nx_tot, ny_tot, nz_tot, ng
+    integer(c_int), value :: nxc_tot, nyc_tot, nzc_tot, nxu_tot, nyu_tot, nzu_tot
+    integer(c_int), value :: nxv_tot, nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng
     real(c_double), value :: dx, dy, dz
     real(c_double), intent(in)  :: p(*)
-    real(c_double), intent(out) :: dpx(*), dpy(*), dpz(*)
-    integer :: i, j, k, nx, ny, nz
-    real(c_double) :: fx, fy, fz
-    integer(c_size_t) :: c, ip, im, jp, jm, kp, km, sx, sy, sz
-    integer(c_size_t) :: c0
+    real(c_double), intent(out) :: dpx_u(*), dpy_v(*), dpz_w(*)
 
-    nx = nx_tot-2*ng; ny = ny_tot-2*ng; nz = nz_tot-2*ng
-    fx = 1.0d0/dx; fy = 1.0d0/dy; fz = 1.0d0/dz
-    sx = 1_c_size_t
-    sy = int(nx_tot, c_size_t)
-    sz = sy*int(ny_tot, c_size_t)
+    integer :: i, j, k, nxc, nyc, nzc
+    integer(c_size_t) :: sxc, syc, szc, sxu, syu, szu, sxv, syv, szv, sxw, syw, szw
+    integer(c_size_t) :: cL, cR, cu, cv, cw, baseC, baseU, baseV, baseW
 
-    !$omp parallel do collapse(2) schedule(static) private(i,j,k,c,c0,ip,im,jp,jm,kp,km)
-    do k = 0, nz-1
-      do j = 0, ny-1
-        c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
-        c = c0
-        !$omp simd linear(c:1)
-        do i = 0, nx-1
-          ip = c+sx; im = c-sx
-          jp = c+sy; jm = c-sy
-          kp = c+sz; km = c-sz
+    nxc = nxc_tot-2*ng; nyc = nyc_tot-2*ng; nzc = nzc_tot-2*ng
+    sxc = 1_c_size_t; syc = int(nxc_tot, c_size_t); szc = syc*int(nyc_tot, c_size_t)
+    sxu = 1_c_size_t; syu = int(nxu_tot, c_size_t); szu = syu*int(nyu_tot, c_size_t)
+    sxv = 1_c_size_t; syv = int(nxv_tot, c_size_t); szv = syv*int(nyv_tot, c_size_t)
+    sxw = 1_c_size_t; syw = int(nxw_tot, c_size_t); szw = syw*int(nyw_tot, c_size_t)
 
-          dpx(c) = (p(ip)-p(im))*0.5d0*fx
-          dpy(c) = (p(jp)-p(jm))*0.5d0*fy
-          dpz(c) = (p(kp)-p(km))*0.5d0*fz
-          c = c+1_c_size_t
+    ! u-faces: interior faces i=1..nxc-1
+    !$omp parallel do collapse(2) schedule(static) private(j,k,i,baseC,baseU,cL,cR,cu)
+    do k = 0, nzc-1
+      do j = 0, nyc-1
+        baseC = 1_c_size_t+int(ng, c_size_t)+syc*int(j+ng, c_size_t)+szc*int(k+ng, c_size_t)
+        baseU = 1_c_size_t+int(ng, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
+        do i = 1, nxc-1
+          cL = baseC+int(i-1, c_size_t)
+          cR = cL+sxc
+          cu = baseU+int(i, c_size_t)     ! write at i = 1..nxc-1 -> faces ng+1..ng+nxc-1
+          dpx_u(cu) = (p(cR)-p(cL))/dx
         end do
       end do
     end do
-  end subroutine gradp_c
 
-  subroutine correct_velocity_c(u, v, w, dpx, dpy, dpz, nx_tot, &
-                                ny_tot, nz_tot, ng, rho, dt) bind(C, name="correct_velocity_c")
+    ! v-faces: interior faces j=1..nyc-1
+    !$omp parallel do collapse(2) schedule(static) private(j,k,i,baseC,baseV,cL,cR,cv)
+    do k = 0, nzc-1
+      do i = 0, nxc-1
+        baseC = 1_c_size_t+int(ng+i, c_size_t)+szc*int(k+ng, c_size_t)
+        baseV = 1_c_size_t+int(ng+i, c_size_t)+szv*int(k+ng, c_size_t)
+        do j = 1, nyc-1
+          cL = baseC+syc*int(j-1+ng, c_size_t)
+          cR = cL+syc
+          cv = 1_c_size_t+int(ng+i, c_size_t)+syv*int(ng+j, c_size_t)+szv*int(k+ng, c_size_t)
+          dpy_v(cv) = (p(cR)-p(cL))/dy
+        end do
+      end do
+    end do
+
+    ! w-faces: interior faces k=1..nzc-1
+    !$omp parallel do collapse(2) schedule(static) private(j,k,i,baseC,baseW,cL,cR,cw)
+    do j = 0, nyc-1
+      do i = 0, nxc-1
+        baseC = 1_c_size_t+int(ng+i, c_size_t)+syc*int(j+ng, c_size_t)
+        baseW = 1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)
+        do k = 1, nzc-1
+          cL = baseC+szc*int(k-1+ng, c_size_t)
+          cR = cL+szc
+          cw = 1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(ng+k, c_size_t)
+          dpz_w(cw) = (p(cR)-p(cL))/dz
+        end do
+      end do
+    end do
+  end subroutine gradp_faces_c
+
+  subroutine correct_velocity_mac_c(u, v, w, dpx_u, dpy_v, dpz_w, &
+                                    nxu_tot, nyu_tot, nzu_tot, &
+                                    nxv_tot, nyv_tot, nzv_tot, &
+                                    nxw_tot, nyw_tot, nzw_tot, &
+                                    nxc_tot, nyc_tot, nzc_tot, ng, rho, dt) &
+    bind(C, name="correct_velocity_mac_c")
     use, intrinsic :: iso_c_binding
     implicit none
-    integer(c_int), value :: nx_tot, ny_tot, nz_tot, ng
-    real(c_double), value  :: rho, dt
+    integer(c_int), value :: nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot
+    integer(c_int), value :: nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot, ng
+    real(c_double), value :: rho, dt
     real(c_double), intent(inout) :: u(*), v(*), w(*)
-    real(c_double), intent(in)    :: dpx(*), dpy(*), dpz(*)
-    integer :: i, j, k, nx, ny, nz
-    integer(c_size_t) :: sx, sy, sz, c0, c
+    real(c_double), intent(in)    :: dpx_u(*), dpy_v(*), dpz_w(*)
+
+    integer :: i, j, k, nxc, nyc, nzc
+    integer(c_size_t) :: sxu, syu, szu, sxv, syv, szv, sxw, syw, szw
+    integer(c_size_t) :: cu
     real(c_double) :: fac
 
-    nx = nx_tot-2*ng; ny = ny_tot-2*ng; nz = nz_tot-2*ng
-    sx = 1_c_size_t
-    sy = int(nx_tot, c_size_t)
-    sz = sy*int(ny_tot, c_size_t)
+    nxc = nxc_tot-2*ng; nyc = nyc_tot-2*ng; nzc = nzc_tot-2*ng
+    sxu = 1_c_size_t; syu = int(nxu_tot, c_size_t); szu = syu*int(nyu_tot, c_size_t)
+    sxv = 1_c_size_t; syv = int(nxv_tot, c_size_t); szv = syv*int(nyv_tot, c_size_t)
+    sxw = 1_c_size_t; syw = int(nxw_tot, c_size_t); szw = syw*int(nyw_tot, c_size_t)
     fac = dt/rho
 
-    !$omp parallel do collapse(2) schedule(static) private(i,j,k,c0,c)
-    do k = 0, nz-1
-      do j = 0, ny-1
-        c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
-        c = c0
-        !$omp simd linear(c:1)
-        do i = 0, nx-1
-          u(c) = u(c)-fac*dpx(c)
-          v(c) = v(c)-fac*dpy(c)
-          w(c) = w(c)-fac*dpz(c)
-          c = c+sx
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cu)
+    do k = 0, nzc-1
+      do j = 0, nyc-1
+        do i = 1, nxc-1
+          cu = 1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
+          u(cu) = u(cu)-fac*dpx_u(cu)
         end do
       end do
     end do
-  end subroutine correct_velocity_c
 
-  subroutine correct_velocity_varrho_c(u, v, w, dpx, dpy, dpz, nx_tot, ny_tot, nz_tot, &
-                                       ng, rho, dt) &
-    bind(C, name="correct_velocity_varrho_c")
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cu)
+    do k = 0, nzc-1
+      do i = 0, nxc-1
+        do j = 1, nyc-1
+          cu = 1_c_size_t+int(ng+i, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)
+          v(cu) = v(cu)-fac*dpy_v(cu)
+        end do
+      end do
+    end do
+
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cu)
+    do j = 0, nyc-1
+      do i = 0, nxc-1
+        do k = 1, nzc-1
+          cu = 1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)
+          w(cu) = w(cu)-fac*dpz_w(cu)
+        end do
+      end do
+    end do
+  end subroutine correct_velocity_mac_c
+
+  subroutine correct_velocity_varrho_mac_c(u, v, w, dpx_u, dpy_v, dpz_w, &
+                                           nxu_tot, nyu_tot, nzu_tot, &
+                                           nxv_tot, nyv_tot, nzv_tot, &
+                                           nxw_tot, nyw_tot, nzw_tot, &
+                                           nxc_tot, nyc_tot, nzc_tot, ng, rho_c, dt) &
+    bind(C, name="correct_velocity_varrho_mac_c")
     use, intrinsic :: iso_c_binding
     implicit none
-    integer(c_int), value :: nx_tot, ny_tot, nz_tot, ng
+    integer(c_int), value :: nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot
+    integer(c_int), value :: nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot, ng
     real(c_double), value :: dt
     real(c_double), intent(inout) :: u(*), v(*), w(*)
-    real(c_double), intent(in)    :: dpx(*), dpy(*), dpz(*), rho(*)
-    integer :: i, j, k, nx, ny, nz
-    integer(c_size_t) :: sx, sy, sz, c0, c
-    real(c_double) :: fac
+    real(c_double), intent(in)    :: dpx_u(*), dpy_v(*), dpz_w(*), rho_c(*)
 
-    nx = nx_tot-2*ng; ny = ny_tot-2*ng; nz = nz_tot-2*ng
-    sx = 1_c_size_t; sy = int(nx_tot, c_size_t); sz = sy*int(ny_tot, c_size_t)
+    integer :: i, j, k, nxc, nyc, nzc
+    integer(c_size_t) :: sxc, syc, szc, sxu, syu, szu, sxv, syv, szv, sxw, syw, szw
+    integer(c_size_t) :: cu, cL, cR
+    real(c_double), parameter :: eps = 1.0d-300
+    real(c_double) :: rho_f, fac
 
-    !$omp parallel do collapse(2) schedule(static) private(i,j,k,c0,c,fac)
-    do k = 0, nz-1
-      do j = 0, ny-1
-        c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
-        c = c0
-        !$omp simd linear(c:1)
-        do i = 0, nx-1
-          fac = dt/max(rho(c), 1.0d-300)
-          u(c) = u(c)-fac*dpx(c)
-          v(c) = v(c)-fac*dpy(c)
-          w(c) = w(c)-fac*dpz(c)
-          c = c+sx
+    nxc = nxc_tot-2*ng; nyc = nyc_tot-2*ng; nzc = nzc_tot-2*ng
+    sxc = 1_c_size_t; syc = int(nxc_tot, c_size_t); szc = syc*int(nyc_tot, c_size_t)
+    sxu = 1_c_size_t; syu = int(nxu_tot, c_size_t); szu = syu*int(nyu_tot, c_size_t)
+    sxv = 1_c_size_t; syv = int(nxv_tot, c_size_t); szv = syv*int(nyv_tot, c_size_t)
+    sxw = 1_c_size_t; syw = int(nxw_tot, c_size_t); szw = syw*int(nyw_tot, c_size_t)
+
+    ! u faces
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cu,cL,cR,rho_f,fac)
+    do k = 0, nzc-1
+      do j = 0, nyc-1
+        do i = 1, nxc-1
+          cu = 1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
+          cL = 1_c_size_t+int(ng+i-1, c_size_t)+syc*int(j+ng, c_size_t)+szc*int(k+ng, c_size_t)
+          cR = cL+sxc
+          rho_f = 0.5d0*(rho_c(cL)+rho_c(cR))
+          fac = dt/max(rho_f, eps)
+          u(cu) = u(cu)-fac*dpx_u(cu)
         end do
       end do
     end do
-  end subroutine correct_velocity_varrho_c
+    ! v faces
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cu,cL,cR,rho_f,fac)
+    do k = 0, nzc-1
+      do i = 0, nxc-1
+        do j = 1, nyc-1
+          cu = 1_c_size_t+int(ng+i, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)
+          cL = 1_c_size_t+int(ng+i, c_size_t)+syc*int(j-1+ng, c_size_t)+szc*int(k+ng, c_size_t)
+          cR = cL+syc
+          rho_f = 0.5d0*(rho_c(cL)+rho_c(cR))
+          fac = dt/max(rho_f, eps)
+          v(cu) = v(cu)-fac*dpy_v(cu)
+        end do
+      end do
+    end do
+    ! w faces
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cu,cL,cR,rho_f,fac)
+    do j = 0, nyc-1
+      do i = 0, nxc-1
+        do k = 1, nzc-1
+          cu = 1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)
+          cL = 1_c_size_t+int(ng+i, c_size_t)+syc*int(j+ng, c_size_t)+szc*int(k-1+ng, c_size_t)
+          cR = cL+szc
+          rho_f = 0.5d0*(rho_c(cL)+rho_c(cR))
+          fac = dt/max(rho_f, eps)
+          w(cu) = w(cu)-fac*dpz_w(cu)
+        end do
+      end do
+    end do
+  end subroutine correct_velocity_varrho_mac_c
 
   ! =========================
   ! FE: single explicit step

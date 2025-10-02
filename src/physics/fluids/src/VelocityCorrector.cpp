@@ -2,6 +2,7 @@
 #include "master/FieldCatalog.hpp"
 #include <cstdlib>
 #include <stdexcept>
+#include <vector>
 #include "kernels_fluids.h"
 
 using namespace core::master;
@@ -20,7 +21,7 @@ Corrector::Corrector(double rho, double dx, double dy, double dz)
     : rho_(rho), dx_(dx), dy_(dy), dz_(dz)
 {
     info_.name = "velocity_corrector";
-    info_.phases = plugin::Phase::PostBC; // after BCs so ghosts are valid before we finalize
+    info_.phases = plugin::Phase::PostBC; // keep: ghosts valid before finalize
 }
 
 std::shared_ptr<plugin::IAction> make_corrector(const plugin::KV& kv)
@@ -47,32 +48,41 @@ void Corrector::execute(const MeshTileView& tile, FieldCatalog& fields, double d
     auto vw = fields.view("w");
     auto vp = fields.view("p");
 
-    const int nx_tot = vu.extents[0], ny_tot = vu.extents[1], nz_tot = vu.extents[2];
-    const int nx = (vp.extents[0] + vu.extents[0]) / 2;
-    (void) nx; // silence warnings
-    const int ng = (vu.extents[0] - (tile.box.hi[0] - tile.box.lo[0])) / 2;
+    // Use p (centers) to define ng; face arrays have their own totals
+    const int nx_i = tile.box.hi[0] - tile.box.lo[0];
+    const int ng = (vp.extents[0] - nx_i) / 2;
 
-    std::vector<double> dpx((std::size_t) nx_tot * ny_tot * nz_tot, 0.0),
-        dpy((std::size_t) nx_tot * ny_tot * nz_tot, 0.0),
-        dpz((std::size_t) nx_tot * ny_tot * nz_tot, 0.0);
+    // Face-gradients sized to face arrays
+    std::vector<double> dpx_u((std::size_t) vu.extents[0] * vv.extents[1] * vw.extents[2],
+                              0.0); // or vu xyz
+    std::vector<double> dpy_v((std::size_t) vv.extents[0] * vv.extents[1] * vv.extents[2], 0.0);
+    std::vector<double> dpz_w((std::size_t) vw.extents[0] * vw.extents[1] * vw.extents[2], 0.0);
 
-    gradp_c(static_cast<const double*>(vp.host_ptr), nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_,
-            dpx.data(), dpy.data(), dpz.data());
+    // Compute pressure gradients on faces (MAC)
+    gradp_faces_c(static_cast<const double*>(vp.host_ptr), vp.extents[0], vp.extents[1],
+                  vp.extents[2], ng, dx_, dy_, dz_, dpx_u.data(), vu.extents[0], vu.extents[1],
+                  vu.extents[2], dpy_v.data(), vv.extents[0], vv.extents[1], vv.extents[2],
+                  dpz_w.data(), vw.extents[0], vw.extents[1], vw.extents[2]);
 
+    // Velocity correction on faces (variable-ρ if present; else constant ρ_)
     if (fields.contains("rho"))
     {
         auto vr = fields.view("rho");
-        const double* rho = static_cast<const double*>(vr.host_ptr);
-        correct_velocity_varrho_c(static_cast<double*>(vu.host_ptr),
-                                  static_cast<double*>(vv.host_ptr),
-                                  static_cast<double*>(vw.host_ptr), dpx.data(), dpy.data(),
-                                  dpz.data(), nx_tot, ny_tot, nz_tot, ng, rho, dt);
+        correct_velocity_varrho_mac_c(
+            static_cast<double*>(vu.host_ptr), static_cast<double*>(vv.host_ptr),
+            static_cast<double*>(vw.host_ptr), dpx_u.data(), dpy_v.data(), dpz_w.data(),
+            vu.extents[0], vu.extents[1], vu.extents[2], vv.extents[0], vv.extents[1],
+            vv.extents[2], vw.extents[0], vw.extents[1], vw.extents[2], vp.extents[0],
+            vp.extents[1], vp.extents[2], ng, static_cast<const double*>(vr.host_ptr), dt);
     }
     else
     {
-        correct_velocity_c(static_cast<double*>(vu.host_ptr), static_cast<double*>(vv.host_ptr),
-                           static_cast<double*>(vw.host_ptr), dpx.data(), dpy.data(), dpz.data(),
-                           nx_tot, ny_tot, nz_tot, ng, rho_, dt);
+        correct_velocity_mac_c(static_cast<double*>(vu.host_ptr), static_cast<double*>(vv.host_ptr),
+                               static_cast<double*>(vw.host_ptr), dpx_u.data(), dpy_v.data(),
+                               dpz_w.data(), vu.extents[0], vu.extents[1], vu.extents[2],
+                               vv.extents[0], vv.extents[1], vv.extents[2], vw.extents[0],
+                               vw.extents[1], vw.extents[2], vp.extents[0], vp.extents[1],
+                               vp.extents[2], ng, rho_, dt);
     }
 }
 

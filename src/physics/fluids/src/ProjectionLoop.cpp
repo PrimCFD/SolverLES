@@ -46,28 +46,55 @@ ProjectionLoop::ProjectionLoop(Options opt, std::shared_ptr<plugin::IAction> sgs
 {
 }
 
-double ProjectionLoop::compute_div_linf(const MeshTileView& tile, FieldCatalog& fields) const
+double ProjectionLoop::compute_div_linf(const core::master::MeshTileView& tile,
+                                        core::master::FieldCatalog& fields) const
 {
+    // Views (u,v,w faces; p centers to infer ng)
     auto vu = fields.view("u");
     auto vv = fields.view("v");
     auto vw = fields.view("w");
-    const int nx_tot = vu.extents[0], ny_tot = vu.extents[1], nz_tot = vu.extents[2];
-    const int nx = tile.box.hi[0] - tile.box.lo[0];
-    const int ng = (nx_tot - nx) / 2;
-    // Ensure halos up-to-date for divergence check
-    if (!tile.mesh)
-        throw std::runtime_error("[fluids.projection] tile.mesh is null; Scheduler must set it.");
+    auto vp = fields.view("p");
+
+    // Infer ghosts from centers for this tile
+    const int nx_i = tile.box.hi[0] - tile.box.lo[0];
+    const int ng = (vp.extents[0] - nx_i) / 2;
+
+    // Center totals (divergence is center-located)
+    const int nxc_tot = vp.extents[0];
+    const int nyc_tot = vp.extents[1];
+    const int nzc_tot = vp.extents[2];
+
+    // Mesh-like for centers (only if you later exchange; harmless to set)
     core::mesh::Mesh mesh_like = *tile.mesh;
-    mesh_like.local = {nx_tot - 2 * ng, ny_tot - 2 * ng, nz_tot - 2 * ng};
+    mesh_like.local = std::array<int, 3>{nxc_tot - 2 * ng, nyc_tot - 2 * ng, nzc_tot - 2 * ng};
     mesh_like.ng = ng;
-    core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
-    std::vector<double> div((std::size_t) nx_tot * ny_tot * nz_tot, 0.0);
-    divergence_c(static_cast<const double*>(vu.host_ptr), static_cast<const double*>(vv.host_ptr),
-                 static_cast<const double*>(vw.host_ptr), nx_tot, ny_tot, nz_tot, ng, opt_.dx,
-                 opt_.dy, opt_.dz, div.data());
+
+    // Build divergence (center-sized) and compute via MAC operator
+    std::vector<double> divergence((std::size_t) nxc_tot * nyc_tot * nzc_tot, 0.0);
+
+    divergence_mac_c(
+        static_cast<const double*>(vu.host_ptr), static_cast<const double*>(vv.host_ptr),
+        static_cast<const double*>(vw.host_ptr), vu.extents[0], vu.extents[1], vu.extents[2],
+        vv.extents[0], vv.extents[1], vv.extents[2], vw.extents[0], vw.extents[1], vw.extents[2],
+        nxc_tot, nyc_tot, nzc_tot, ng, opt_.dx, opt_.dy, opt_.dz, divergence.data());
+
+    // Linf on interior cells only (centers)
     double linf = 0.0;
-    for (double x : div)
-        linf = std::max(linf, std::abs(x));
+    for (int k = 0; k < nzc_tot - 2 * ng; ++k)
+    {
+        const int kk = k + ng;
+        for (int j = 0; j < nyc_tot - 2 * ng; ++j)
+        {
+            const int jj = j + ng;
+            std::size_t c = 1u + (std::size_t) ng + // i = 0+ng
+                            (std::size_t) nxc_tot *
+                                ((std::size_t) jj + (std::size_t) nyc_tot * (std::size_t) kk);
+
+            // walk i interior contiguously
+            for (int i = 0; i < nxc_tot - 2 * ng; ++i, ++c)
+                linf = std::max(linf, std::abs(divergence[c]));
+        }
+    }
 
 #ifdef HAVE_MPI
     if (mpi_comm_)

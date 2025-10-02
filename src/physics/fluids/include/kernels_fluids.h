@@ -10,15 +10,15 @@ extern "C"
                            int ny_tot, int nz_tot, int ng, double dx, double dy, double dz,
                            double Cs, double* nu_t_out);
 
-    void divergence_c(const double* u, const double* v, const double* w, int nx_tot, int ny_tot,
-                      int nz_tot, int ng, double dx, double dy, double dz, double* div_out);
+    void divergence_mac_c(const double* u, const double* v, const double* w, int nxu_tot,
+                          int nyu_tot, int nzu_tot, int nxv_tot, int nyv_tot, int nzv_tot,
+                          int nxw_tot, int nyw_tot, int nzw_tot, int nxc_tot, int nyc_tot,
+                          int nzc_tot, int ng, double dx, double dy, double dz, double* div);
 
-    void divergence_rhie_chow_c(const double* u, const double* v, const double* w, const double* p,
-                                const double* rho, int nx_tot, int ny_tot, int nz_tot, int ng,
-                                double dx, double dy, double dz, double dt, double* div);
-
-    void gradp_c(const double* p, int nx_tot, int ny_tot, int nz_tot, int ng, double dx, double dy,
-                 double dz, double* dpx, double* dpy, double* dpz);
+    void gradp_faces_c(const double* p, int nxc_tot, int nyc_tot, int nzc_tot, int ng, double dx,
+                       double dy, double dz, double* dpx_u, int nxu_tot, int nyu_tot, int nzu_tot,
+                       double* dpy_v, int nxv_tot, int nyv_tot, int nzv_tot, double* dpz_w,
+                       int nxw_tot, int nyw_tot, int nzw_tot);
 
     void poisson_jacobi_c(const double* rhs, int nx_tot, int ny_tot, int nz_tot, int ng, double dx,
                           double dy, double dz, int iters, double* p_io);
@@ -27,13 +27,18 @@ extern "C"
                                   int nz_tot, int ng, double dx, double dy, double dz, int iters,
                                   double* p);
 
-    void correct_velocity_c(double* u, double* v, double* w, const double* dpx, const double* dpy,
-                            const double* dpz, int nx_tot, int ny_tot, int nz_tot, int ng,
-                            double rho, double dt);
+    void correct_velocity_mac_c(double* u, double* v, double* w, const double* dpx_u,
+                                const double* dpy_v, const double* dpz_w, int nxu_tot, int nyu_tot,
+                                int nzu_tot, int nxv_tot, int nyv_tot, int nzv_tot, int nxw_tot,
+                                int nyw_tot, int nzw_tot, int nxc_tot, int nyc_tot, int nzc_tot,
+                                int ng, double rho, double dt);
 
-    void correct_velocity_varrho_c(double* u, double* v, double* w, const double* dpx,
-                                   const double* dpy, const double* dpz, int nx_tot, int ny_tot,
-                                   int nz_tot, int ng, const double* rho, double dt);
+    void correct_velocity_varrho_mac_c(double* u, double* v, double* w, const double* dpx_u,
+                                       const double* dpy_v, const double* dpz_w, int nxu_tot,
+                                       int nyu_tot, int nzu_tot, int nxv_tot, int nyv_tot,
+                                       int nzv_tot, int nxw_tot, int nyw_tot, int nzw_tot,
+                                       int nxc_tot, int nyc_tot, int nzc_tot, int ng,
+                                       const double* rho_c, double dt);
 
     // FE (one shot)
     void diffuse_velocity_fe_c(const double* u, const double* v, const double* w,

@@ -68,26 +68,9 @@ std::shared_ptr<IAction> make_apply_bcs(const KV& kv)
 void ApplyBCs::execute(const MeshTileView& tile, FieldCatalog& fields, double)
 {
 
-    // Pull one view just to compute totals & ng (uniform ghosts)
-    auto pick_any = [&]()
-    {
-        if (fields.contains("u"))
-            return fields.view("u");
-        if (fields.contains("v"))
-            return fields.view("v");
-        if (fields.contains("w"))
-            return fields.view("w");
-        return fields.view("p");
-    };
-    auto any = pick_any();
-
+    // Interior x-extent of this tile (used to infer each field's ghost width)
     const int nx = tile.box.hi[0] - tile.box.lo[0];
-    const int ny = tile.box.hi[1] - tile.box.lo[1];
-    const int nz = tile.box.hi[2] - tile.box.lo[2];
-    const int nx_tot = any.extents[0];
-    const int ny_tot = any.extents[1];
-    const int nz_tot = any.extents[2];
-    const int ng = (nx_tot - nx) / 2; // uniform halo width
+    auto halo_of = [&](const core::master::AnyFieldView& v) { return (v.extents[0] - nx) / 2; };
 
     // Build core Field<T> wrappers (typed, non-owning) + Array3DView<T>
     std::unique_ptr<Field<double>> fu, fv, fw, fp;
@@ -96,33 +79,37 @@ void ApplyBCs::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     if (fields.contains("u"))
     {
         auto vu = fields.view("u");
+        const int ngu = halo_of(vu);
         fu = std::make_unique<Field<double>>(
             static_cast<double*>(vu.host_ptr),
-            std::array<int, 3>{vu.extents[0], vu.extents[1], vu.extents[2]}, ng);
+            std::array<int, 3>{vu.extents[0], vu.extents[1], vu.extents[2]}, ngu);
         U = Array3DView<double>(*fu);
     }
     if (fields.contains("v"))
     {
         auto vv = fields.view("v");
+        const int ngv = halo_of(vv);
         fv = std::make_unique<Field<double>>(
             static_cast<double*>(vv.host_ptr),
-            std::array<int, 3>{vv.extents[0], vv.extents[1], vv.extents[2]}, ng);
+            std::array<int, 3>{vv.extents[0], vv.extents[1], vv.extents[2]}, ngv);
         V = Array3DView<double>(*fv);
     }
     if (fields.contains("w"))
     {
         auto vw = fields.view("w");
+        const int ngw = halo_of(vw);
         fw = std::make_unique<Field<double>>(
             static_cast<double*>(vw.host_ptr),
-            std::array<int, 3>{vw.extents[0], vw.extents[1], vw.extents[2]}, ng);
+            std::array<int, 3>{vw.extents[0], vw.extents[1], vw.extents[2]}, ngw);
         W = Array3DView<double>(*fw);
     }
     if (fields.contains("p"))
     {
         auto vp = fields.view("p");
+        const int ngp = halo_of(vp);
         fp = std::make_unique<Field<double>>(
             static_cast<double*>(vp.host_ptr),
-            std::array<int, 3>{vp.extents[0], vp.extents[1], vp.extents[2]}, ng);
+            std::array<int, 3>{vp.extents[0], vp.extents[1], vp.extents[2]}, ngp);
         P = Array3DView<double>(*fp);
     }
 

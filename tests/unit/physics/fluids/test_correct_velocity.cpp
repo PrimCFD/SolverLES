@@ -1,67 +1,80 @@
-#include <catch2/catch_approx.hpp>
-#include <catch2/catch_test_macros.hpp>
-#include <cmath>
+#include <algorithm>
+#include <catch2/catch_all.hpp>
 #include <vector>
 #include "kernels_fluids.h"
 
 using Catch::Approx;
 
-static inline size_t idx(int I, int J, int K, int nx_tot, int ny_tot)
+// Helpers for MAC totals
+static inline int center_tot(int n, int ng)
 {
-    return static_cast<size_t>(I + nx_tot * (J + ny_tot * K));
+    return n + 2 * ng;
+}
+static inline int face_tot(int n, int ng)
+{
+    return n + 1 + 2 * ng;
 }
 
-TEST_CASE("Pressure gradient correction updates velocities exactly", "[fluids][corrector]")
+TEST_CASE("MAC correct_velocity (constant rho) matches variable-rho path for uniform rho",
+          "[mac][correct]")
 {
-    const int nx = 7, ny = 5, nz = 4, ng = 1;
-    const int nx_tot = nx + 2 * ng, ny_tot = ny + 2 * ng, nz_tot = nz + 2 * ng;
-    const double rho = 1.7, dt = 0.3;
+    const int nx = 7, ny = 6, nz = 5, ng = 1;
+    const double dx = 1.0, dy = 1.0, dz = 1.0;
+    const double rho0 = 2.5, dt = 0.2;
 
-    const size_t N = static_cast<size_t>(nx_tot) * ny_tot * nz_tot;
+    const int nxc = center_tot(nx, ng), nyc = center_tot(ny, ng), nzc = center_tot(nz, ng);
+    const int nxu = face_tot(nx, ng), nyu = center_tot(ny, ng), nzu = center_tot(nz, ng);
+    const int nxv = center_tot(nx, ng), nyv = face_tot(ny, ng), nzv = center_tot(nz, ng);
+    const int nxw = center_tot(nx, ng), nyw = center_tot(ny, ng), nzw = face_tot(nz, ng);
 
-    std::vector<double> u(N), v(N), w(N);
-    std::vector<double> dpx(N), dpy(N), dpz(N);
+    const std::size_t Nu = (std::size_t) nxu * nyu * nzu;
+    const std::size_t Nv = (std::size_t) nxv * nyv * nzv;
+    const std::size_t Nw = (std::size_t) nxw * nyw * nzw;
+    const std::size_t Np = (std::size_t) nxc * nyc * nzc;
 
-    // Seed fields with simple, deterministic patterns (not constant)
-    for (int K = 0; K < nz_tot; ++K)
-        for (int J = 0; J < ny_tot; ++J)
-            for (int I = 0; I < nx_tot; ++I)
-            {
-                const size_t q = idx(I, J, K, nx_tot, ny_tot);
-                u[q] = 0.1 * I + 0.2 * J + 0.3 * K;
-                v[q] = 1.0 + 0.05 * I - 0.04 * J + 0.02 * K;
-                w[q] = -0.3 + 0.07 * I + 0.01 * J - 0.06 * K;
-                dpx[q] = 0.9 - 0.1 * I + 0.05 * J - 0.03 * K;
-                dpy[q] = -0.2 + 0.02 * I + 0.03 * J + 0.01 * K;
-                dpz[q] = 0.5 - 0.04 * I + 0.02 * J + 0.01 * K;
-            }
+    // Random-ish initial velocities (deterministic patterns)
+    std::vector<double> u1(Nu), v1(Nv), w1(Nw);
+    for (std::size_t i = 0; i < Nu; ++i)
+        u1[i] = 0.1 + 0.001 * double(i % 101);
+    for (std::size_t i = 0; i < Nv; ++i)
+        v1[i] = -0.2 + 0.002 * double(i % 73);
+    for (std::size_t i = 0; i < Nw; ++i)
+        w1[i] = 0.3 - 0.003 * double(i % 59);
 
-    // Save originals for expected update
-    auto u0 = u, v0 = v, w0 = w;
+    std::vector<double> u2 = u1, v2 = v1, w2 = w1;
 
-    correct_velocity_c(u.data(), v.data(), w.data(), dpx.data(), dpy.data(), dpz.data(), nx_tot,
-                       ny_tot, nz_tot, ng, rho, dt);
+    // Pressure at centers: linear field -> constant gradients
+    std::vector<double> p(Np, 0.0);
+    auto idxC = [&](int i, int j, int k)
+    {
+        return (std::size_t) i +
+               (std::size_t) nxc * ((std::size_t) j + (std::size_t) nyc * (std::size_t) k);
+    };
+    for (int k = 0; k < nzc; ++k)
+        for (int j = 0; j < nyc; ++j)
+            for (int i = 0; i < nxc; ++i)
+                p[idxC(i, j, k)] = 3.0 * (i - ng) + 2.0 * (j - ng) - 1.0 * (k - ng);
 
-    const double fac = dt / rho;
-    bool bad = false;
-    for (int K = ng; K < nz + ng && !bad; ++K)
-        for (int J = ng; J < ny + ng && !bad; ++J)
-            for (int I = ng; I < nx + ng; ++I)
-            {
-                size_t q = idx(I, J, K, nx_tot, ny_tot);
-                auto exp_u = u0[q] - fac * dpx[q];
-                auto exp_v = v0[q] - fac * dpy[q];
-                auto exp_w = w0[q] - fac * dpz[q];
+    // Face gradients
+    std::vector<double> dpx_u(Nu, 0.0), dpy_v(Nv, 0.0), dpz_w(Nw, 0.0);
+    gradp_faces_c(p.data(), nxc, nyc, nzc, ng, dx, dy, dz, dpx_u.data(), nxu, nyu, nzu,
+                  dpy_v.data(), nxv, nyv, nzv, dpz_w.data(), nxw, nyw, nzw);
 
-                if (std::abs(u[q] - exp_u) > 1e-12 || std::abs(v[q] - exp_v) > 1e-12 ||
-                    std::abs(w[q] - exp_w) > 1e-12)
-                {
-                    INFO("First mismatch at I=" << I << " J=" << J << " K=" << K << " q=" << q);
-                    INFO("u diff=" << (u[q] - exp_u) << " v diff=" << (v[q] - exp_v)
-                                   << " w diff=" << (w[q] - exp_w));
-                    bad = true;
-                    break;
-                }
-            }
-    REQUIRE(!bad);
+    // Constant-rho corrector
+    correct_velocity_mac_c(u1.data(), v1.data(), w1.data(), dpx_u.data(), dpy_v.data(),
+                           dpz_w.data(), nxu, nyu, nzu, nxv, nyv, nzv, nxw, nyw, nzw, nxc, nyc, nzc,
+                           ng, rho0, dt);
+
+    // Variable-rho with uniform centers
+    std::vector<double> rho_c(Np, rho0);
+    correct_velocity_varrho_mac_c(u2.data(), v2.data(), w2.data(), dpx_u.data(), dpy_v.data(),
+                                  dpz_w.data(), nxu, nyu, nzu, nxv, nyv, nzv, nxw, nyw, nzw, nxc,
+                                  nyc, nzc, ng, rho_c.data(), dt);
+
+    for (std::size_t i = 0; i < Nu; ++i)
+        REQUIRE(u1[i] == Approx(u2[i]).margin(1e-13));
+    for (std::size_t i = 0; i < Nv; ++i)
+        REQUIRE(v1[i] == Approx(v2[i]).margin(1e-13));
+    for (std::size_t i = 0; i < Nw; ++i)
+        REQUIRE(w1[i] == Approx(w2[i]).margin(1e-13));
 }

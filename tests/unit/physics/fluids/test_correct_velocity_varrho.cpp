@@ -1,54 +1,77 @@
-// test_correct_velocity_varrho.cpp
-#include <catch2/catch_approx.hpp>
-#include <catch2/catch_test_macros.hpp>
-#include <cmath>
+#include <algorithm>
+#include <catch2/catch_all.hpp>
 #include <vector>
 #include "kernels_fluids.h"
 
 using Catch::Approx;
 
-static inline size_t idx(int I, int J, int K, int nx_tot, int ny_tot)
+// Helpers for MAC totals
+static inline int center_tot(int n, int ng)
 {
-    return (size_t) I + (size_t) nx_tot * ((size_t) J + (size_t) ny_tot * (size_t) K);
+    return n + 2 * ng;
+}
+static inline int face_tot(int n, int ng)
+{
+    return n + 1 + 2 * ng;
 }
 
-TEST_CASE("Variable-ρ corrector matches constant-ρ when ρ is uniform",
-          "[fluids][corrector][varrho]")
+TEST_CASE(
+    "MAC correct_velocity (variable rho at centers) matches constant case when rho is uniform",
+    "[mac][correct][varrho]")
 {
-    const int nx = 9, ny = 7, nz = 6, ng = 1;
-    const int nx_tot = nx + 2 * ng, ny_tot = ny + 2 * ng, nz_tot = nz + 2 * ng;
-    const double dt = 0.4, rho_s = 2.0;
-    const size_t N = (size_t) nx_tot * ny_tot * nz_tot;
+    const int nx = 5, ny = 4, nz = 3, ng = 1;
+    const double dx = 1.0, dy = 1.0, dz = 1.0;
+    const double rho0 = 3.0, dt = 0.1;
 
-    std::vector<double> u1(N), v1(N), w1(N), u2(N), v2(N), w2(N);
-    std::vector<double> dpx(N), dpy(N), dpz(N);
-    std::vector<double> rho(N, rho_s);
+    const int nxc = center_tot(nx, ng), nyc = center_tot(ny, ng), nzc = center_tot(nz, ng);
+    const int nxu = face_tot(nx, ng), nyu = center_tot(ny, ng), nzu = center_tot(nz, ng);
+    const int nxv = center_tot(nx, ng), nyv = face_tot(ny, ng), nzv = center_tot(nz, ng);
+    const int nxw = center_tot(nx, ng), nyw = center_tot(ny, ng), nzw = face_tot(nz, ng);
 
-    for (int K = 0; K < nz_tot; ++K)
-        for (int J = 0; J < ny_tot; ++J)
-            for (int I = 0; I < nx_tot; ++I)
-            {
-                const auto q = idx(I, J, K, nx_tot, ny_tot);
-                u1[q] = u2[q] = 0.11 * I - 0.07 * J + 0.02 * K;
-                v1[q] = v2[q] = -0.3 + 0.05 * I + 0.01 * J - 0.02 * K;
-                w1[q] = w2[q] = 0.2 - 0.03 * I + 0.02 * J + 0.04 * K;
-                dpx[q] = 0.9 - 0.1 * I + 0.02 * J - 0.03 * K;
-                dpy[q] = -0.2 + 0.02 * I + 0.03 * J + 0.01 * K;
-                dpz[q] = 0.5 - 0.04 * I + 0.02 * J + 0.01 * K;
-            }
+    const std::size_t Nu = (std::size_t) nxu * nyu * nzu;
+    const std::size_t Nv = (std::size_t) nxv * nyv * nzv;
+    const std::size_t Nw = (std::size_t) nxw * nyw * nzw;
+    const std::size_t Np = (std::size_t) nxc * nyc * nzc;
 
-    correct_velocity_c(u1.data(), v1.data(), w1.data(), dpx.data(), dpy.data(), dpz.data(), nx_tot,
-                       ny_tot, nz_tot, ng, rho_s, dt);
-    correct_velocity_varrho_c(u2.data(), v2.data(), w2.data(), dpx.data(), dpy.data(), dpz.data(),
-                              nx_tot, ny_tot, nz_tot, ng, rho.data(), dt);
+    // Simple initial velocities
+    std::vector<double> u1(Nu, 0.25), v1(Nv, -0.4), w1(Nw, 0.6);
+    std::vector<double> u2 = u1, v2 = v1, w2 = w1;
 
-    for (int K = ng; K < nz + ng; ++K)
-        for (int J = ng; J < ny + ng; ++J)
-            for (int I = ng; I < nx + ng; ++I)
-            {
-                const auto q = idx(I, J, K, nx_tot, ny_tot);
-                REQUIRE(u2[q] == Approx(u1[q]).margin(1e-12));
-                REQUIRE(v2[q] == Approx(v1[q]).margin(1e-12));
-                REQUIRE(w2[q] == Approx(w1[q]).margin(1e-12));
-            }
+    // Pressure at centers: linear field -> constant gradients
+    std::vector<double> p(Np, 0.0);
+    auto idxC = [&](int i, int j, int k)
+    {
+        return (std::size_t) i +
+               (std::size_t) nxc * ((std::size_t) j + (std::size_t) nyc * (std::size_t) k);
+    };
+    for (int k = 0; k < nzc; ++k)
+        for (int j = 0; j < nyc; ++j)
+            for (int i = 0; i < nxc; ++i)
+                p[idxC(i, j, k)] = 1.5 * (i - ng) - 0.75 * (j - ng) + 0.25 * (k - ng);
+
+    // Face gradients
+    std::vector<double> dpx_u(Nu, 0.0), dpy_v(Nv, 0.0), dpz_w(Nw, 0.0);
+    gradp_faces_c(p.data(), nxc, nyc, nzc, ng, dx, dy, dz, dpx_u.data(), nxu, nyu, nzu,
+                  dpy_v.data(), nxv, nyv, nzv, dpz_w.data(), nxw, nyw, nzw);
+
+    // Uniform rho at centers for this test (exercises varrho code path with trivial averaging)
+    std::vector<double> rho_c(Np, rho0);
+
+    // A) constant-ρ path
+    correct_velocity_mac_c(u1.data(), v1.data(), w1.data(), dpx_u.data(), dpy_v.data(),
+                           dpz_w.data(), nxu, nyu, nzu, nxv, nyv, nzv, nxw, nyw, nzw, nxc, nyc, nzc,
+                           ng, rho0, dt);
+
+    // B) variable-ρ path
+    correct_velocity_varrho_mac_c(u2.data(), v2.data(), w2.data(), dpx_u.data(), dpy_v.data(),
+                                  dpz_w.data(), nxu, nyu, nzu, nxv, nyv, nzv, nxw, nyw, nzw, nxc,
+                                  nyc, nzc, ng, rho_c.data(), dt);
+
+    // With uniform ρ, both paths must match bitwise (allow tiny FP slack)
+    for (std::size_t i = 0; i < Nu; ++i)
+        REQUIRE(u1[i] == Approx(u2[i]));
+    for (std::size_t i = 0; i < Nv; ++i)
+        REQUIRE(v1[i] == Approx(v2[i]));
+    for (std::size_t i = 0; i < Nw; ++i)
+        REQUIRE(w1[i] == Approx(w2[i]));
 }
