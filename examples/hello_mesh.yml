@@ -58,7 +58,7 @@ program:
     alpha_u: "0.7"
     alpha_p: "0.3"
 
-    rhie_chow: true   # true|false (default: true)
+    rhie_chow: on   # on|off (default: off)
 
     time_scheme: "be"         # "fe" (MVP) or "be" (residual-driven)
     #fe_iters: "1"             # fixed FE sweeps per step (use 2–3 if you want an extra polish)

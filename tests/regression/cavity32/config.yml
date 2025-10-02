@@ -35,6 +35,8 @@ program:
     alpha_u: "0.7"
     alpha_p: "0.3"
 
+    rhie_chow: on
+
     time_scheme: "fe"
     fe_iters: "3" 
 

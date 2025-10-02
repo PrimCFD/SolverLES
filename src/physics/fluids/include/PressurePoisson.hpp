@@ -22,7 +22,7 @@ struct PressurePoisson final : core::master::plugin::IAction
     double rho_, dx_, dy_, dz_;
     int iters_;
     std::vector<double> div_; // scratch divergence
-    bool use_rhie_chow_{true};
+    bool use_rhie_chow_{false};
     std::vector<double> beta_;
     void* mpi_comm_ = nullptr;
 };
