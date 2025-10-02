@@ -269,9 +269,14 @@ contains
           !$omp simd linear(c:1)
           do i = 0, nx-1
             ip = c+sx; im = c-sx; jp = c+sy; jm = c-sy; kp = c+sz; km = c-sz
-            be = 0.5d0*(beta(c)+beta(ip)); bw = 0.5d0*(beta(c)+beta(im))
-            bn = 0.5d0*(beta(c)+beta(jp)); bs = 0.5d0*(beta(c)+beta(jm))
-            bt = 0.5d0*(beta(c)+beta(kp)); bb = 0.5d0*(beta(c)+beta(km))
+            ! beta = 1/rho at cell centers
+            ! face (1/rho)_f via harmonic average of beta:
+            be = 2.0d0 / ( 1.0d0/beta(c) + 1.0d0/beta(ip) )
+            bw = 2.0d0 / ( 1.0d0/beta(c) + 1.0d0/beta(im) )
+            bn = 2.0d0 / ( 1.0d0/beta(c) + 1.0d0/beta(jp) )
+            bs = 2.0d0 / ( 1.0d0/beta(c) + 1.0d0/beta(jm) )
+            bt = 2.0d0 / ( 1.0d0/beta(c) + 1.0d0/beta(kp) )
+            bb = 2.0d0 / ( 1.0d0/beta(c) + 1.0d0/beta(km) )
 
             denom = ax*(be+bw)+ay*(bn+bs)+az*(bt+bb)
             pn_scratch(c) = (ax*(be*p(ip)+bw*p(im))+ay*(bn*p(jp)+bs*p(jm)) &
