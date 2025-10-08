@@ -20,35 +20,36 @@ int main()
     const int nxw_tot = nx + 0 + 2 * ng, nyw_tot = ny + 0 + 2 * ng, nzw_tot = nz + 1 + 2 * ng;
 
     // Allocate MAC velocities and center nu_t
-    std::vector<double> u((size_t)nxu_tot * nyu_tot * nzu_tot);
-    std::vector<double> v((size_t)nxv_tot * nyv_tot * nzv_tot);
-    std::vector<double> w((size_t)nxw_tot * nyw_tot * nzw_tot);
-    std::vector<double> nu_t((size_t)nxc_tot * nyc_tot * nzc_tot, 0.0);
+    std::vector<double> u((size_t) nxu_tot * nyu_tot * nzu_tot);
+    std::vector<double> v((size_t) nxv_tot * nyv_tot * nzv_tot);
+    std::vector<double> w((size_t) nxw_tot * nyw_tot * nzw_tot);
+    std::vector<double> nu_t((size_t) nxc_tot * nyc_tot * nzc_tot, 0.0);
 
     std::mt19937 rng(12345);
     std::uniform_real_distribution<double> dist(-1.0, 1.0);
-    for (auto& x : u) x = dist(rng);
-    for (auto& x : v) x = dist(rng);
-    for (auto& x : w) x = dist(rng);
+    for (auto& x : u)
+        x = dist(rng);
+    for (auto& x : v)
+        x = dist(rng);
+    for (auto& x : w)
+        x = dist(rng);
 
-    auto [mean, stddev] = bench::run([&] {
-        // New MAC-face kernel signature:
-        // sgs_smagorinsky_mac_c(u, nxu, nyu, nzu, v, nxv, nyv, nzv, w, nxw, nyw, nzw,
-        //                       nxc, nyc, nzc, ng, dx, dy, dz, Cs, nu_t_centers)
-        sgs_smagorinsky_mac_c(
-            u.data(), nxu_tot, nyu_tot, nzu_tot,
-            v.data(), nxv_tot, nyv_tot, nzv_tot,
-            w.data(), nxw_tot, nyw_tot, nzw_tot,
-            nxc_tot, nyc_tot, nzc_tot, ng, dx, dy, dz, Cs, nu_t.data());
-    });
-
+    auto [mean, stddev] = bench::run(
+        [&]
+        {
+            // New MAC-face kernel signature:
+            // sgs_smagorinsky_mac_c(u, nxu, nyu, nzu, v, nxv, nyv, nzv, w, nxw, nyw, nzw,
+            //                       nxc, nyc, nzc, ng, dx, dy, dz, Cs, nu_t_centers)
+            sgs_smagorinsky_mac_c(u.data(), nxu_tot, nyu_tot, nzu_tot, v.data(), nxv_tot, nyv_tot,
+                                  nzv_tot, w.data(), nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot,
+                                  nzc_tot, ng, dx, dy, dz, Cs, nu_t.data());
+        });
 
     // Rough I/O traffic: read u/v/w faces + write center nu_t
     const double bytes =
-        ( (double)nxu_tot*nyu_tot*nzu_tot +
-          (double)nxv_tot*nyv_tot*nzv_tot +
-          (double)nxw_tot*nyw_tot*nzw_tot +
-          (double)nxc_tot*nyc_tot*nzc_tot ) * sizeof(double);
+        ((double) nxu_tot * nyu_tot * nzu_tot + (double) nxv_tot * nyv_tot * nzv_tot +
+         (double) nxw_tot * nyw_tot * nzw_tot + (double) nxc_tot * nyc_tot * nzc_tot) *
+        sizeof(double);
     bench::report("fluids_sgs_mac_64^3", mean, stddev, bytes);
     return 0;
- }
+}

@@ -12,7 +12,8 @@ set(_petsc_install
 
 # Upstream tarball (unchanged)
 set(_petsc_url
-    "https://web.cels.anl.gov/projects/petsc/download/release-snapshots/petsc-3.24.0.tar.gz")
+    "https://web.cels.anl.gov/projects/petsc/download/release-snapshots/petsc-3.24.0.tar.gz"
+)
 fu_url_args("petsc" "${_petsc_url}" _P_URL_ARGS)
 
 # Prefetch-only
@@ -64,7 +65,8 @@ set(PETSC_PKG_CACHE
 # Construct configure command
 set(_cfg_cmd ./configure "--prefix=${_petsc_install}" "${_with_mpi}")
 
-# Always tell PETSc where to find locally prefetched tarballs (works online/offline)
+# Always tell PETSc where to find locally prefetched tarballs (works
+# online/offline)
 list(APPEND _cfg_cmd "--with-packages-download-dir=${PETSC_PKG_CACHE}")
 
 if(_blas_libloc)
@@ -99,7 +101,9 @@ ExternalProject_Add(
     "${_petsc_install}/lib/libpetsc${CMAKE_SHARED_LIBRARY_SUFFIX}")
 
 # Expose cache path for downstream tools
-set(PETSC_PKG_CACHE "${PETSC_PKG_CACHE}" CACHE PATH "" FORCE)
+set(PETSC_PKG_CACHE
+    "${PETSC_PKG_CACHE}"
+    CACHE PATH "" FORCE)
 
 # Expose for find_package(PETSc CONFIG) if a config is generated
 set(PETSC_DIR
