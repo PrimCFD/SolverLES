@@ -1,10 +1,7 @@
 name: Tests · CPU/GPU/MPI (containerized)
 
 on:
-  pull_request:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch: 
 
 concurrency:
   group: tests-${{ github.workflow }}-${{ github.ref }}

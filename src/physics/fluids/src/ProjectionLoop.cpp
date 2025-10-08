@@ -4,6 +4,8 @@
 #include "master/Views.hpp"
 #include <algorithm>
 #include <cstdlib>
+#include <iomanip>
+#include <iostream>
 #include <stdexcept>
 #include "kernels_fluids.h"
 #ifdef HAVE_MPI
@@ -96,10 +98,13 @@ double ProjectionLoop::compute_div_linf(const core::master::MeshTileView& tile,
         }
     }
 
+    // linf div u logging
+    // std::cerr << std::setprecision(12) << "div_linf=" << linf << '\n' << std::flush;
+
 #ifdef HAVE_MPI
     if (mpi_comm_)
     {
-        MPI_Comm comm = static_cast<MPI_Comm>(mpi_comm_);
+        MPI_Comm comm = *reinterpret_cast<const MPI_Comm*>(mpi_comm_);
         double linf_global = 0.0;
         MPI_Allreduce(&linf, &linf_global, 1, MPI_DOUBLE, MPI_MAX, comm);
         linf = linf_global;
@@ -131,6 +136,37 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
         if (bc_)
             bc_->execute(tile, fields, 0.0);
     };
+
+    // --------- IPISO mode (predictor once, then fixed # pressure corrections) ---------
+    if (opt_.mode == Mode::IPISO)
+    {
+        if (bc_)
+            bc_->execute(tile, fields, 0.0);
+        if (sgs_)
+            sgs_->execute(tile, fields, 0.0);
+        if (fields.contains("nu_t"))
+            core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"nu_t"});
+        pred_->execute(tile, fields, dt); // momentum predictor once per step
+        if (bc_)
+            bc_->execute(tile, fields, 0.0);
+
+        // Baseline divergence for relative drop criterion
+        double r0 = compute_div_linf(tile, fields);
+        if (r0 == 0.0)
+            r0 = 1.0;
+
+        const int nCorr = std::max(1, opt_.num_corrections);
+        for (int m = 0; m < nCorr; ++m)
+        {
+            pressure_correction();
+            const double r = compute_div_linf(tile, fields);
+            if (r / r0 <= opt_.div_tol)
+                break; // early exit if sufficiently divergence-free
+        }
+        return;
+    }
+
+    // Legacy SIMPLE loops
 
     if (opt_.mode == Mode::FE)
     {
@@ -191,15 +227,22 @@ std::shared_ptr<plugin::IAction> make_projection_loop(
         return dflt;
     };
     ProjectionLoop::Options o;
-    const std::string scheme = lower(get("time_scheme", "fe")); // "fe" or "be"
-    o.mode = (scheme == "be" || scheme == "backward_euler") ? ProjectionLoop::Mode::BE
-                                                            : ProjectionLoop::Mode::FE;
+    const std::string scheme = lower(get("time_scheme", "fe")); // "fe", "be", or "ipiso"
+    if (scheme == "be" || scheme == "backward_euler")
+        o.mode = ProjectionLoop::Mode::BE;
+    else if (scheme == "ipiso" || scheme == "piso")
+        o.mode = ProjectionLoop::Mode::IPISO;
+    else
+        o.mode = ProjectionLoop::Mode::FE;
     o.fe_iters = to_i(get("fe_iters", "1"), 1);
     o.rtol = to_d(get("nonlinear_rtol", "1e-3"), 1e-3);
     o.max_iters = to_i(get("nonlinear_max_iters", "50"), 50);
     o.dx = to_d(get("dx", "1.0"), 1.0);
     o.dy = to_d(get("dy", "1.0"), 1.0);
     o.dz = to_d(get("dz", "1.0"), 1.0);
+    // IPISO extras
+    o.num_corrections = to_i(get("num_corrections", "2"), 2);
+    o.div_tol = to_d(get("div_tol", "1e-7"), 1e-7);
     return std::make_shared<ProjectionLoop>(o, sgs, bc, predictor, poisson, corrector, rc.mpi_comm);
 }
 

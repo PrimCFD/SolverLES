@@ -13,12 +13,24 @@ add_executable(
 
 # Link: plugin + core + Catch2
 target_link_libraries(unit_fluids PRIVATE physics_fluids core
-                                          Catch2::Catch2WithMain)
+                                          Catch2::Catch2WithMain PETSC::petsc)
 
 # Include plugin headers (for kernels_fluids.h) and public core headers
 target_include_directories(
   unit_fluids PRIVATE ${CMAKE_SOURCE_DIR}/src/physics/fluids/include
                       ${CMAKE_SOURCE_DIR}/src/core/include)
+
+# Make PETSc shared libs resolvable at runtime (mirror solver target)
+set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+set(_origin "\$ORIGIN")
+set_target_properties(
+  unit_fluids
+  PROPERTIES
+    BUILD_RPATH
+    "${_origin};${_origin}/../../core;${_origin}/../../physics/fluids;${_origin}/../../physics/em;$<TARGET_FILE_DIR:PETSC::petsc_lib>"
+    INSTALL_RPATH
+    "${_origin}/../lib;${_origin}/../lib/plugins;$<TARGET_FILE_DIR:PETSC::petsc_lib>"
+)
 
 # Auto-register each TEST_CASE as a ctest (label "unit"), JUnit to
 # test-reports/unit
@@ -36,7 +48,3 @@ register_catch_tests(
   "catch-"
   OUTPUT_SUFFIX
   ".xml")
-
-if(ENABLE_MPI)
-  add_subdirectory(mpi)
-endif()

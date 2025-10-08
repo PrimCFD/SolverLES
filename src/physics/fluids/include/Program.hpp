@@ -38,7 +38,6 @@ struct Params
 {
     double dx{1.0}, dy{1.0}, dz{1.0};
     double rho{1.0}, nu{1e-3}, Cs{0.16};
-    double alpha_u{0.7}, alpha_p{0.3};
     double adv_blend{0.0};
     double cfl{0.7};
     BcTable bcs;

@@ -60,6 +60,20 @@ export OMP_DYNAMIC="${OMP_DYNAMIC:-FALSE}"
 # Optional (Intel runtime): uncomment for very steady latency
 # export KMP_BLOCKTIME="${KMP_BLOCKTIME:-0}"
 
+# --- BLAS threading hygiene (avoid oversubscription with OpenMP kernels)
+export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
+
+# --- Optional power-user flags (vectorization & CPU-tuned codegen)
+export EXTRA_OPT_FLAGS="-O3 -march=native -fopenmp-simd -fno-math-errno"
+EXTRA_OPT_FLAGS="${EXTRA_OPT_FLAGS:-}"
+if [[ -n "$EXTRA_OPT_FLAGS" ]]; then
+  cmake_args+=(
+    -DCMAKE_C_FLAGS_RELEASE="${EXTRA_OPT_FLAGS}"
+    -DCMAKE_CXX_FLAGS_RELEASE="${EXTRA_OPT_FLAGS}"
+    -DCMAKE_Fortran_FLAGS_RELEASE="${EXTRA_OPT_FLAGS}"
+  )
+fi
+
 # --- Defaults (overridable)
 CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
 BUILD_TESTS="${BUILD_TESTS:-OFF}"

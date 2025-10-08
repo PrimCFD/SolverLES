@@ -12,7 +12,7 @@ set(_petsc_install
 
 # Upstream tarball (unchanged)
 set(_petsc_url
-    "https://gitlab.com/petsc/petsc/-/archive/v3.20.0/petsc-v3.20.0.tar.gz")
+    "https://web.cels.anl.gov/projects/petsc/download/release-snapshots/petsc-3.24.0.tar.gz")
 fu_url_args("petsc" "${_petsc_url}" _P_URL_ARGS)
 
 # Prefetch-only
@@ -56,13 +56,27 @@ else()
   set(_with_mpi "--with-mpi=0")
 endif()
 
+# Location where prefetch caches PETSc third-party tarballs (used offline)
+set(PETSC_PKG_CACHE
+    "${CMAKE_SOURCE_DIR}/extern/.petsc-downloads"
+    CACHE PATH "Local cache of PETSc package tarballs (prefetched)")
+
 # Construct configure command
 set(_cfg_cmd ./configure "--prefix=${_petsc_install}" "${_with_mpi}")
+
+# Always tell PETSc where to find locally prefetched tarballs (works online/offline)
+list(APPEND _cfg_cmd "--with-packages-download-dir=${PETSC_PKG_CACHE}")
+
 if(_blas_libloc)
   list(APPEND _cfg_cmd "--with-blaslapack-lib=${_blas_libloc}")
 else()
   # Let PETSc do its own BLAS/LAPACK discovery via pkg-config / system search
   list(APPEND _cfg_cmd "--with-blaslapack=1")
+endif()
+
+# Ensure a true MPI PETSc when ENABLE_MPI=ON (uses local tarball if present)
+if(DEFINED ENABLE_MPI AND ENABLE_MPI)
+  list(APPEND _cfg_cmd "--download-mpich")
 endif()
 
 # Build & install
@@ -83,6 +97,9 @@ ExternalProject_Add(
   DEPENDS ${_petsc_deps}
   BUILD_BYPRODUCTS
     "${_petsc_install}/lib/libpetsc${CMAKE_SHARED_LIBRARY_SUFFIX}")
+
+# Expose cache path for downstream tools
+set(PETSC_PKG_CACHE "${PETSC_PKG_CACHE}" CACHE PATH "" FORCE)
 
 # Expose for find_package(PETSc CONFIG) if a config is generated
 set(PETSC_DIR

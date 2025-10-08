@@ -25,7 +25,8 @@ add_physics_plugin(
   INCLUDE
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
   LINK
-  core)
+  core
+  PETSC::petsc)
 
 # --- OpenMP + per-target tuning ----
 find_package(OpenMP REQUIRED)
@@ -72,3 +73,13 @@ if(PHYS_FLUIDS_VEC_REPORT)
                              -qopt-report-phase=vec>)
   endif()
 endif()
+
+set_target_properties(
+  physics_fluids
+  PROPERTIES
+    BUILD_RPATH
+    "$ORIGIN;$ORIGIN/..;$ORIGIN/../lib;$<TARGET_FILE_DIR:PETSC::petsc_lib>"
+    INSTALL_RPATH
+    "$ORIGIN;$ORIGIN/..;$ORIGIN/../lib;$<TARGET_FILE_DIR:PETSC::petsc_lib>")
+
+target_link_options(physics_fluids PRIVATE $<$<PLATFORM_ID:Linux>:-Wl,-z,defs>)

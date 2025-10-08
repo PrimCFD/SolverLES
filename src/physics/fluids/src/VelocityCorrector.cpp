@@ -53,8 +53,7 @@ void Corrector::execute(const MeshTileView& tile, FieldCatalog& fields, double d
     const int ng = (vp.extents[0] - nx_i) / 2;
 
     // Face-gradients sized to face arrays
-    std::vector<double> dpx_u((std::size_t) vu.extents[0] * vv.extents[1] * vw.extents[2],
-                              0.0); // or vu xyz
+    std::vector<double> dpx_u((std::size_t) vu.extents[0] * vu.extents[1] * vu.extents[2], 0.0);
     std::vector<double> dpy_v((std::size_t) vv.extents[0] * vv.extents[1] * vv.extents[2], 0.0);
     std::vector<double> dpz_w((std::size_t) vw.extents[0] * vw.extents[1] * vw.extents[2], 0.0);
 

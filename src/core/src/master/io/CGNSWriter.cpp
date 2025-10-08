@@ -295,20 +295,20 @@ void CGNSWriter::write(const WriteRequest& req)
     // Name them deterministically and lazily create on first use.
     // Keep a canonical solution name for iterative metadata (prefer CellCenter).
     int sol_cell = 0, sol_i = 0, sol_j = 0, sol_k = 0, sol_other = 0;
-    auto get_or_make_sol = [&](GridLocation_t loc) -> int {
-        const char* tag =
-            (loc == CellCenter)   ? "Cell"
-          : (loc == IFaceCenter)  ? "IFace"
-          : (loc == JFaceCenter)  ? "JFace"
-          : (loc == KFaceCenter)  ? "KFace"
-                                  : "Vertex";
+    auto get_or_make_sol = [&](GridLocation_t loc) -> int
+    {
+        const char* tag = (loc == CellCenter)    ? "Cell"
+                          : (loc == IFaceCenter) ? "IFace"
+                          : (loc == JFaceCenter) ? "JFace"
+                          : (loc == KFaceCenter) ? "KFace"
+                                                 : "Vertex";
         char name[80];
         std::snprintf(name, sizeof(name), "%s_%s", solname, tag);
-        int* slot = (loc == CellCenter) ? &sol_cell
-                  : (loc == IFaceCenter) ? &sol_i
-                  : (loc == JFaceCenter) ? &sol_j
-                  : (loc == KFaceCenter) ? &sol_k
-                                         : &sol_other;
+        int* slot = (loc == CellCenter)    ? &sol_cell
+                    : (loc == IFaceCenter) ? &sol_i
+                    : (loc == JFaceCenter) ? &sol_j
+                    : (loc == KFaceCenter) ? &sol_k
+                                           : &sol_other;
         if (*slot == 0)
         {
             if (cg_sol_write(impl_->file, impl_->base, impl_->zone, name, loc, slot))
@@ -324,8 +324,8 @@ void CGNSWriter::write(const WriteRequest& req)
         const auto& fp = plan_.fields[i];
         const auto& view = req.fields[i];
         // Decide location from extents
-        GridLocation_t loc = infer_location(fp.shape.nx, fp.shape.ny, fp.shape.nz,
-                                            impl_->nx, impl_->ny, impl_->nz);
+        GridLocation_t loc =
+            infer_location(fp.shape.nx, fp.shape.ny, fp.shape.nz, impl_->nx, impl_->ny, impl_->nz);
         int sol_id = get_or_make_sol(loc);
         if (sol_id == 0)
             return;

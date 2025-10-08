@@ -6,9 +6,11 @@ extern "C"
 
     void fluids_kernels_free_scratch();
 
-    void sgs_smagorinsky_mac_c(const double* u, const double* v, const double* w, int nx_tot,
-                           int ny_tot, int nz_tot, int ng, double dx, double dy, double dz,
-                           double Cs, double* nu_t_out);
+    void sgs_smagorinsky_mac_c(const double* u, const double* v, const double* w, int nxu_tot,
+                               int nyu_tot, int nzu_tot, int nxv_tot, int nyv_tot, int nzv_tot,
+                               int nxw_tot, int nyw_tot, int nzw_tot, int nxc_tot, int nyc_tot,
+                               int nzc_tot, int ng, double dx, double dy, double dz, double Cs,
+                               double* nu_t_c);
 
     void divergence_mac_c(const double* u, const double* v, const double* w, int nxu_tot,
                           int nyu_tot, int nzu_tot, int nxv_tot, int nyv_tot, int nzv_tot,
@@ -69,10 +71,15 @@ extern "C"
                                         int ng, double dx, double dy, double dz, double dt,
                                         double* res2, double* rhs2);
 
-    void advect_velocity_kk3_c(const double* u, const double* v, const double* w,
-                           int nx_tot, int ny_tot, int nz_tot, int ng,
-                           double dx, double dy, double dz, double blend,
-                           double* nu_u, double* nu_v, double* nu_w);
+    void advect_velocity_kk3_c(const double* u, const double* v, const double* w, int nx_tot,
+                               int ny_tot, int nz_tot, int ng, double dx, double dy, double dz,
+                               double blend, double* nu_u, double* nu_v, double* nu_w);
+
+    void advect_velocity_kk3_mac_c(const double* u, int nxu_tot, int nyu_tot, int nzu_tot,
+                                   const double* v, int nxv_tot, int nyv_tot, int nzv_tot,
+                                   const double* w, int nxw_tot, int nyw_tot, int nzw_tot, int ng,
+                                   double dx, double dy, double dz, double blend, double* nu_u,
+                                   double* nu_v, double* nu_w);
 
 #ifdef __cplusplus
 }

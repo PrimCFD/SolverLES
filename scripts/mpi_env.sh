@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
-# Source this to set MPI environment and helpers.
+# Source this to set MPI environment + helpers that work on a laptop and scale to HPC.
 # Modes:
-#   auto     : detect cluster vs laptop; safe defaults
+#   auto     : detect SLURM/cluster vs. laptop; choose safe defaults
 #   emulate  : force laptop-friendly Open MPI settings (loopback/TCP/oversubscribe)
-#   cluster  : disable emulation; favor scheduler/HCAs
+#   cluster  : disable emulation; favor scheduler + high-speed fabrics
 #
 # Usage:
-#   source mpi_env.sh [auto|emulate|cluster]
+#   source scripts/mpi_env.sh [auto|emulate|cluster]
 # After sourcing:
-#   mpi_exec 4 ./your_mpi_binary
-#
-# It also exports CTest/CMake-friendly variables:
-#   MPIEXEC_EXECUTABLE, MPIEXEC_NUMPROC_FLAG, MPIEXEC_PREFLAGS, MPIEXEC_POSTFLAGS
+#   mpi_exec 4 ./your_mpi_binary args...
 
 # --- must be sourced ---
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
@@ -24,34 +21,34 @@ _have() { command -v "$1" >/dev/null 2>&1; }
 _lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
 MPI_MODE="$(_lower "${1:-${MPI_MODE:-auto}}")"
-MPI_TEST_NP="${MPI_TEST_NP:-2}"      # default ranks for mpi_exec when NP omitted
-MPI_BIND="${MPI_BIND:-none}"         # bind policy for Open MPI when emulating
-MPI_MAP_BY="${MPI_MAP_BY:-slot}"     # map policy for Open MPI when emulating
+MPI_TEST_NP="${MPI_TEST_NP:-2}"      # default np for mpi_exec if omitted
+# Laptop-friendly binding (Open MPI) — overridden by scheduler on clusters
+MPI_BIND="${MPI_BIND:-core}"
+MPI_MAP_BY="${MPI_MAP_BY:-core}"
 
-# Detect vendor
+# Detect vendor/launcher
 MPI_VENDOR="unknown"
 if _have mpirun; then
   if mpirun --version 2>&1 | grep -qi 'Open MPI'; then
     MPI_VENDOR="openmpi"
-  elif mpirun --version 2>&1 | grep -qiE 'MPICH|Intel\(R\) MPI|Hydra'; then
+  elif mpirun --version 2>&1 | grep -qiE 'MPICH|Intel\\(R\\) MPI|Hydra'; then
     MPI_VENDOR="mpich"
   fi
 fi
 
-# Choose launcher: prefer SLURM when in a job
 MPI_LAUNCHER=""
 MPI_LAUNCHER_OPTS=""
 if [[ -n "${SLURM_JOB_ID:-}" ]] && _have srun; then
+  # Prefer srun inside SLURM allocations; let PMIx/PMI wireup MPI libs
   MPI_LAUNCHER="srun"
-  MPI_LAUNCHER_OPTS="--mpi=pmix"
+  MPI_LAUNCHER_OPTS="--mpi=pmix"   # PMIx is the common fast path. :contentReference[oaicite:0]{index=0}
 elif _have mpirun; then
   MPI_LAUNCHER="mpirun"
 elif _have mpiexec; then
   MPI_LAUNCHER="mpiexec"
 fi
 
-# If running as root (CI/container), Open MPI blocks by default.
-# Allow it explicitly so tests can run in the job container.
+# Open MPI: allow running as root inside CI/containers if needed. :contentReference[oaicite:1]{index=1}
 if [[ "$MPI_VENDOR" == "openmpi" && "${EUID:-$(id -u)}" -eq 0 ]]; then
   export OMPI_ALLOW_RUN_AS_ROOT=1
   export OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
@@ -60,39 +57,55 @@ fi
 
 # Clean slate for emulation knobs
 _unset_emulation() {
-  unset OMPI_MCA_btl OMPI_MCA_btl_tcp_if_include OMPI_MCA_oob_tcp_if_include OMPI_MCA_pml
-  unset UCX_TLS
+  unset OMPI_MCA_btl OMPI_MCA_btl_tcp_if_include OMPI_MCA_oob_tcp_if_include OMPI_MCA_pml UCX_TLS
 }
 
-_apply_emulation() {
-  # Favor stability for laptop dev, esp. Open MPI.
+_apply_emulation_openmpi() {
+  # Favor stability for laptops: loopback/TCP, oversubscribe, simple binding. :contentReference[oaicite:2]{index=2}
+  export OMPI_MCA_btl="self,tcp"
+  export OMPI_MCA_btl_tcp_if_include="lo"
+  export OMPI_MCA_oob_tcp_if_include="lo"
+  : "${OMPI_MCA_pml:=ob1}"                           # simple PML
+  : "${UCX_TLS:=tcp}"                                # if UCX is used, force TCP transport
+  if [[ "$MPI_LAUNCHER" == "mpirun" || "$MPI_LAUNCHER" == "mpiexec" ]]; then
+    # Distribute by core and bind to core; allow oversubscription on dev boxes. :contentReference[oaicite:3]{index=3}
+    MPI_LAUNCHER_OPTS+=" --oversubscribe --map-by ${MPI_MAP_BY} --bind-to ${MPI_BIND}"
+  fi
+}
+
+_apply_cluster_defaults() {
+  # Let vendor defaults + scheduler decide. Still provide reasonable hints:
   if [[ "$MPI_VENDOR" == "openmpi" ]]; then
-    export OMPI_MCA_btl="self,tcp"
-    export OMPI_MCA_btl_tcp_if_include="lo"
-    export OMPI_MCA_oob_tcp_if_include="lo"
-    export UCX_TLS="tcp"
-    : "${OMPI_MCA_pml:=ob1}"
-    # Launcher-side niceties
-    if [[ "$MPI_LAUNCHER" == "mpirun" || "$MPI_LAUNCHER" == "mpiexec" ]]; then
-      MPI_LAUNCHER_OPTS+=" --oversubscribe --bind-to ${MPI_BIND} --map-by ${MPI_MAP_BY}"
-    fi
+    # Prefer UCX PML on clusters when available (InfiniBand/RoCE etc.)
+    : "${OMPI_MCA_pml:=ucx}"
+    export OMPI_MCA_pml
+  elif [[ "$MPI_VENDOR" == "mpich" ]]; then
+    # MPICH/Intel MPI pinning knobs (users can override).
+    : "${I_MPI_PIN:=1}"               # Intel MPI pin on
+    : "${I_MPI_PIN_DOMAIN:=auto}"     # domain auto (socket/core)
+    export I_MPI_PIN I_MPI_PIN_DOMAIN  # :contentReference[oaicite:4]{index=4}
+    # MPICH rank reorder is useful under SLURM topologies; off by default. :contentReference[oaicite:5]{index=5}
+    : "${MPICH_RANK_REORDER_METHOD:=0}"
+    export MPICH_RANK_REORDER_METHOD
   fi
 }
 
 case "$MPI_MODE" in
   auto)
     _unset_emulation
-    # On clusters (SLURM detected) keep things clean; on laptops add OpenMPI emulation
-    if [[ -z "${SLURM_JOB_ID:-}" ]]; then
-      [[ "$MPI_VENDOR" == "openmpi" ]] && _apply_emulation
+    if [[ -n "${SLURM_JOB_ID:-}" ]]; then
+      _apply_cluster_defaults
+    else
+      [[ "$MPI_VENDOR" == "openmpi" ]] && _apply_emulation_openmpi
     fi
     ;;
   emulate)
     _unset_emulation
-    _apply_emulation
+    [[ "$MPI_VENDOR" == "openmpi" ]] && _apply_emulation_openmpi
     ;;
   cluster)
     _unset_emulation
+    _apply_cluster_defaults
     ;;
   *)
     echo "Unknown mode '$MPI_MODE' (use auto|emulate|cluster)"
@@ -100,40 +113,31 @@ case "$MPI_MODE" in
     ;;
 esac
 
-# Export CMake/CTest friendly variables, derived from the launcher choice
+# Export CTest/CMake-friendly variables from the chosen launcher. :contentReference[oaicite:6]{index=6}
 case "$MPI_LAUNCHER" in
   srun)
     export MPIEXEC_EXECUTABLE="srun"
     export MPIEXEC_NUMPROC_FLAG="-n"
-    # shellcheck disable=SC2089
     export MPIEXEC_PREFLAGS="${MPI_LAUNCHER_OPTS}"
     ;;
   mpirun|mpiexec)
     export MPIEXEC_EXECUTABLE="${MPI_LAUNCHER}"
-    # OpenMPI/mpiexec commonly use -np; mpiexec from MPICH also accepts -n, but -np is fine.
-    export MPIEXEC_NUMPROC_FLAG="-np"
+    export MPIEXEC_NUMPROC_FLAG="-np"      # works for Open MPI and MPICH hydra. :contentReference[oaicite:7]{index=7}
     export MPIEXEC_PREFLAGS="${MPI_LAUNCHER_OPTS}"
     ;;
   *)
     unset MPIEXEC_EXECUTABLE MPIEXEC_NUMPROC_FLAG MPIEXEC_PREFLAGS
     ;;
 esac
-# Optional: postflags placeholder (rarely needed, but supported by CTest/CMake)
 : "${MPIEXEC_POSTFLAGS:=}"
 export MPIEXEC_POSTFLAGS
 
 # Convenience runner
 mpi_exec() {
-  local np="$1"
-  shift || true
-  if [[ -z "${np:-}" || "$np" =~ ^[^0-9]+$ ]]; then
-    # NP omitted; treat first arg as command
-    np="$MPI_TEST_NP"
-  fi
+  local np="$1"; shift || true
+  if [[ -z "${np:-}" || "$np" =~ ^[^0-9]+$ ]]; then np="$MPI_TEST_NP"; fi
   if [[ -z "${MPIEXEC_EXECUTABLE:-}" ]]; then
-    echo "No MPI launcher found (srun/mpirun/mpiexec)."
-    return 1
-  fi
+    echo "No MPI launcher found (srun/mpirun/mpiexec)."; return 1; fi
   if [[ "$MPIEXEC_EXECUTABLE" == "srun" ]]; then
     echo "+ srun -n $np ${MPIEXEC_PREFLAGS} $*"
     srun -n "$np" ${MPIEXEC_PREFLAGS} "$@"
@@ -143,7 +147,7 @@ mpi_exec() {
   fi
 }
 
-# Friendly summary (one-liners, safe to pipe into logs)
+# Friendly summary for logs
 echo "MPI mode=${MPI_MODE} vendor=${MPI_VENDOR} launcher=${MPI_LAUNCHER:-none} npflag=${MPIEXEC_NUMPROC_FLAG:-n/a}"
 [[ -n "${MPIEXEC_PREFLAGS:-}" ]] && echo "MPI preflags=${MPIEXEC_PREFLAGS}"
 [[ -n "${UCX_TLS:-}" ]] && echo "UCX_TLS=${UCX_TLS}"

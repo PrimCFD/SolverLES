@@ -41,34 +41,61 @@ void SGS::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     if (!fields.contains("u") || !fields.contains("v") || !fields.contains("w"))
         throw std::runtime_error("[fluids.sgs] fields u/v/w must be registered.");
 
-    auto vu = fields.view("u");
-    auto vv = fields.view("v");
-    auto vw = fields.view("w");
+    auto vu = fields.view("u"); // face-x
+    auto vv = fields.view("v"); // face-y
+    auto vw = fields.view("w"); // face-z
 
-    const int nx_tot = vu.extents[0], ny_tot = vu.extents[1], nz_tot = vu.extents[2];
-    const int nx = tile.box.hi[0] - tile.box.lo[0];
-    const int ng = (nx_tot - nx) / 2;
+    // Get ng and center totals from a center field (prefer p, or nu_t if present)
+    int ng = 0, nxc_tot = 0, nyc_tot = 0, nzc_tot = 0;
 
-    double* u = static_cast<double*>(vu.host_ptr);
-    double* v = static_cast<double*>(vv.host_ptr);
-    double* w = static_cast<double*>(vw.host_ptr);
+    if (fields.contains("nu_t"))
+    {
+        auto vt = fields.view("nu_t"); // center field
+        nxc_tot = vt.extents[0];
+        nyc_tot = vt.extents[1];
+        nzc_tot = vt.extents[2];
+        // infer ng by comparing with tile box like you do elsewhere
+        const int nx_c = tile.box.hi[0] - tile.box.lo[0];
+        ng = (nxc_tot - nx_c) / 2;
+    }
+    else if (fields.contains("p"))
+    {
+        auto vp = fields.view("p"); // center field
+        nxc_tot = vp.extents[0];
+        nyc_tot = vp.extents[1];
+        nzc_tot = vp.extents[2];
+        const int nx_c = tile.box.hi[0] - tile.box.lo[0];
+        ng = (nxc_tot - nx_c) / 2;
+    }
+    else
+    {
+        throw std::runtime_error(
+            "[fluids.sgs] need a center-located field (p or nu_t) to infer center extents.");
+    }
 
     double* nu_t = nullptr;
     wrote_to_field_ = false;
     if (fields.contains("nu_t"))
     {
-        auto vt = fields.view("nu_t");
+        auto vt = fields.view("nu_t"); // center
         nu_t = static_cast<double*>(vt.host_ptr);
         wrote_to_field_ = true;
     }
     else
     {
-        if (scratch_.size() != static_cast<std::size_t>(nx_tot * ny_tot * nz_tot))
-            scratch_.assign(static_cast<std::size_t>(nx_tot * ny_tot * nz_tot), 0.0);
+        const std::size_t ncent = (std::size_t) nxc_tot * nyc_tot * nzc_tot;
+        if (scratch_.size() != ncent)
+            scratch_.assign(ncent, 0.0);
         nu_t = scratch_.data();
     }
 
-    sgs_smagorinsky_mac_c(u, v, w, nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_, Cs_, nu_t);
+    sgs_smagorinsky_mac_c(static_cast<const double*>(vu.host_ptr),
+                          static_cast<const double*>(vv.host_ptr),
+                          static_cast<const double*>(vw.host_ptr),
+                          /* u faces */ vu.extents[0], vu.extents[1], vu.extents[2],
+                          /* v faces */ vv.extents[0], vv.extents[1], vv.extents[2],
+                          /* w faces */ vw.extents[0], vw.extents[1], vw.extents[2],
+                          /* centers  */ nxc_tot, nyc_tot, nzc_tot, ng, dx_, dy_, dz_, Cs_, nu_t);
 }
 
 } // namespace fluids

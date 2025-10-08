@@ -104,11 +104,6 @@ Params parse_params(const KV& kv)
     if (auto s = get("Cs"))
         p.Cs = to_d(*s, p.Cs);
 
-    if (auto s = get("alpha_u"))
-        p.alpha_u = to_d(*s, p.alpha_u);
-    if (auto s = get("alpha_p"))
-        p.alpha_p = to_d(*s, p.alpha_p);
-
     if (auto s = get("adv_blend"))
         p.adv_blend = to_d(*s, p.adv_blend);
     if (auto s = get("cfl"))

@@ -23,16 +23,21 @@ class ProjectionLoop : public core::master::plugin::ActionBase
     enum class Mode
     {
         FE,
-        BE
+        BE,
+        IPISO
     };
 
     struct Options
     {
-        Mode mode = Mode::FE;
+        Mode mode = Mode::IPISO;
         int fe_iters = 1;              // for FE
         double rtol = 1e-3;            // for BE
         int max_iters = 50;            // for BE
         double dx = 1, dy = 1, dz = 1; // for residual (div) kernel
+
+        // IPISO controls
+        int num_corrections = 2; // number of pressure–velocity corrections
+        double div_tol = 1e-7;   // stop early when ||div||_inf < div_tol
     };
 
     ProjectionLoop(Options opt, std::shared_ptr<core::master::plugin::IAction> sgs,

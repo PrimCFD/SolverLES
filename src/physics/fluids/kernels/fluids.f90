@@ -12,11 +12,11 @@ contains
   end subroutine fluids_kernels_free_scratch
 
   subroutine sgs_smagorinsky_mac_c(u, v, w, &
-      nxu_tot, nyu_tot, nzu_tot, &
-      nxv_tot, nyv_tot, nzv_tot, &
-      nxw_tot, nyw_tot, nzw_tot, &
-      nxc_tot, nyc_tot, nzc_tot, &
-      ng, dx, dy, dz, Cs, nu_t_c) bind(C, name="sgs_smagorinsky_mac_c")
+                                   nxu_tot, nyu_tot, nzu_tot, &
+                                   nxv_tot, nyv_tot, nzv_tot, &
+                                   nxw_tot, nyw_tot, nzw_tot, &
+                                   nxc_tot, nyc_tot, nzc_tot, &
+                                   ng, dx, dy, dz, Cs, nu_t_c) bind(C, name="sgs_smagorinsky_mac_c")
     use, intrinsic :: iso_c_binding
     implicit none
     ! Face-centered velocities
@@ -55,60 +55,61 @@ contains
     do k = 0, nzc-1
       do j = 0, nyc-1
         ! base pointers for this (j,k)
-        cC0 = 1_c_size_t + int(ng, c_size_t) + syc*int(j+ng, c_size_t) + szc*int(k+ng, c_size_t)
-        cu0 = 1_c_size_t + syu*int(j+ng, c_size_t) + szu*int(k+ng, c_size_t)
-        cv0 = 1_c_size_t + int(ng, c_size_t)       + szv*int(k+ng, c_size_t)
-        cw0 = 1_c_size_t + int(ng, c_size_t)       + syw*int(j+ng, c_size_t)
+        cC0 = 1_c_size_t+int(ng, c_size_t)+syc*int(j+ng, c_size_t)+szc*int(k+ng, c_size_t)
+        cu0 = 1_c_size_t+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
+        cv0 = 1_c_size_t+int(ng, c_size_t)+szv*int(k+ng, c_size_t)
+        cw0 = 1_c_size_t+int(ng, c_size_t)+syw*int(j+ng, c_size_t)
 
         cC = cC0
         !$omp simd linear(cC:1)
         do i = 0, nxc-1
           ! Faces straddling the cell center (west/east, south/north, bottom/top)
-          cu_w = cu0 + int(ng+i, c_size_t)           ! u at i-1/2
-          cu_e = cu_w + sxu                           ! u at i+1/2
+          cu_w = cu0+int(ng+i, c_size_t)   ! u at i-1/2
+          cu_e = cu_w+sxu   ! u at i+1/2
 
-          cv_s = (1_c_size_t + int(ng+i, c_size_t) + syv*int(ng+j, c_size_t) + szv*int(k+ng, c_size_t))  ! v at j-1/2
-          cv_n = cv_s + syv                                                                                 ! v at j+1/2
+          cv_s = (1_c_size_t+int(ng+i, c_size_t)+syv* &
+                  int(ng+j, c_size_t)+szv*int(k+ng, c_size_t))  ! v at j-1/2
+          cv_n = cv_s+syv   ! v at j+1/2
 
-          cw_b = (1_c_size_t + int(ng+i, c_size_t) + syw*int(j+ng, c_size_t) + szw*int(ng+k, c_size_t))  ! w at k-1/2
-          cw_t = cw_b + szw                                                                                 ! w at k+1/2
+          cw_b = (1_c_size_t+int(ng+i, c_size_t)+syw* &
+                  int(j+ng, c_size_t)+szw*int(ng+k, c_size_t))  ! w at k-1/2
+          cw_t = cw_b+szw    ! w at k+1/2
 
           ! Normal derivatives (centered from face differences)
-          dudx = (u(cu_e) - u(cu_w)) * fx
-          dvdy = (v(cv_n) - v(cv_s)) * fy
-          dwdz = (w(cw_t) - w(cw_b)) * fz
+          dudx = (u(cu_e)-u(cu_w))*fx
+          dvdy = (v(cv_n)-v(cv_s))*fy
+          dwdz = (w(cw_t)-w(cw_b))*fz
 
           ! Cross derivatives (average the face-wise central diffs to center)
           ! dudy: average over the two x-faces:
-          dudy = 0.25d0*fy * ( (u(cu_w+syu) - u(cu_w-syu)) + (u(cu_e+syu) - u(cu_e-syu)) )
+          dudy = 0.25d0*fy*((u(cu_w+syu)-u(cu_w-syu))+(u(cu_e+syu)-u(cu_e-syu)))
           ! dvdx: average over the two y-faces:
-          dvdx = 0.25d0*fx * ( (v(cv_s+sxv) - v(cv_s-sxv)) + (v(cv_n+sxv) - v(cv_n-sxv)) )
+          dvdx = 0.25d0*fx*((v(cv_s+sxv)-v(cv_s-sxv))+(v(cv_n+sxv)-v(cv_n-sxv)))
           ! dudz: average over the two x-faces:
-          dudz = 0.25d0*fz * ( (u(cu_w+szu) - u(cu_w-szu)) + (u(cu_e+szu) - u(cu_e-szu)) )
+          dudz = 0.25d0*fz*((u(cu_w+szu)-u(cu_w-szu))+(u(cu_e+szu)-u(cu_e-szu)))
           ! dwdx: average over the two z-faces:
-          dwdx = 0.25d0*fx * ( (w(cw_b+sxw) - w(cw_b-sxw)) + (w(cw_t+sxw) - w(cw_t-sxw)) )
+          dwdx = 0.25d0*fx*((w(cw_b+sxw)-w(cw_b-sxw))+(w(cw_t+sxw)-w(cw_t-sxw)))
           ! dvdz: average over the two y-faces:
-          dvdz = 0.25d0*fz * ( (v(cv_s+szv) - v(cv_s-szv)) + (v(cv_n+szv) - v(cv_n-szv)) )
+          dvdz = 0.25d0*fz*((v(cv_s+szv)-v(cv_s-szv))+(v(cv_n+szv)-v(cv_n-szv)))
           ! dwdy: average over the two z-faces:
-          dwdy = 0.25d0*fy * ( (w(cw_b+syw) - w(cw_b-syw)) + (w(cw_t+syw) - w(cw_t-syw)) )
+          dwdy = 0.25d0*fy*((w(cw_b+syw)-w(cw_b-syw))+(w(cw_t+syw)-w(cw_t-syw)))
 
           ! Strain tensor at the cell center
           Sxx = dudx; Syy = dvdy; Szz = dwdz
-          Sxy = 0.5d0*(dudy + dvdx)
-          Sxz = 0.5d0*(dudz + dwdx)
-          Syz = 0.5d0*(dvdz + dwdy)
+          Sxy = 0.5d0*(dudy+dvdx)
+          Sxz = 0.5d0*(dudz+dwdx)
+          Syz = 0.5d0*(dvdz+dwdy)
 
-          Smag = sqrt( 2.d0*(Sxx*Sxx + Syy*Syy + Szz*Szz) &
-                    + 4.d0*(Sxy*Sxy + Sxz*Sxz + Syz*Syz) )
+          Smag = sqrt(2.d0*(Sxx*Sxx+Syy*Syy+Szz*Szz) &
+                      +4.d0*(Sxy*Sxy+Sxz*Sxz+Syz*Syz))
 
-          nu_t_c(cC) = (Cs2 * Delta * Delta) * Smag
+          nu_t_c(cC) = (Cs2*Delta*Delta)*Smag
 
-          cC = cC + sxc
+          cC = cC+sxc
         end do
       end do
     end do
   end subroutine sgs_smagorinsky_mac_c
-
 
   subroutine divergence_mac_c(u, v, w, &
                               nxu_tot, nyu_tot, nzu_tot, &
@@ -167,6 +168,8 @@ contains
       end do
     end do
   end subroutine divergence_mac_c
+
+  ! Legacy Poisson solvers
 
   subroutine poisson_jacobi_c(rhs, nx_tot, ny_tot, nz_tot, ng, dx, dy, dz, iters, p) &
     bind(C, name="poisson_jacobi_c")
@@ -271,12 +274,12 @@ contains
             ip = c+sx; im = c-sx; jp = c+sy; jm = c-sy; kp = c+sz; km = c-sz
             ! beta = 1/rho at cell centers
             ! face (1/rho)_f via harmonic average of beta:
-            be = 2.0d0 / ( 1.0d0/beta(c) + 1.0d0/beta(ip) )
-            bw = 2.0d0 / ( 1.0d0/beta(c) + 1.0d0/beta(im) )
-            bn = 2.0d0 / ( 1.0d0/beta(c) + 1.0d0/beta(jp) )
-            bs = 2.0d0 / ( 1.0d0/beta(c) + 1.0d0/beta(jm) )
-            bt = 2.0d0 / ( 1.0d0/beta(c) + 1.0d0/beta(kp) )
-            bb = 2.0d0 / ( 1.0d0/beta(c) + 1.0d0/beta(km) )
+            be = 2.0d0/(1.0d0/beta(c)+1.0d0/beta(ip))
+            bw = 2.0d0/(1.0d0/beta(c)+1.0d0/beta(im))
+            bn = 2.0d0/(1.0d0/beta(c)+1.0d0/beta(jp))
+            bs = 2.0d0/(1.0d0/beta(c)+1.0d0/beta(jm))
+            bt = 2.0d0/(1.0d0/beta(c)+1.0d0/beta(kp))
+            bb = 2.0d0/(1.0d0/beta(c)+1.0d0/beta(km))
 
             denom = ax*(be+bw)+ay*(bn+bs)+az*(bt+bb)
             pn_scratch(c) = (ax*(be*p(ip)+bw*p(im))+ay*(bn*p(jp)+bs*p(jm)) &
@@ -443,8 +446,8 @@ contains
     integer :: i, j, k, nxc, nyc, nzc
     integer(c_size_t) :: sxc, syc, szc, sxu, syu, szu, sxv, syv, szv, sxw, syw, szw
     integer(c_size_t) :: cu, cL, cR
-    real(c_double), parameter :: eps = 1.0d-300
-    real(c_double) :: rho_f, fac
+    real(c_double), parameter :: eps_rho = 1.0d-300
+    real(c_double) :: betaL, betaR, beta_f, fac
 
     nxc = nxc_tot-2*ng; nyc = nyc_tot-2*ng; nzc = nzc_tot-2*ng
     sxc = 1_c_size_t; syc = int(nxc_tot, c_size_t); szc = syc*int(nyc_tot, c_size_t)
@@ -452,44 +455,65 @@ contains
     sxv = 1_c_size_t; syv = int(nxv_tot, c_size_t); szv = syv*int(nyv_tot, c_size_t)
     sxw = 1_c_size_t; syw = int(nxw_tot, c_size_t); szw = syw*int(nyw_tot, c_size_t)
 
-    ! u faces
-    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cu,cL,cR,rho_f,fac)
+    ! -------- u faces: (i+1/2, j, k) => left/right cells (i, j, k) and (i+1, j, k)
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cu,cL,cR,betaL,betaR,beta_f,fac)
     do k = 0, nzc-1
       do j = 0, nyc-1
         do i = 1, nxc-1
           cu = 1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
+
           cL = 1_c_size_t+int(ng+i-1, c_size_t)+syc*int(j+ng, c_size_t)+szc*int(k+ng, c_size_t)
           cR = cL+sxc
-          rho_f = 0.5d0*(rho_c(cL)+rho_c(cR))
-          fac = dt/max(rho_f, eps)
+
+          ! beta = 1/rho at adjacent centers (guard against tiny rho)
+          betaL = 1.0d0/max(rho_c(cL), eps_rho)
+          betaR = 1.0d0/max(rho_c(cR), eps_rho)
+
+          ! face beta via harmonic mean (consistent with Poisson operator):
+          ! beta_f = 2 * betaL * betaR / (betaL + betaR)
+          beta_f = (2.0d0*betaL*betaR)/(betaL+betaR)
+
+          fac = dt*beta_f
           u(cu) = u(cu)-fac*dpx_u(cu)
         end do
       end do
     end do
-    ! v faces
-    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cu,cL,cR,rho_f,fac)
+
+    ! -------- v faces: (i, j+1/2, k) => below/above cells (i, j, k) and (i, j+1, k)
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cu,cL,cR,betaL,betaR,beta_f,fac)
     do k = 0, nzc-1
       do i = 0, nxc-1
         do j = 1, nyc-1
           cu = 1_c_size_t+int(ng+i, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)
+
           cL = 1_c_size_t+int(ng+i, c_size_t)+syc*int(j-1+ng, c_size_t)+szc*int(k+ng, c_size_t)
           cR = cL+syc
-          rho_f = 0.5d0*(rho_c(cL)+rho_c(cR))
-          fac = dt/max(rho_f, eps)
+
+          betaL = 1.0d0/max(rho_c(cL), eps_rho)
+          betaR = 1.0d0/max(rho_c(cR), eps_rho)
+          beta_f = (2.0d0*betaL*betaR)/(betaL+betaR)
+
+          fac = dt*beta_f
           v(cu) = v(cu)-fac*dpy_v(cu)
         end do
       end do
     end do
-    ! w faces
-    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cu,cL,cR,rho_f,fac)
+
+    ! -------- w faces: (i, j, k+1/2) => below/above cells (i, j, k) and (i, j, k+1)
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,cu,cL,cR,betaL,betaR,beta_f,fac)
     do j = 0, nyc-1
       do i = 0, nxc-1
         do k = 1, nzc-1
           cu = 1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)
+
           cL = 1_c_size_t+int(ng+i, c_size_t)+syc*int(j+ng, c_size_t)+szc*int(k-1+ng, c_size_t)
           cR = cL+szc
-          rho_f = 0.5d0*(rho_c(cL)+rho_c(cR))
-          fac = dt/max(rho_f, eps)
+
+          betaL = 1.0d0/max(rho_c(cL), eps_rho)
+          betaR = 1.0d0/max(rho_c(cR), eps_rho)
+          beta_f = (2.0d0*betaL*betaR)/(betaL+betaR)
+
+          fac = dt*beta_f
           w(cu) = w(cu)-fac*dpz_w(cu)
         end do
       end do
@@ -710,30 +734,30 @@ contains
     end do
   end subroutine diffuse_velocity_be_residual_c
 
-  pure function kk3_deriv(qm2,qm1,q0,qp1, s, h, blend) result(dq)
+  pure function kk3_deriv(qm2, qm1, q0, qp1, s, h, blend) result(dq)
     use, intrinsic :: iso_c_binding
     implicit none
-    real(c_double), intent(in) :: qm2,qm1,q0,qp1, s, h, blend
+    real(c_double), intent(in) :: qm2, qm1, q0, qp1, s, h, blend
     real(c_double) :: dq, up3, cen4, sigma
 
     ! 3rd-order upwind part (mirrored by sign of s)
     if (s >= 0.d0) then
       ! wind > 0 : {i-2,i-1,i,i+1}
-      up3 = ( 2.0d0*qm1 + 3.0d0*q0 - 6.0d0*qp1 + qm2 ) / (6.0d0*h)
+      up3 = (2.0d0*qm1+3.0d0*q0-6.0d0*qp1+qm2)/(6.0d0*h)
     else
       ! wind < 0 : mirrored {i+2,i+1,i,i-1}
-      up3 = ( -2.0d0*qp1 - 3.0d0*q0 + 6.0d0*qm1 - qm2 ) / (6.0d0*h)
+      up3 = (-2.0d0*qp1-3.0d0*q0+6.0d0*qm1-qm2)/(6.0d0*h)
     end if
 
     ! small central correction (KK-style blend)
     sigma = merge(1.0d0, -1.0d0, s >= 0.d0)
-    cen4  = (qp1 - qm1) / (2.0d0*h) - sigma * (qp1 - 2.0d0*q0 + qm1) / (6.0d0*h)
+    cen4 = (qp1-qm1)/(2.0d0*h)-sigma*(qp1-2.0d0*q0+qm1)/(6.0d0*h)
 
-    dq = (1.0d0 - blend) * up3 + blend * cen4
+    dq = (1.0d0-blend)*up3+blend*cen4
   end function kk3_deriv
 
-  subroutine advect_velocity_kk3_c(u, v, w, nx_tot, ny_tot, nz_tot, ng, dx, dy, dz, blend,  &
-                                 nu_u, nu_v, nu_w) bind(C, name="advect_velocity_kk3_c")
+  subroutine advect_velocity_kk3_c(u, v, w, nx_tot, ny_tot, nz_tot, ng, dx, dy, dz, blend, &
+                                   nu_u, nu_v, nu_w) bind(C, name="advect_velocity_kk3_c")
     use, intrinsic :: iso_c_binding
     implicit none
     integer(c_int), value :: nx_tot, ny_tot, nz_tot, ng
@@ -749,15 +773,6 @@ contains
     real(c_double) :: um, up, vm, vp, wm, wp
     real(c_double) :: du_dx, du_dy, du_dz, dv_dx, dv_dy, dv_dz, dw_dx, dw_dy, dw_dz
     real(c_double) :: uc, vc, wc
-
-    ! helpers: 3rd-upwind face-to-derivative “split” (directional), blended with central
-    interface
-      pure function up3_d(qm2,qm1,q0,qp1, s, h, blend) result(dq)
-        use, intrinsic :: iso_c_binding
-        real(c_double), intent(in) :: qm2,qm1,q0,qp1,s,h,blend
-        real(c_double) :: dq
-      end function
-    end interface
 
     nx = nx_tot-2*ng; ny = ny_tot-2*ng; nz = nz_tot-2*ng
     fx = 1.0d0/dx; fy = 1.0d0/dy; fz = 1.0d0/dz
@@ -792,12 +807,12 @@ contains
           ! ---- z-derivatives ----
           du_dz = kk3_deriv(u(c-2*sz), u(c-sz), u(c), u(c+sz), wc, dz, blend)
           dv_dz = kk3_deriv(v(c-2*sz), v(c-sz), v(c), v(c+sz), wc, dz, blend)
-          dw_dz = kk3_deriv(w(c-2*sz), w(c-sz), w(c), w(c+sz), wc, dz, blend)   
+          dw_dz = kk3_deriv(w(c-2*sz), w(c-sz), w(c), w(c+sz), wc, dz, blend)
 
           ! N(u) = -(u·∇)u (component-wise)
-          nu_u(c) = -(uc*du_dx + vc*du_dy + wc*du_dz)
-          nu_v(c) = -(uc*dv_dx + vc*dv_dy + wc*dv_dz)
-          nu_w(c) = -(uc*dw_dx + vc*dw_dy + wc*dw_dz)
+          nu_u(c) = -(uc*du_dx+vc*du_dy+wc*du_dz)
+          nu_v(c) = -(uc*dv_dx+vc*dv_dy+wc*dv_dz)
+          nu_w(c) = -(uc*dw_dx+vc*dw_dy+wc*dw_dz)
 
           c = c+1_c_size_t
         end do
@@ -805,5 +820,147 @@ contains
     end do
 
   end subroutine advect_velocity_kk3_c
+
+  subroutine advect_velocity_kk3_mac_c( &
+    u, nxu_tot, nyu_tot, nzu_tot, &
+    v, nxv_tot, nyv_tot, nzv_tot, &
+    w, nxw_tot, nyw_tot, nzw_tot, &
+    ng, dx, dy, dz, blend, &
+    Nu, Nv, Nw) bind(C, name="advect_velocity_kk3_mac_c")
+    use, intrinsic :: iso_c_binding
+    implicit none
+    integer(c_int), value :: nxu_tot, nyu_tot, nzu_tot
+    integer(c_int), value :: nxv_tot, nyv_tot, nzv_tot
+    integer(c_int), value :: nxw_tot, nyw_tot, nzw_tot
+    integer(c_int), value :: ng
+    real(c_double), value :: dx, dy, dz, blend
+    real(c_double), intent(in)  :: u(*), v(*), w(*)
+    real(c_double), intent(out) :: Nu(*), Nv(*), Nw(*)
+
+    integer :: i, j, k, nxu, nyu, nzu, nxv, nyv, nzv, nxw, nyw, nzw
+    integer(c_size_t) :: sxu, syu, szu, sxv, syv, szv, sxw, syw, szw
+    integer(c_size_t) :: c, c0, ip, im, jp, jm, kp, km
+    real(c_double)    :: uc, vc, wc
+    real(c_double)    :: du_dx, du_dy, du_dz, dv_dx, dv_dy, dv_dz, dw_dx, dw_dy, dw_dz
+
+    ! sizes (interior counts)
+    nxu = nxu_tot-2*ng; nyu = nyu_tot-2*ng; nzu = nzu_tot-2*ng
+    nxv = nxv_tot-2*ng; nyv = nyv_tot-2*ng; nzv = nzv_tot-2*ng
+    nxw = nxw_tot-2*ng; nyw = nyw_tot-2*ng; nzw = nzw_tot-2*ng
+
+    ! strides
+    sxu = 1_c_size_t; syu = int(nxu_tot, c_size_t); szu = syu*int(nyu_tot, c_size_t)
+    sxv = 1_c_size_t; syv = int(nxv_tot, c_size_t); szv = syv*int(nyv_tot, c_size_t)
+    sxw = 1_c_size_t; syw = int(nxw_tot, c_size_t); szw = syw*int(nyw_tot, c_size_t)
+
+    !-------------------------------
+    ! (1) N_u on u-faces
+    !-------------------------------
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,c0,c,ip,im,jp,jm, &
+    !$omp& kp, km, uc, vc, wc, du_dx, du_dy, du_dz)
+    do k = 0, nzu-1
+      do j = 0, nyu-1
+        c0 = 1_c_size_t+int(ng, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
+        c = c0
+        !$omp simd linear(c:1)
+        do i = 0, nxu-1
+          ip = c+sxu; im = c-sxu
+          jp = c+syu; jm = c-syu
+          kp = c+szu; km = c-szu
+
+          ! u-component located at u-face:
+          uc = u(c)
+          ! at u-face (i,j,k): collocate v(i..i+1, j+1/2, k) and w(i..i+1, j, k+1/2) across x
+          vc = 0.5d0*(v(1_c_size_t+int(ng+i, c_size_t) &
+                        +syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)) &  ! v(i,   j+1/2, k)
+                      +v(1_c_size_t+int(ng+i+1, c_size_t) &
+                         +syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)))  ! v(i+1, j+1/2, k)
+
+          wc = 0.5d0*(w(1_c_size_t+int(ng+i, c_size_t) &
+                        +syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)) &  ! w(i,   j, k+1/2)
+                      +w(1_c_size_t+int(ng+i+1, c_size_t) &
+                         +syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)))  ! w(i+1, j, k+1/2)
+
+          du_dx = kk3_deriv(u(c-2*sxu), u(im), u(c), u(ip), uc, dx, blend)
+          du_dy = kk3_deriv(u(c-2*syu), u(jm), u(c), u(jp), vc, dy, blend)
+          du_dz = kk3_deriv(u(c-2*szu), u(km), u(c), u(kp), wc, dz, blend)
+          Nu(c) = -(uc*du_dx+vc*du_dy+wc*du_dz)
+          c = c+sxu
+        end do
+      end do
+    end do
+
+    !-------------------------------
+    ! (2) N_v on v-faces
+    !-------------------------------
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,c0,c,ip,im,jp,jm, &
+    !$omp& kp, km, uc, vc, wc, dv_dx, dv_dy, dv_dz)
+    do k = 0, nzv-1
+      do i = 0, nxv-1
+        c0 = 1_c_size_t+int(ng+i, c_size_t)+syv*int(ng, c_size_t)+szv*int(k+ng, c_size_t)
+        c = c0
+        !$omp simd linear(c:syv)
+        do j = 0, nyv-1
+          ip = c+sxv; im = c-sxv
+          jp = c+syv; jm = c-syv
+          kp = c+szv; km = c-szv
+
+          vc = v(c)
+          ! at v-face (i,j,k): collocate u(i+1/2, j..j+1, k) and w(i, j..j+1, k+1/2) across y
+          uc = 0.5d0*(u(1_c_size_t+int(ng+i, c_size_t) &
+                        +syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)) &  ! u(i+1/2, j,   k)
+                      +u(1_c_size_t+int(ng+i, c_size_t) &
+                         +syu*int(j+ng+1, c_size_t)+szu*int(k+ng, c_size_t)))  ! u(i+1/2, j+1, k)
+
+          wc = 0.5d0*(w(1_c_size_t+int(ng+i, c_size_t) &
+                        +syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)) &  ! w(i, j,   k+1/2)
+                      +w(1_c_size_t+int(ng+i, c_size_t) &
+                         +syw*int(j+ng+1, c_size_t)+szw*int(k+ng, c_size_t)))  ! w(i, j+1, k+1/2)
+
+          dv_dx = kk3_deriv(v(c-2*sxv), v(im), v(c), v(ip), uc, dx, blend)
+          dv_dy = kk3_deriv(v(c-2*syv), v(jm), v(c), v(jp), vc, dy, blend)
+          dv_dz = kk3_deriv(v(c-2*szv), v(km), v(c), v(kp), wc, dz, blend)
+          Nv(c) = -(uc*dv_dx+vc*dv_dy+wc*dv_dz)
+          c = c+syv
+        end do
+      end do
+    end do
+
+    !-------------------------------
+    ! (3) N_w on w-faces
+    !-------------------------------
+    !$omp parallel do collapse(2) schedule(static) private(i,j,k,c0,c,ip,im,jp,jm, &
+    !$omp& kp, km, uc, vc, wc, dw_dx, dw_dy, dw_dz)
+    do j = 0, nyw-1
+      do i = 0, nxw-1
+        c0 = 1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(ng, c_size_t)
+        c = c0
+        !$omp simd linear(c:szw)
+        do k = 0, nzw-1
+          ip = c+sxw; im = c-sxw
+          jp = c+syw; jm = c-syw
+          kp = c+szw; km = c-szw
+
+          wc = w(c)
+          ! at w-face (i,j,k): collocate u(i+1/2, j, k..k+1) and v(i, j+1/2, k..k+1) across z
+          uc = 0.5d0*(u(1_c_size_t+int(ng+i, c_size_t) &
+                        +syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)) &  ! u(i+1/2, j, k)
+                      +u(1_c_size_t+int(ng+i, c_size_t) &
+                         +syu*int(j+ng, c_size_t)+szu*int(k+ng+1, c_size_t)))  ! u(i+1/2, j, k+1)
+
+          vc = 0.5d0*(v(1_c_size_t+int(ng+i, c_size_t) &
+                        +syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)) &  ! v(i, j+1/2, k)
+                      +v(1_c_size_t+int(ng+i, c_size_t) &
+                         +syv*int(j+ng, c_size_t)+szv*int(k+ng+1, c_size_t)))  ! v(i, j+1/2, k+1)
+
+          dw_dx = kk3_deriv(w(c-2*sxw), w(im), w(c), w(ip), uc, dx, blend)
+          dw_dy = kk3_deriv(w(c-2*syw), w(jm), w(c), w(jp), vc, dy, blend)
+          dw_dz = kk3_deriv(w(c-2*szw), w(km), w(c), w(kp), wc, dz, blend)
+          Nw(c) = -(uc*dw_dx+vc*dw_dy+wc*dw_dz)
+          c = c+szw
+        end do
+      end do
+    end do
+  end subroutine advect_velocity_kk3_mac_c
 
 end module fluids_kernels

@@ -8,7 +8,7 @@ static void run_noop_steps(int steps)
 {
     master::RunContext rc{};
     // If you build with MPI and want to pass the communicator:
-    // rc.mpi_comm = reinterpret_cast<void*>(MPI_COMM_WORLD);
+    // rc.mpi_comm = reinterpret_cast<void*>(&MPI_COMM_WORLD);
 
     // Minimal mesh: interior 2x2x2, no ghosts for this overhead micro-bench
     mesh::Mesh mesh;

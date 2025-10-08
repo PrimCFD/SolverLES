@@ -21,14 +21,39 @@ set -euo pipefail
 #   LABEL_RE='regression|integ' ./scripts/run_regression_tests.sh
 #   CTEST_NAME_REGEX='^integ::' ./scripts/run_regression_tests.sh
 
+# --- NEW: set MPI env (auto-detect laptop vs cluster) ---
+if [[ -f "scripts/mpi_env.sh" ]]; then
+  # You can override with MPI_MODE=cluster|emulate when needed.
+  # shellcheck source=/dev/null
+  source scripts/mpi_env.sh "${MPI_MODE:-auto}"
+  export OMP_NUM_THREADS=2 # limit thread number for small runs (32^3)
+  # If a launcher is available, default to building PETSc with MPI.
+  if [[ -n "${MPIEXEC_EXECUTABLE:-}" ]]; then
+    : "${ENABLE_MPI:=ON}"
+  fi
+fi
+
 BUILD_DIR=${BUILD_DIR:-build-regression}
 SKIP_BUILD=${SKIP_BUILD:-0}
 CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-Release}
 CTEST_PARALLEL_LEVEL=${CTEST_PARALLEL_LEVEL:-$(command -v nproc >/dev/null && nproc || echo 2)}
-CTEST_TIMEOUT=${CTEST_TIMEOUT:-900}
+CTEST_TIMEOUT=${CTEST_TIMEOUT:-3000}
 REPORT_DIR=${REPORT_DIR:-"${BUILD_DIR}/test-reports/regression"}
 LABEL_RE=${LABEL_RE:-regression}
 CTEST_NAME_REGEX=${CTEST_NAME_REGEX:-}
+
+PETSC_OPTIONS="-ksp_converged_reason \
+  -ksp_error_if_not_converged true \
+  -ksp_monitor_true_residual -ksp_monitor_short \
+  -ksp_view \
+  -mg_levels_ksp_view \
+  -mg_levels_ksp_monitor \
+  -pc_mg_log \
+  -log_view \
+  -options_left"
+
+# Uncomment for PETSC linear solve logging
+# export PETSC_OPTIONS
 
 if [[ "${SKIP_BUILD}" != "1" ]]; then
   BUILD_DIR="${BUILD_DIR}" \
@@ -61,7 +86,7 @@ else
   CTEST_FILTER_OPTS=( --label-regex "${LABEL_RE}" )
 fi
 
-ctest --test-dir "${BUILD_DIR}" \
+ctest -V --test-dir "${BUILD_DIR}" \
       "${CTEST_FILTER_OPTS[@]}" \
       -j "${CTEST_PARALLEL_LEVEL}" \
       --timeout "${CTEST_TIMEOUT}" \

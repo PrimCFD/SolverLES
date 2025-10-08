@@ -55,8 +55,6 @@ program:
     rho: "1"
     nu: "1e-3"
     Cs: "0.16"
-    alpha_u: "0.7"
-    alpha_p: "0.3"
 
     time_scheme: "be"         # "fe" (MVP) or "be" (residual-driven)
     #fe_iters: "1"             # fixed FE sweeps per step (use 2–3 if you want an extra polish)

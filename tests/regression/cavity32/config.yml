@@ -6,10 +6,10 @@ mesh:
   periodic: [false, false, false]
 
 time:
-  dt: 1.0e-2
-  t_end: 2.0
+  dt: 5.0e-3
+  t_end: 5.0 
   write_every:
-    steps: 1
+    steps: 10
 
 io:
   backend: xdmf
@@ -30,13 +30,12 @@ program:
     dz: "0.03125"
 
     rho: "1"
-    nu: "1e-3"
+    nu: "1.0e-3"
     Cs: "0.16"
-    alpha_u: "0.7"
-    alpha_p: "0.3"
 
-    time_scheme: "fe"
-    fe_iters: "3" 
+    time_scheme: "piso"
+    num_corrections: "2"
+    div_tol: "1.0e-7"
 
     adv_blend: "0.25"
 

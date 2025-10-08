@@ -31,9 +31,9 @@ template <class T> void exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm com
 {
     const int ng = m.ng;
     const auto e = f.extents(); // totals INCLUDING ghosts
-    const int nx = e[0] - 2*ng;
-    const int ny = e[1] - 2*ng;
-    const int nz = e[2] - 2*ng;
+    const int nx = e[0] - 2 * ng;
+    const int ny = e[1] - 2 * ng;
+    const int nz = e[2] - 2 * ng;
 
     // Derive a 3D Cartesian communicator from `comm`
     int size = 1;

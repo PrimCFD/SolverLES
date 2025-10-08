@@ -55,8 +55,7 @@ static inline const char* xmf_center_for(int fnx, int fny, int fnz, int nx, int 
     if (fnx == nx && fny == ny && fnz == nz)
         return "Cell";
     // XDMF supports "Face" center for staggered face data on structured grids
-    if ((fnx == nx + 1 && fny == ny && fnz == nz) ||
-        (fnx == nx && fny == ny + 1 && fnz == nz) ||
+    if ((fnx == nx + 1 && fny == ny && fnz == nz) || (fnx == nx && fny == ny + 1 && fnz == nz) ||
         (fnx == nx && fny == ny && fnz == nz + 1))
         return "Face";
     // Conservative fallback
@@ -252,10 +251,10 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
         {
             const auto& fp = plan_.fields[i];
             const auto& fname = fp.shape.name;
-            const char* center = xmf_center_for(fp.shape.nx, fp.shape.ny, fp.shape.nz,
-                                                impl_->nx, impl_->ny, impl_->nz);
-            xmf << " <Attribute Name=\"" << fname
-                << "\" AttributeType=\"Scalar\" Center=\"" << center << "\">\n"
+            const char* center = xmf_center_for(fp.shape.nx, fp.shape.ny, fp.shape.nz, impl_->nx,
+                                                impl_->ny, impl_->nz);
+            xmf << " <Attribute Name=\"" << fname << "\" AttributeType=\"Scalar\" Center=\""
+                << center << "\">\n"
                 << " <DataItem Dimensions=\"" << impl_->nz << " " << impl_->ny << " " << impl_->nx
                 << "\" NumberType=\"Float\" Precision=\"" << fp.shape.elem_size
                 << "\" Format=\"HDF\">" << fs::path(impl_->h5_path).filename().string() << ":/"
