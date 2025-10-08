@@ -1,6 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Optional: vendor-agnostic prefetch configuration
+# PREFETCH_MPI controls whether to cache an MPI vendor for PETSc offline builds.
+# Values: "mpich" to cache MPICH tarballs; empty/anything else = no MPI cached.
+# You can also pass --mpi=mpich on the command line.
+PREFETCH_MPI="${PREFETCH_MPI:-}"
+
+for arg in "$@"; do
+  case "$arg" in
+    --mpi=mpich) PREFETCH_MPI="mpich" ;;
+    --mpi=none|--mpi=system|--mpi="") PREFETCH_MPI="" ;;
+    -h|--help)
+      cat <<EOF
+Usage: $(basename "$0") [--mpi=mpich|none]
+  --mpi=mpich  Cache MPICH tarballs for PETSc offline configure
+  --mpi=none   Do not cache an MPI (default); PETSc will use system MPI at build time
+Environment:
+  PREFETCH_MPI=mpich   Same as --mpi=mpich
+EOF
+      exit 0;;
+  esac
+done
+
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$here/.."
 prefetch_dir="${repo_root}/.prefetch"
@@ -56,9 +78,11 @@ if [[ -d "${petsc_src}" ]]; then
   pushd "${petsc_src}" >/dev/null
   # Ask configure to print only the URLs needed for our requested downloads.
   # (PETSc docs: --with-packages-download-dir makes configure list the URLs.) 
-  # We request just MPICH + reference BLAS/LAPACK to guarantee an MPI build offline.
-  set +e
-  CFG_OUT="$(python3 ./configure \
+  # Optionally cache MPI vendor tarballs for offline PETSc configure.
+  # When PREFETCH_MPI=mpich, we request MPICH; otherwise we let PETSc use system MPI later.  set +e
+  if [[ "${PREFETCH_MPI}" == "mpich" ]]; then
+    echo "⚙️   PETSc configure (URL discovery) with --download-mpich"
+    CFG_OUT="$(python3 ./configure \
       --with-packages-download-dir="${pkg_cache}" \
       --download-mpich \
       --with-debugging=0 \
@@ -71,6 +95,13 @@ if [[ -d "${petsc_src}" ]]; then
     | sed -E "s/[\"',)]+$//" \
     | grep -Ei '/mpich[^/]*\.(tar\.(gz|bz2|xz)|tgz)$' \
     | sort -u > "${urls_file}"
+
+  else
+    echo "ℹ️   No MPI vendor selected for caching; PETSc will use system MPI during build."
+    : > "${urls_file}"  # create empty list
+  fi
+
+  set -e
 
   echo "⬇️   Downloading PETSc package tarballs into ${pkg_cache}/ …"
   while read -r url; do

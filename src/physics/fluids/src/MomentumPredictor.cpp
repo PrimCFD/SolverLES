@@ -12,6 +12,8 @@
 #include <mpi.h>
 #endif
 
+#include "memory/MpiBox.hpp"
+
 static std::string to_lower(std::string s)
 {
     std::transform(s.begin(), s.end(), s.begin(),
@@ -254,7 +256,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
 #ifdef HAVE_MPI
         if (mpi_comm_)
         {
-            MPI_Comm comm = *reinterpret_cast<const MPI_Comm*>(mpi_comm_);
+            MPI_Comm comm = mpi_unbox(mpi_comm_);
             double pair[2] = {res2, rhs2};
             MPI_Allreduce(MPI_IN_PLACE, pair, 2, MPI_DOUBLE, MPI_SUM, comm);
             res2 = pair[0];

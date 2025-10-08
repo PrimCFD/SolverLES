@@ -21,7 +21,7 @@ set -euo pipefail
 #   LABEL_RE='regression|integ' ./scripts/run_regression_tests.sh
 #   CTEST_NAME_REGEX='^integ::' ./scripts/run_regression_tests.sh
 
-# --- NEW: set MPI env (auto-detect laptop vs cluster) ---
+# Set MPI env
 if [[ -f "scripts/mpi_env.sh" ]]; then
   # You can override with MPI_MODE=cluster|emulate when needed.
   # shellcheck source=/dev/null

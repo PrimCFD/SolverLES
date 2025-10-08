@@ -76,9 +76,25 @@ else()
   list(APPEND _cfg_cmd "--with-blaslapack=1")
 endif()
 
-# Ensure a true MPI PETSc when ENABLE_MPI=ON (uses local tarball if present)
+# Vendor-agnostic: only request MPICH if explicitly asked, or if we already
+# *have* an mpich tarball in the local cache.
+#
+# Usage examples: - Default (vendor-agnostic): no -DPETSC_VENDOR_MPI → no
+# --download-mpich - Force MPICH:               -DPETSC_VENDOR_MPI=mpich
+#
+# Also auto-enable if a tarball is available offline to avoid network.
+set(PETSC_VENDOR_MPI
+    "${PETSC_VENDOR_MPI}"
+    CACHE STRING "MPI vendor for PETSc offline configure (empty or 'mpich')")
+
+# Only request MPICH if explicitly asked for.
+set(PETSC_VENDOR_MPI
+    "${PETSC_VENDOR_MPI}"
+    CACHE STRING "MPI vendor for PETSc offline configure (empty or 'mpich')")
 if(DEFINED ENABLE_MPI AND ENABLE_MPI)
-  list(APPEND _cfg_cmd "--download-mpich")
+  if(PETSC_VENDOR_MPI STREQUAL "mpich")
+    list(APPEND _cfg_cmd "--download-mpich")
+  endif()
 endif()
 
 # Build & install

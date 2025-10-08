@@ -100,24 +100,12 @@ endif()
 
 # Define the imported target (supports .so/.dylib/.dll)
 add_library(OpenBLAS::OpenBLAS UNKNOWN IMPORTED GLOBAL)
-set_target_properties(
-  OpenBLAS::OpenBLAS
-  PROPERTIES IMPORTED_LOCATION "${_ob_lib}" INTERFACE_INCLUDE_DIRECTORIES
-                                            "${_openblas_install}/include")
+set_target_properties(OpenBLAS::OpenBLAS PROPERTIES IMPORTED_LOCATION
+                                                    "${_ob_lib}")
 add_dependencies(OpenBLAS::OpenBLAS openblas_ep)
 
 # Back-compat alias some code expects
 add_library(OpenBLAS::openblas ALIAS OpenBLAS::OpenBLAS)
-
-# Provide BLAS/LAPACK interface targets if not already defined
-if(NOT TARGET BLAS::BLAS)
-  add_library(BLAS::BLAS INTERFACE IMPORTED)
-  target_link_libraries(BLAS::BLAS INTERFACE OpenBLAS::OpenBLAS)
-endif()
-if(NOT TARGET LAPACK::LAPACK)
-  add_library(LAPACK::LAPACK INTERFACE IMPORTED)
-  target_link_libraries(LAPACK::LAPACK INTERFACE OpenBLAS::OpenBLAS)
-endif()
 
 # Convenience cache vars used elsewhere
 set(OpenBLAS_INCLUDE_DIRS

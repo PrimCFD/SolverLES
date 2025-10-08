@@ -38,6 +38,8 @@
 #include <sys/sysinfo.h>
 #endif
 
+#include "memory/MpiBox.hpp"
+
 using core::master::FieldCatalog;
 using core::master::Master;
 using core::master::RunContext;
@@ -201,8 +203,43 @@ int main(int argc, char** argv)
             int prov = 0;
             MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &prov);
         }
-        rc.mpi_comm = reinterpret_cast<void*>(&MPI_COMM_WORLD); // opaque in the ABI
+
+        // Give RunContext a pointer to a real MPI_Comm object
+        static MPI_Comm world = MPI_COMM_WORLD; // static = whole-program lifetime
+        rc.mpi_comm = mpi_box(MPI_COMM_WORLD);  // store a value-copy safely
     }
+#endif
+
+#ifdef HAVE_MPI
+    {
+        // Unbox the communicator we actually intend to use everywhere
+        MPI_Comm comm = mpi_unbox(rc.mpi_comm);
+
+        // Fallbacks in case something odd happened
+        if (comm == MPI_COMM_NULL)
+        {
+            int initialized = 0;
+            MPI_Initialized(&initialized);
+            comm = initialized ? MPI_COMM_WORLD : MPI_COMM_SELF;
+            // Optional: re-box so downstream code sees a valid communicator
+            if (rc.mpi_comm)
+                mpi_box_free(rc.mpi_comm);
+            rc.mpi_comm = mpi_box(comm);
+        }
+
+        // Fill in RunContext's rank/size from *that* communicator
+        MPI_Comm_rank(comm, &rc.world_rank);
+        MPI_Comm_size(comm, &rc.world_size);
+
+        // Optional (nice for early diagnostics)
+        std::cerr << "MPI: rank=" << rc.world_rank << " size=" << rc.world_size << "\n";
+
+        // Optional: make errors return codes instead of aborts during bring-up
+        // MPI_Comm_set_errhandler(comm, MPI_ERRORS_RETURN);
+    }
+#else
+    rc.world_rank = 0;
+    rc.world_size = 1;
 #endif
 
     // PETSc lifecycle owned by the app (after MPI is ready)

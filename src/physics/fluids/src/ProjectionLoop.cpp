@@ -12,6 +12,8 @@
 #include <mpi.h>
 #endif
 
+#include "memory/MpiBox.hpp"
+
 using namespace core::master;
 using core::master::plugin::KV;
 
@@ -104,7 +106,7 @@ double ProjectionLoop::compute_div_linf(const core::master::MeshTileView& tile,
 #ifdef HAVE_MPI
     if (mpi_comm_)
     {
-        MPI_Comm comm = *reinterpret_cast<const MPI_Comm*>(mpi_comm_);
+        MPI_Comm comm = mpi_unbox(mpi_comm_);
         double linf_global = 0.0;
         MPI_Allreduce(&linf, &linf_global, 1, MPI_DOUBLE, MPI_MAX, comm);
         linf = linf_global;

@@ -35,19 +35,41 @@ template <class T> void exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm com
     const int ny = e[1] - 2 * ng;
     const int nz = e[2] - 2 * ng;
 
-    // Derive a 3D Cartesian communicator from `comm`
-    int size = 1;
-    MPI_Comm_size(comm, &size);
+    // Bail early if there's nothing to exchange
+    if (ng <= 0 || nx <= 0 || ny <= 0 || nz <= 0) return;
+
+    // ---- NEW: make sure we never call MPI on a NULL communicator
+    if (comm == MPI_COMM_NULL) {
+        int initialized = 0;
+        MPI_Initialized(&initialized);
+        comm = initialized ? MPI_COMM_SELF : MPI_COMM_SELF; // SELF is safe, even if MPI wasn't explicitly inited
+    }
+
+    // Optional but helpful: during development, return errors instead of aborting
+    // (comment out for production)
+    MPI_Comm_set_errhandler(comm, MPI_ERRORS_RETURN);
+
+    int size = 1, ierr = MPI_Comm_size(comm, &size);
+    if (ierr != MPI_SUCCESS) return; // nothing we can do; keep it fail-safe
+
+    // If single rank and not globally periodic, there are no neighbors — nothing to do
+    if (size == 1 && !(m.periodic[0] || m.periodic[1] || m.periodic[2])) return;
+
     int dims[3] = {0, 0, 0};
     int periods[3] = {m.periodic[0] ? 1 : 0, m.periodic[1] ? 1 : 0, m.periodic[2] ? 1 : 0};
     MPI_Dims_create(size, 3, dims);
+
     MPI_Comm cart = MPI_COMM_NULL;
-    MPI_Cart_create(comm, 3, dims, periods, /*reorder=*/1, &cart);
-    if (cart == MPI_COMM_NULL)
+    ierr = MPI_Cart_create(comm, 3, dims, periods, /*reorder=*/1, &cart);
+    if (ierr != MPI_SUCCESS || cart == MPI_COMM_NULL) {
+        // Fallback: use the original communicator; neighbors will become PROC_NULL
         cart = comm;
+    }
 
     // Neighbor ranks for faces
-    int xneg, xpos, yneg, ypos, zneg, zpos;
+    int xneg = MPI_PROC_NULL, xpos = MPI_PROC_NULL;
+    int yneg = MPI_PROC_NULL, ypos = MPI_PROC_NULL;
+    int zneg = MPI_PROC_NULL, zpos = MPI_PROC_NULL;
     MPI_Cart_shift(cart, 0, 1, &xneg, &xpos);
     MPI_Cart_shift(cart, 1, 1, &yneg, &ypos);
     MPI_Cart_shift(cart, 2, 1, &zneg, &zpos);
@@ -208,8 +230,10 @@ template <class T> void exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm com
     if (!r_zp.empty())
         unpack_z(nz, r_zp);
 
-    if (cart != comm)
-        MPI_Comm_free(&cart);
+    if (cart != comm) {
+        MPI_Comm tmp = cart;
+        MPI_Comm_free(&tmp); // free only if we actually created it
+    }
 }
 
 } // namespace core::mesh

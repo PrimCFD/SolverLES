@@ -38,6 +38,8 @@
 #include <petscmat.h>
 #include <petscsys.h>
 
+#include "memory/MpiBox.hpp"
+
 using core::master::FieldCatalog;
 using core::master::MeshTileView;
 
@@ -1107,10 +1109,9 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
     const int ng = (nxc_tot - nx) / 2;
 
     // Borrowed communicator: if null, fall back to self for single-rank use.
-    const MPI_Comm user_comm =
-        (mpi_comm_ && *static_cast<const MPI_Comm*>(mpi_comm_) != MPI_COMM_NULL)
-            ? *static_cast<const MPI_Comm*>(mpi_comm_)
-            : PETSC_COMM_SELF;
+    const MPI_Comm user_comm = (mpi_comm_ && mpi_unbox(mpi_comm_) != MPI_COMM_NULL)
+                                   ? mpi_unbox(mpi_comm_)
+                                   : PETSC_COMM_SELF;
 
     // rebuild hierarchy if geometry changed
     if (!impl_ || impl_->nxc_tot != nxc_tot || impl_->nyc_tot != nyc_tot ||

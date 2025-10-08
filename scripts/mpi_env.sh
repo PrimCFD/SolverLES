@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Source this to set MPI environment + helpers that work on a laptop and scale to HPC.
 # Modes:
 #   auto     : detect SLURM/cluster vs. laptop; choose safe defaults
@@ -48,12 +49,41 @@ elif _have mpiexec; then
   MPI_LAUNCHER="mpiexec"
 fi
 
+
 # Open MPI: allow running as root inside CI/containers if needed. :contentReference[oaicite:1]{index=1}
 if [[ "$MPI_VENDOR" == "openmpi" && "${EUID:-$(id -u)}" -eq 0 ]]; then
   export OMPI_ALLOW_RUN_AS_ROOT=1
   export OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
   MPI_LAUNCHER_OPTS+=" --allow-run-as-root"
 fi
+
+# --- make CMake & PETSc use the same MPI wrappers we detected ---
+: "${EXTRA_CMAKE_ARGS:=}"
+
+if command -v mpicc >/dev/null 2>&1;  then
+  export MPI_C_COMPILER="$(command -v mpicc)"
+fi
+if command -v mpicxx >/dev/null 2>&1; 
+then
+  export MPI_CXX_COMPILER="$(command -v mpicxx)"
+fi
+# Fortran is optional; PETSc benefits if present
+if command -v mpifort >/dev/null 2>&1; then
+  export MPI_Fortran_COMPILER="$(command -v mpifort)"
+elif command -v mpif90 >/dev/null 2>&1; then
+  export MPI_Fortran_COMPILER="$(command -v mpif90)"
+fi
+
+# Hand these to CMake’s FindMPI (append only when set)
+if [[ -n "${MPI_C_COMPILER:-}" ]];      then EXTRA_CMAKE_ARGS+=" -DMPI_C_COMPILER=${MPI_C_COMPILER}"; fi
+if [[ -n "${MPI_CXX_COMPILER:-}" ]];    then EXTRA_CMAKE_ARGS+=" -DMPI_CXX_COMPILER=${MPI_CXX_COMPILER}"; fi
+if [[ -n "${MPI_Fortran_COMPILER:-}" ]]; then EXTRA_CMAKE_ARGS+=" -DMPI_Fortran_COMPILER=${MPI_Fortran_COMPILER}"; fi
+export EXTRA_CMAKE_ARGS
+
+# Also useful for PETSc’s configure: force its CC/CXX/FC to the same wrappers
+export PETSC_CC="${MPI_C_COMPILER:-cc}"
+export PETSC_CXX="${MPI_CXX_COMPILER:-c++}"
+if [[ -n "${MPI_Fortran_COMPILER:-}" ]]; then export PETSC_FC="${MPI_Fortran_COMPILER}"; fi
 
 # Clean slate for emulation knobs
 _unset_emulation() {

@@ -63,17 +63,6 @@ export OMP_DYNAMIC="${OMP_DYNAMIC:-FALSE}"
 # --- BLAS threading hygiene (avoid oversubscription with OpenMP kernels)
 export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
 
-# --- Optional power-user flags (vectorization & CPU-tuned codegen)
-export EXTRA_OPT_FLAGS="-O3 -march=native -fopenmp-simd -fno-math-errno"
-EXTRA_OPT_FLAGS="${EXTRA_OPT_FLAGS:-}"
-if [[ -n "$EXTRA_OPT_FLAGS" ]]; then
-  cmake_args+=(
-    -DCMAKE_C_FLAGS_RELEASE="${EXTRA_OPT_FLAGS}"
-    -DCMAKE_CXX_FLAGS_RELEASE="${EXTRA_OPT_FLAGS}"
-    -DCMAKE_Fortran_FLAGS_RELEASE="${EXTRA_OPT_FLAGS}"
-  )
-fi
-
 # --- Defaults (overridable)
 CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
 BUILD_TESTS="${BUILD_TESTS:-OFF}"
@@ -109,11 +98,23 @@ cmake_args=(
   -DUSE_CUDA_UM="${USE_CUDA_UM}"
   -DCMAKE_MESSAGE_LOG_LEVEL=WARNING -Wno-dev
 )
+
 [[ -n "${MPIEXEC_NUMPROC_FLAG:-}" ]] && cmake_args+=( -DMPIEXEC_NUMPROC_FLAG="${MPIEXEC_NUMPROC_FLAG}" )
 [[ -n "${MPIEXEC_PREFLAGS:-}"    ]] && cmake_args+=( -DMPIEXEC_PREFLAGS="${MPIEXEC_PREFLAGS}" )
 [[ -n "${MPIEXEC_POSTFLAGS:-}"   ]] && cmake_args+=( -DMPIEXEC_POSTFLAGS="${MPIEXEC_POSTFLAGS}" )
 [[ -n "${MPIEXEC_EXECUTABLE:-}"  ]] && cmake_args+=( -DMPIEXEC_EXECUTABLE="${MPIEXEC_EXECUTABLE}" )
 [[ -n "${CMAKE_TOOLCHAIN_FILE:-}" ]] && cmake_args+=( -DCMAKE_TOOLCHAIN_FILE="${CMAKE_TOOLCHAIN_FILE}" )
+
+# Honor explicit MPI wrappers from environment
+if [[ -n "${MPI_C_COMPILER:-}" ]]; then
+  cmake_args+=( -DMPI_C_COMPILER="${MPI_C_COMPILER}" )
+fi
+if [[ -n "${MPI_CXX_COMPILER:-}" ]]; then
+  cmake_args+=( -DMPI_CXX_COMPILER="${MPI_CXX_COMPILER}" )
+fi
+if [[ -n "${MPI_Fortran_COMPILER:-}" ]]; then
+  cmake_args+=( -DMPI_Fortran_COMPILER="${MPI_Fortran_COMPILER}" )
+fi
 
 # --- Scan extern/ for pre-fetched archives; wire up FETCHCONTENT_SOURCE_DIR_* 
 declare -A fetch_var=(

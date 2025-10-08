@@ -20,7 +20,7 @@ target_include_directories(
   unit_fluids PRIVATE ${CMAKE_SOURCE_DIR}/src/physics/fluids/include
                       ${CMAKE_SOURCE_DIR}/src/core/include)
 
-# Make PETSc shared libs resolvable at runtime (mirror solver target)
+# Make PETSc shared libs resolvable at runtime
 set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
 set(_origin "\$ORIGIN")
 set_target_properties(
