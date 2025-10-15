@@ -36,13 +36,16 @@ template <class T> void exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm com
     const int nz = e[2] - 2 * ng;
 
     // Bail early if there's nothing to exchange
-    if (ng <= 0 || nx <= 0 || ny <= 0 || nz <= 0) return;
+    if (ng <= 0 || nx <= 0 || ny <= 0 || nz <= 0)
+        return;
 
     // ---- NEW: make sure we never call MPI on a NULL communicator
-    if (comm == MPI_COMM_NULL) {
+    if (comm == MPI_COMM_NULL)
+    {
         int initialized = 0;
         MPI_Initialized(&initialized);
-        comm = initialized ? MPI_COMM_SELF : MPI_COMM_SELF; // SELF is safe, even if MPI wasn't explicitly inited
+        comm = initialized ? MPI_COMM_SELF
+                           : MPI_COMM_SELF; // SELF is safe, even if MPI wasn't explicitly inited
     }
 
     // Optional but helpful: during development, return errors instead of aborting
@@ -50,10 +53,12 @@ template <class T> void exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm com
     MPI_Comm_set_errhandler(comm, MPI_ERRORS_RETURN);
 
     int size = 1, ierr = MPI_Comm_size(comm, &size);
-    if (ierr != MPI_SUCCESS) return; // nothing we can do; keep it fail-safe
+    if (ierr != MPI_SUCCESS)
+        return; // nothing we can do; keep it fail-safe
 
     // If single rank and not globally periodic, there are no neighbors — nothing to do
-    if (size == 1 && !(m.periodic[0] || m.periodic[1] || m.periodic[2])) return;
+    if (size == 1 && !(m.periodic[0] || m.periodic[1] || m.periodic[2]))
+        return;
 
     int dims[3] = {0, 0, 0};
     int periods[3] = {m.periodic[0] ? 1 : 0, m.periodic[1] ? 1 : 0, m.periodic[2] ? 1 : 0};
@@ -61,7 +66,8 @@ template <class T> void exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm com
 
     MPI_Comm cart = MPI_COMM_NULL;
     ierr = MPI_Cart_create(comm, 3, dims, periods, /*reorder=*/1, &cart);
-    if (ierr != MPI_SUCCESS || cart == MPI_COMM_NULL) {
+    if (ierr != MPI_SUCCESS || cart == MPI_COMM_NULL)
+    {
         // Fallback: use the original communicator; neighbors will become PROC_NULL
         cart = comm;
     }
@@ -230,7 +236,8 @@ template <class T> void exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm com
     if (!r_zp.empty())
         unpack_z(nz, r_zp);
 
-    if (cart != comm) {
+    if (cart != comm)
+    {
         MPI_Comm tmp = cart;
         MPI_Comm_free(&tmp); // free only if we actually created it
     }

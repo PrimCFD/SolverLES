@@ -1,8 +1,8 @@
 #pragma once
 #include "master/FieldCatalog.hpp"
+#include "memory/MpiBox.hpp"
 #include "mesh/Field.hpp"
 #include "mesh/Mesh.hpp"
-#include "memory/MpiBox.hpp"
 
 #ifdef HAVE_MPI
 #include "mesh/HaloExchange.hpp"

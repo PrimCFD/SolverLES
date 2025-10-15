@@ -45,11 +45,10 @@ function(
                regression::fluids::${name}::run)
 endfunction()
 
-# Helper to add a fluids regression case
-# Usage:
-#   add_fluids_case(name nx ny nz)                       # default (MODE auto; NP from env or 1)
-#   add_fluids_case(name nx ny nz MODE seq)              # force sequential run (no mpiexec)
-#   add_fluids_case(name nx ny nz MODE mpi NP 2)         # force MPI run with 2 ranks
+# Helper to add a fluids regression case Usage: add_fluids_case(name nx ny nz) #
+# default (MODE auto; NP from env or 1) add_fluids_case(name nx ny nz MODE seq)
+# # force sequential run (no mpiexec) add_fluids_case(name nx ny nz MODE mpi NP
+# 2)         # force MPI run with 2 ranks
 function(add_fluids_case name nx ny nz)
   # Parse optional keywords: MODE <seq|mpi>, NP <int>
   cmake_parse_arguments(CASE "" "MODE;NP" "" ${ARGN})
@@ -57,7 +56,10 @@ function(add_fluids_case name nx ny nz)
   if(_mode STREQUAL "")
     set(_mode "auto")
   elseif(NOT _mode STREQUAL "seq" AND NOT _mode STREQUAL "mpi")
-    message(FATAL_ERROR "add_fluids_case(${name} ...): MODE must be 'seq' or 'mpi' (got '${CASE_MODE}')")
+    message(
+      FATAL_ERROR
+        "add_fluids_case(${name} ...): MODE must be 'seq' or 'mpi' (got '${CASE_MODE}')"
+    )
   endif()
   set(case_src "${CMAKE_CURRENT_SOURCE_DIR}/${name}/config.yml")
   if(NOT EXISTS "${case_src}")
@@ -98,23 +100,27 @@ function(add_fluids_case name nx ny nz)
     )
   endif()
 
-  # --- Run solver in the case dir
-  # Launch rule:
-  #   MODE seq           -> run directly (no mpiexec)
-  #   MODE mpi           -> run under mpiexec (requires launcher) with np ranks
-  #   MODE auto (default)-> run under mpiexec iff launcher is found AND np>1
+  # --- Run solver in the case dir Launch rule: MODE seq           -> run
+  # directly (no mpiexec) MODE mpi           -> run under mpiexec (requires
+  # launcher) with np ranks MODE auto (default)-> run under mpiexec iff launcher
+  # is found AND np>1
   set(_launch_direct 0)
   if(_mode STREQUAL "seq")
     set(_launch_direct 1)
   elseif(_mode STREQUAL "mpi")
     if(NOT _MPIEXEC_EXECUTABLE)
-      message(WARNING "add_fluids_case(${name}): MODE=mpi but no MPI launcher found; falling back to direct run")
+      message(
+        WARNING
+          "add_fluids_case(${name}): MODE=mpi but no MPI launcher found; falling back to direct run"
+      )
       set(_launch_direct 1)
     endif()
   endif()
 
-  if((_mode STREQUAL "mpi" AND NOT _launch_direct) OR
-     (_mode STREQUAL "auto" AND _MPIEXEC_EXECUTABLE AND np GREATER 1))
+  if((_mode STREQUAL "mpi" AND NOT _launch_direct)
+     OR (_mode STREQUAL "auto"
+         AND _MPIEXEC_EXECUTABLE
+         AND np GREATER 1))
     add_test(
       NAME regression::fluids::${name}::run
       COMMAND
@@ -144,11 +150,18 @@ function(add_fluids_case name nx ny nz)
                regression::fluids::${name}::run)
 endfunction()
 
-# Cases:
-# - Keep cavity fast: force sequential launch (no mpiexec)
-# - Force MPI for TG to exercise plumbing (2 ranks)
+# Cases: - Keep cavity fast: force sequential launch (no mpiexec) - Force MPI
+# for TG to exercise plumbing (2 ranks)
 add_fluids_case(cavity32 32 32 32 MODE seq)
-add_fluids_case(tgv32    32 32 32 MODE mpi NP 2)
+add_fluids_case(
+  tgv32
+  32
+  32
+  32
+  MODE
+  mpi
+  NP
+  2)
 
 # Assert TG decay at final time (2% rel tol)
 add_tgv_decay_check(

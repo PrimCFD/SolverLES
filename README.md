@@ -119,8 +119,8 @@ source scripts/mpi_env.sh auto
 # Launch with N ranks (works across srun/mpirun/mpiexec)
 mpi_exec 4 ./build/bin/solver examples/hello_mesh.yaml
 
-# Or run MPI-labeled tests end-to-end
-./scripts/run_mpi_tests.sh
+# Or run MPI enqbled test cases end-to-end
+./scripts/run_regression_tests.sh
 ```
 
 ### 4.6 Docs build & local preview

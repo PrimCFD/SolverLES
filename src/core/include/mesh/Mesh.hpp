@@ -17,8 +17,8 @@ namespace core::mesh
 
 struct Mesh
 {
-    std::array<int, 3> local{};   // interior sizes (this tile)
-    std::array<int, 3> global{};  // interior sizes (whole domain)
+    std::array<int, 3> local{};     // interior sizes (this tile)
+    std::array<int, 3> global{};    // interior sizes (whole domain)
     std::array<int, 3> global_lo{}; // this tile’s global lower-left-back interior index
     int ng = 0;
     std::array<bool, 3> periodic{false, false, false}; // x,y,z periodicity

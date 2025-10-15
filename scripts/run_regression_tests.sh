@@ -26,8 +26,7 @@ if [[ -f "scripts/mpi_env.sh" ]]; then
   # You can override with MPI_MODE=cluster|emulate when needed.
   # shellcheck source=/dev/null
   source scripts/mpi_env.sh "${MPI_MODE:-auto}"
-  export OMP_NUM_THREADS=1 # limit thread number for small runs (32^3)
-  export OPENBLAS_NUM_THREADS=1
+  export OMP_NUM_THREADS=2 # limit thread number for small runs (32^3)
   # If a launcher is available, default to building PETSc with MPI.
   if [[ -n "${MPIEXEC_EXECUTABLE:-}" ]]; then
     : "${ENABLE_MPI:=On}"

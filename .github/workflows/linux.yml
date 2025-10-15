@@ -1,4 +1,4 @@
-name: Tests · CPU/GPU/MPI (containerized)
+name: Tests · CPU/GPU (containerized)
 
 on:
   workflow_dispatch: 
@@ -55,7 +55,7 @@ jobs:
           docker pull nvidia/cuda:12.4.1-devel-ubuntu22.04
           docker run --rm --gpus all nvidia/cuda:12.4.1-devel-ubuntu22.04 nvidia-smi
 
-  tests: # Regression tests WIP
+  tests:
     name: ${{ matrix.name }}
     needs: prefetch-deps
     runs-on: ${{ matrix.runs_on }}
@@ -81,13 +81,6 @@ jobs:
             test: perf
             runs_on: ubuntu-latest
             container: '{"image":"ubuntu:24.04"}'
-
-          - name: MPI (emulated)
-            test: mpi
-            runs_on: ubuntu-latest
-            container: '{"image":"ubuntu:24.04"}'
-            mpi_mode: emulate
-            np: 4
 
     steps:
       - name: Checkout
@@ -118,14 +111,6 @@ jobs:
             python3 python3-venv python3-pip \
             libgomp1 libomp-dev
 
-      - name: Install MPI (when needed)
-        if: ${{ matrix.test == 'mpi' }}
-        run: |
-          set -euo pipefail
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            openmpi-bin libopenmpi-dev 
-
       - name: CPU Unit tests
         if: ${{ matrix.test == 'unit' }}
         env:
@@ -144,14 +129,6 @@ jobs:
           set -euo pipefail
           ./scripts/run_perf_tests.sh
 
-      - name: MPI tests (emulated on CI)
-        if: ${{ matrix.test == 'mpi' }}
-        env:
-          OFFLINE: "1"
-        run: |
-          set -euo pipefail
-          ./scripts/run_mpi_tests.sh --mode ${{ matrix.mpi_mode || 'auto' }} --np ${{ matrix.np || 4 }} --keep-going
-
       - name: Upload test reports (JUnit XML)
         uses: actions/upload-artifact@v4
         if: always()
@@ -160,7 +137,6 @@ jobs:
           path: |
             build-unit/test-reports/unit/**
             build-perf/test-reports/perf/**
-            build-mpi/test-reports/mpi/**
           if-no-files-found: ignore
           retention-days: 7
 

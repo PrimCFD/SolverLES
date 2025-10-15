@@ -39,11 +39,11 @@ program:
     Cs:  "0.0"
 
     time_scheme: "piso"
-    num_corrections: "2"
     div_tol: "1.0e-7"
 
     advect: "off"
     p_iters: "0"                 # keep Poisson off for a diffusion test
+    num_corrections: "0"
     init: "taylor_green"
 
 fields:

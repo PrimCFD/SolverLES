@@ -237,7 +237,8 @@ TEST_CASE("MG variable-β Poisson: A p ≈ rhs and β→1 consistency", "[fluids
             for (int I = ng; I < nx + ng; ++I)
             {
                 const size_t c = cidx(I, J, K, nxc_tot, nyc_tot);
-                const long double d = (long double) Ap[c] - (long double) rhs_exact[c];
+                const long double d =
+                    (long double) Ap[c] - (long double) rhs_exact[c]; // Matches sign convention
                 num2 += d * d;
                 den2 += (long double) rhs_exact[c] * (long double) rhs_exact[c] + 1e-30L;
             }
@@ -254,7 +255,8 @@ TEST_CASE("MG variable-β Poisson: A p ≈ rhs and β→1 consistency", "[fluids
             for (int I = ng; I < nx + ng; ++I)
             {
                 const size_t c = cidx(I, J, K, nxc_tot, nyc_tot);
-                const long double d = (long double) Ap[c] - (long double) rhs_exact[c];
+                const long double d =
+                    (long double) Ap[c] - (long double) rhs_exact[c]; // Matches sign convention
                 diff2 += d * d;
                 base2 += (long double) rhs_exact[c] * (long double) rhs_exact[c] + 1e-30L;
             }

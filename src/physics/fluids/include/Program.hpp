@@ -26,7 +26,8 @@ struct BcSpec
         dirichlet,
         neumann,
         mirror,
-        extrap
+        extrap,
+        periodic
     };
     Type type{Type::dirichlet};
     double value{0.0};

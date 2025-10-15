@@ -7,7 +7,10 @@ inline void* mpi_box(MPI_Comm in)
 {
     MPI_Comm* p = new MPI_Comm(MPI_COMM_NULL);
     // Create a process-group-equivalent communicator with our MPI
-    if (in != MPI_COMM_NULL) { MPI_Comm_dup(in, p); }
+    if (in != MPI_COMM_NULL)
+    {
+        MPI_Comm_dup(in, p);
+    }
     return p;
 }
 inline MPI_Comm mpi_unbox(const void* p)
@@ -16,9 +19,14 @@ inline MPI_Comm mpi_unbox(const void* p)
 }
 inline void mpi_box_free(void* p)
 {
-    if (!p) return;
+    if (!p)
+        return;
     MPI_Comm* pc = reinterpret_cast<MPI_Comm*>(p);
-    if (*pc != MPI_COMM_NULL) { MPI_Comm tmp = *pc; MPI_Comm_free(&tmp); }
+    if (*pc != MPI_COMM_NULL)
+    {
+        MPI_Comm tmp = *pc;
+        MPI_Comm_free(&tmp);
+    }
     delete pc;
 }
 #else

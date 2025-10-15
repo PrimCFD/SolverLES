@@ -14,7 +14,7 @@
 | `push_ci.sh` | Push the current branch to GitHub and runs the CI on a locally hosted runner (tmux terminal). | `./scripts/push_ci.sh` |
 | `run_unit_tests.sh` | Build (optional) and run **unit** tests via CTest; write JUnit XML. | `./scripts/run_unit_tests.sh` |
 | `run_perf_tests.sh` | Build (optional) and run **perf** tests via CTest; write JUnit XML. | `./scripts/run_perf_tests.sh` |
-| `run_mpi_tests.sh` | Configure with MPI and run **MPI** tests, laptop/cluster friendly. | `./scripts/run_mpi_tests.sh --mode emulate --np 4` |
+| `run_regression_tests.sh` | Configure with MPI and run **MPI** integration tests, laptop/cluster friendly. | `./scripts/run_regression_tests.sh` |
 
 > Unless stated otherwise, run scripts from the repo root. Many respect `BUILD_DIR` if you want custom build folders.
 
@@ -118,7 +118,7 @@ EXTRA_CMAKE_ARGS="-DBUILD_EXAMPLES=ON -DBUILD_GUI=OFF" ./scripts/build.sh
 ./scripts/clean_build.sh --all -n
 
 # Clean multiple builds but keep vendor downloads
-./scripts/clean_build.sh --keep-deps build-mpi build-perf -y
+./scripts/clean_build.sh --keep-deps build-regression build-perf -y
 ```
 
 ---
@@ -240,28 +240,19 @@ mpi_exec 4 ./build/bin/your_mpi_program
   CMAKE_BUILD_TYPE=Release ./scripts/run_perf_tests.sh
   ```
 
-### `run_mpi_tests.sh`
-- **What it does:** Sources `mpi_env.sh`, configures with `ENABLE_MPI=ON` and runs `ctest -L mpi`. Emits JUnit to `$BUILD_DIR/test-reports/mpi/` (with a safe fallback if no launcher is found).  
-- **Options:**  
-  - `--mode {auto|emulate|cluster}` (default: `auto`)  
-  - `--np N` default MPI ranks for tests that consult NP (default: `2`)  
-  - `--build-dir DIR` (default: `build-mpi` or `$BUILD_DIR`)  
-  - `--type {Debug|Release|RelWithDebInfo|MinSizeRel}` (default: `Debug`)  
-  - `--label REGEX` passed to `ctest --label-regex` (default: `mpi`)  
-  - `--keep-going` pass `--no-stop-on-failure` to CTest  
-  - `-h, --help` show help  
-  - `--` everything after is forwarded to CTest  
+### `run_regression_tests.sh`
+- **What it does:** Sources `mpi_env.sh`, configures with `ENABLE_MPI=ON` and runs cases with the solver. Emits JUnit to `$BUILD_DIR/test-reports/regression/` (with a safe fallback if no launcher is found).  
 - **Examples:**  
   ```bash
-  ./scripts/run_mpi_tests.sh
-  ./scripts/run_mpi_tests.sh --mode emulate --np 4
-  BUILD_DIR=build-mpi ./scripts/run_mpi_tests.sh --type Release --label mpi
+  ./scripts/run_regression_tests.sh
+  ENABLE_MPI=False ./scripts/run_regression_tests.sh
+  BUILD_DIR=build-regression ./scripts/run_regression_tests.sh
   ```
 
 ---
 
 ## Tips
 
-- Use `BUILD_DIR=…` consistently to keep separate trees for `unit`, `perf`, and `mpi`.  
+- Use `BUILD_DIR=…` consistently to keep separate trees for `unit`, `perf`, and `regression`.  
 - `clean_build.sh --keep-deps` is handy when you don’t want to re‑download third‑party code.  
 - Pair `prefetch_third_party.sh` with `OFFLINE=1 ./scripts/build.sh` for air‑gapped or flaky‑network environments.

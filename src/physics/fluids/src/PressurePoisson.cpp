@@ -43,9 +43,11 @@
 #ifdef HAVE_MPI
 static inline MPI_Comm valid_comm_or(MPI_Comm cand, MPI_Comm fallback)
 {
-    if (cand == MPI_COMM_NULL) return fallback;
+    if (cand == MPI_COMM_NULL)
+        return fallback;
     int sz = -1, rc = MPI_Comm_size(cand, &sz);
-    if (rc == MPI_SUCCESS && sz > 0) return cand;
+    if (rc == MPI_SUCCESS && sz > 0)
+        return cand;
     return fallback;
 }
 #endif
@@ -148,6 +150,9 @@ struct ShellCtx
     // cached diagonals to speed repeated GET_DIAGONAL calls (rebuilt when spacing/beta changes)
     Vec diag = nullptr;
     bool diag_built = false;
+
+    // periodicity per axis (derived from p.* BCs)
+    bool perX = false, perY = false, perZ = false;
 };
 
 // MULT: y = A x  (matrix-free  (1/V) ∑_faces T (x_nb - x_c)  )
@@ -182,10 +187,21 @@ static PetscErrorCode ShellMult(Mat A, Vec x, Vec y)
             {
                 const double xc = xarr[k][j][i];
 
-                // neighbor presence in level interior index space
-                const bool hasW = (i > 0), hasE = (i < ctx->nxi - 1);
-                const bool hasS = (j > 0), hasN = (j < ctx->nyi - 1);
-                const bool hasB = (k > 0), hasT = (k < ctx->nzi - 1);
+                // neighbor presence (periodic-aware)
+                const bool hasW = (i > 0) || ctx->perX;
+                const bool hasE = (i < ctx->nxi - 1) || ctx->perX;
+                const bool hasS = (j > 0) || ctx->perY;
+                const bool hasN = (j < ctx->nyi - 1) || ctx->perY;
+                const bool hasB = (k > 0) || ctx->perZ;
+                const bool hasT = (k < ctx->nzi - 1) || ctx->perZ;
+
+                // local neighbor indices (ghosts hold periodic wraps)
+                const PetscInt iw = i - 1;
+                const PetscInt ie = i + 1;
+                const PetscInt js = j - 1;
+                const PetscInt jn = j + 1;
+                const PetscInt kb = k - 1;
+                const PetscInt kt = k + 1;
 
                 // Face transmissibilities (conductances)
                 // Constant-β fallback uses T = β * (A/Δ)
@@ -276,34 +292,40 @@ static PetscErrorCode ShellMult(Mat A, Vec x, Vec y)
 
                 double acc = 0.0;
                 if (hasW)
-                    acc += getTw() * (xarr[k][j][i - 1] - xc);
-                else if (ctx->pbc.W && norm_p_type(ctx->pbc.W->type) == BcSpec::Type::dirichlet)
-                    acc += getTw() * (0.0 - xc);
+                    acc += getTw() * (xarr[k][j][iw] - xc);
+                else if (!ctx->perX && ctx->pbc.W &&
+                         norm_p_type(ctx->pbc.W->type) == BcSpec::Type::dirichlet)
+                    acc += getTw() * ((ctx->pbc.W ? ctx->pbc.W->value : 0.0) - xc);
 
                 if (hasE)
-                    acc += getTe() * (xarr[k][j][i + 1] - xc);
-                else if (ctx->pbc.E && norm_p_type(ctx->pbc.E->type) == BcSpec::Type::dirichlet)
-                    acc += getTe() * (0.0 - xc);
+                    acc += getTe() * (xarr[k][j][ie] - xc);
+                else if (!ctx->perX && ctx->pbc.E &&
+                         norm_p_type(ctx->pbc.E->type) == BcSpec::Type::dirichlet)
+                    acc += getTe() * ((ctx->pbc.E ? ctx->pbc.E->value : 0.0) - xc);
 
                 if (hasS)
-                    acc += getTs() * (xarr[k][j - 1][i] - xc);
-                else if (ctx->pbc.S && norm_p_type(ctx->pbc.S->type) == BcSpec::Type::dirichlet)
-                    acc += getTs() * (0.0 - xc);
+                    acc += getTs() * (xarr[k][js][i] - xc);
+                else if (!ctx->perY && ctx->pbc.S &&
+                         norm_p_type(ctx->pbc.S->type) == BcSpec::Type::dirichlet)
+                    acc += getTs() * ((ctx->pbc.S ? ctx->pbc.S->value : 0.0) - xc);
 
                 if (hasN)
-                    acc += getTn() * (xarr[k][j + 1][i] - xc);
-                else if (ctx->pbc.N && norm_p_type(ctx->pbc.N->type) == BcSpec::Type::dirichlet)
-                    acc += getTn() * (0.0 - xc);
+                    acc += getTn() * (xarr[k][jn][i] - xc);
+                else if (!ctx->perY && ctx->pbc.N &&
+                         norm_p_type(ctx->pbc.N->type) == BcSpec::Type::dirichlet)
+                    acc += getTn() * ((ctx->pbc.N ? ctx->pbc.N->value : 0.0) - xc);
 
                 if (hasB)
-                    acc += getTb() * (xarr[k - 1][j][i] - xc);
-                else if (ctx->pbc.B && norm_p_type(ctx->pbc.B->type) == BcSpec::Type::dirichlet)
-                    acc += getTb() * (0.0 - xc);
+                    acc += getTb() * (xarr[kb][j][i] - xc);
+                else if (!ctx->perZ && ctx->pbc.B &&
+                         norm_p_type(ctx->pbc.B->type) == BcSpec::Type::dirichlet)
+                    acc += getTb() * ((ctx->pbc.B ? ctx->pbc.B->value : 0.0) - xc);
 
                 if (hasT)
-                    acc += getTt() * (xarr[k + 1][j][i] - xc);
-                else if (ctx->pbc.T && norm_p_type(ctx->pbc.T->type) == BcSpec::Type::dirichlet)
-                    acc += getTt() * (0.0 - xc);
+                    acc += getTt() * (xarr[kt][j][i] - xc);
+                else if (!ctx->perZ && ctx->pbc.T &&
+                         norm_p_type(ctx->pbc.T->type) == BcSpec::Type::dirichlet)
+                    acc += getTt() * ((ctx->pbc.T ? ctx->pbc.T->value : 0.0) - xc);
 
                 yarr[k][j][i] = -invV * acc;
             }
@@ -337,10 +359,12 @@ static PetscErrorCode ShellBuildDiagonal(ShellCtx* ctx)
         for (PetscInt j = ys; j < ys + ym; ++j)
             for (PetscInt i = xs; i < xs + xm; ++i)
             {
-                const bool hasW = (i > 0), hasE = (i < ctx->nxi - 1);
-                const bool hasS = (j > 0), hasN = (j < ctx->nyi - 1);
-                const bool hasB = (k > 0), hasT = (k < ctx->nzi - 1);
-
+                const bool hasW = (i > 0) || ctx->perX;
+                const bool hasE = (i < ctx->nxi - 1) || ctx->perX;
+                const bool hasS = (j > 0) || ctx->perY;
+                const bool hasN = (j < ctx->nyi - 1) || ctx->perY;
+                const bool hasB = (k > 0) || ctx->perZ;
+                const bool hasT = (k < ctx->nzi - 1) || ctx->perZ;
                 auto getTw = [&]()
                 {
                     if (i > 0)
@@ -405,17 +429,23 @@ static PetscErrorCode ShellBuildDiagonal(ShellCtx* ctx)
                     diag += getTb();
 
                 // Dirichlet faces contribute to diagonal
-                if (!hasW && ctx->pbc.W && norm_p_type(ctx->pbc.W->type) == BcSpec::Type::dirichlet)
+                if (!hasW && !ctx->perX && ctx->pbc.W &&
+                    norm_p_type(ctx->pbc.W->type) == BcSpec::Type::dirichlet)
                     diag += getTw();
-                if (!hasE && ctx->pbc.E && norm_p_type(ctx->pbc.E->type) == BcSpec::Type::dirichlet)
+                if (!hasE && !ctx->perX && ctx->pbc.E &&
+                    norm_p_type(ctx->pbc.E->type) == BcSpec::Type::dirichlet)
                     diag += getTe();
-                if (!hasS && ctx->pbc.S && norm_p_type(ctx->pbc.S->type) == BcSpec::Type::dirichlet)
+                if (!hasS && !ctx->perY && ctx->pbc.S &&
+                    norm_p_type(ctx->pbc.S->type) == BcSpec::Type::dirichlet)
                     diag += getTs();
-                if (!hasN && ctx->pbc.N && norm_p_type(ctx->pbc.N->type) == BcSpec::Type::dirichlet)
+                if (!hasN && !ctx->perY && ctx->pbc.N &&
+                    norm_p_type(ctx->pbc.N->type) == BcSpec::Type::dirichlet)
                     diag += getTn();
-                if (!hasB && ctx->pbc.B && norm_p_type(ctx->pbc.B->type) == BcSpec::Type::dirichlet)
+                if (!hasB && !ctx->perZ && ctx->pbc.B &&
+                    norm_p_type(ctx->pbc.B->type) == BcSpec::Type::dirichlet)
                     diag += getTb();
-                if (!hasT && ctx->pbc.T && norm_p_type(ctx->pbc.T->type) == BcSpec::Type::dirichlet)
+                if (!hasT && !ctx->perZ && ctx->pbc.T &&
+                    norm_p_type(ctx->pbc.T->type) == BcSpec::Type::dirichlet)
                     diag += getTt();
 
                 darr[k][j][i] = invV * diag;
@@ -444,6 +474,18 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aout)
     const bool useTz = (ctx.trans && !ctx.trans->Tz.empty());
     PetscFunctionBegin;
     DM da = ctx.da;
+
+    AO ao = NULL;
+    PetscCall(DMDAGetAO(da, &ao));
+    const PetscInt nxi = ctx.nxi, nyi = ctx.nyi, nzi = ctx.nzi;
+
+    // map (i,j,k) -> global row/col using AO
+    auto gid = [&](PetscInt i, PetscInt j, PetscInt k) -> PetscInt
+    {
+        PetscInt app = i + nxi * (j + nyi * k); // application/global logical index
+        AOApplicationToPetsc(ao, 1, &app);      // map to PETSc global id for this DMDA layout
+        return app;
+    };
 
     // Create a properly preallocated AIJ using the DMDA stencil (STAR, width=1)
     PetscCall(DMSetMatType(da, MATAIJ));
@@ -502,9 +544,19 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aout)
             for (PetscInt i = xs; i < xs + xm; ++i)
             {
                 // coefficients (same logic as ShellMult / ShellGetDiagonal)
-                const bool hasW = (i > 0), hasE = (i < ctx.nxi - 1);
-                const bool hasS = (j > 0), hasN = (j < ctx.nyi - 1);
-                const bool hasB = (k > 0), hasT = (k < ctx.nzi - 1);
+                const bool hasW = (i > 0) || ctx.perX;
+                const bool hasE = (i < ctx.nxi - 1) || ctx.perX;
+                const bool hasS = (j > 0) || ctx.perY;
+                const bool hasN = (j < ctx.nyi - 1) || ctx.perY;
+                const bool hasB = (k > 0) || ctx.perZ;
+                const bool hasT = (k < ctx.nzi - 1) || ctx.perZ;
+
+                const PetscInt iw = (i > 0) ? (i - 1) : (ctx.nxi - 1);
+                const PetscInt ie = (i < ctx.nxi - 1) ? (i + 1) : 0;
+                const PetscInt js = (j > 0) ? (j - 1) : (ctx.nyi - 1);
+                const PetscInt jn = (j < ctx.nyi - 1) ? (j + 1) : 0;
+                const PetscInt kb = (k > 0) ? (k - 1) : (ctx.nzi - 1);
+                const PetscInt kt = (k < ctx.nzi - 1) ? (k + 1) : 0;
 
                 const double te = hasE ? Te(i, j, k) : 0.0;
                 const double tw = hasW ? Tw(i, j, k) : 0.0;
@@ -517,47 +569,53 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aout)
                 // Neumann faces affect only RHS -> not part of the matrix)
                 double diag = 0.0;
 
-                MatStencil row = {(PetscInt) k, (PetscInt) j, (PetscInt) i, 0};
-                MatStencil cols[7];
+                PetscInt row = gid(i, j, k);
+                PetscInt cols[7];
                 PetscScalar vals[7];
                 int nz = 0;
 
                 auto add_off = [&](int ii, int jj, int kk, double coef)
                 {
-                    cols[nz] = MatStencil{(PetscInt) kk, (PetscInt) jj, (PetscInt) ii, 0};
-                    vals[nz] = -invV * coef; // A = (1/V)*( -coef * p_nb ) + diag*p_c
+                    cols[nz] = gid(ii, jj, kk);
+                    vals[nz] = -invV * coef;
                     nz++;
                     diag += coef;
                 };
 
                 if (hasW)
-                    add_off(i - 1, j, k, tw);
-                else if (ctx.pbc.W && norm_p_type(ctx.pbc.W->type) == BcSpec::Type::dirichlet)
+                    add_off(iw, j, k, tw);
+                else if (!ctx.perX && ctx.pbc.W &&
+                         norm_p_type(ctx.pbc.W->type) == BcSpec::Type::dirichlet)
                     diag += Tw(i, j, k);
 
                 if (hasE)
-                    add_off(i + 1, j, k, te);
-                else if (ctx.pbc.E && norm_p_type(ctx.pbc.E->type) == BcSpec::Type::dirichlet)
+                    add_off(ie, j, k, te);
+                else if (!ctx.perX && ctx.pbc.E &&
+                         norm_p_type(ctx.pbc.E->type) == BcSpec::Type::dirichlet)
                     diag += Te(i, j, k);
 
                 if (hasS)
-                    add_off(i, j - 1, k, ts);
-                else if (ctx.pbc.S && norm_p_type(ctx.pbc.S->type) == BcSpec::Type::dirichlet)
+                    add_off(i, js, k, ts);
+                else if (!ctx.perY && ctx.pbc.S &&
+                         norm_p_type(ctx.pbc.S->type) == BcSpec::Type::dirichlet)
                     diag += Ts(i, j, k);
 
                 if (hasN)
-                    add_off(i, j + 1, k, tn);
-                else if (ctx.pbc.N && norm_p_type(ctx.pbc.N->type) == BcSpec::Type::dirichlet)
+                    add_off(i, jn, k, tn);
+                else if (!ctx.perY && ctx.pbc.N &&
+                         norm_p_type(ctx.pbc.N->type) == BcSpec::Type::dirichlet)
                     diag += Tn(i, j, k);
 
                 if (hasB)
-                    add_off(i, j, k - 1, tb);
-                else if (ctx.pbc.B && norm_p_type(ctx.pbc.B->type) == BcSpec::Type::dirichlet)
+                    add_off(i, j, kb, tb);
+                else if (!ctx.perZ && ctx.pbc.B &&
+                         norm_p_type(ctx.pbc.B->type) == BcSpec::Type::dirichlet)
                     diag += Tb(i, j, k);
 
                 if (hasT)
-                    add_off(i, j, k + 1, tt);
-                else if (ctx.pbc.T && norm_p_type(ctx.pbc.T->type) == BcSpec::Type::dirichlet)
+                    add_off(i, j, kt, tt);
+                else if (!ctx.perZ && ctx.pbc.T &&
+                         norm_p_type(ctx.pbc.T->type) == BcSpec::Type::dirichlet)
                     diag += Tt(i, j, k);
 
                 // center
@@ -565,7 +623,7 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aout)
                 vals[nz] = invV * diag;
                 nz++;
 
-                PetscCall(MatSetValuesStencil(*Aout, 1, &row, nz, cols, vals, INSERT_VALUES));
+                PetscCall(MatSetValues(*Aout, 1, &row, nz, cols, vals, INSERT_VALUES));
             }
 
     PetscCall(MatAssemblyBegin(*Aout, MAT_FINAL_ASSEMBLY));
@@ -601,7 +659,7 @@ struct PPImpl
     // Reusable nullspace for pure Neumann problems (created once per hierarchy)
     MatNullSpace ns_const{};
 
-    // host scratch for p and div
+    // host scratch for p
     std::vector<double> p_host;
 
     // full teardown (safe on partial initialization)
@@ -793,7 +851,10 @@ static void coarsen_trans_2x(const LevelTrans& Tf, LevelTrans& Tc)
             }
 }
 
-static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc)
+// Build solver hierarchy. Periodicity comes from BOTH the BC table and mesh.periodic.
+// meshPerX/Y/Z override acts as a single source of truth when the mesh is periodic.
+static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc, bool meshPerX,
+                            bool meshPerY, bool meshPerZ)
 {
 
     // Use the application's communicator as-is (borrowed; not owned here).
@@ -801,29 +862,39 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc)
         impl.comm = user_comm_in;
     MPI_Comm comm = impl.comm;
 
-    #ifdef HAVE_MPI
+#ifdef HAVE_MPI
     {
         int sz = -1, rk = -1;
-        if (MPI_Comm_size(comm, &sz) != MPI_SUCCESS || sz < 1) {
+        if (MPI_Comm_size(comm, &sz) != MPI_SUCCESS || sz < 1)
+        {
             fprintf(stderr,
                     "FATAL: invalid MPI_Comm passed into PressurePoisson (size=%d). "
-                    "Falling back to PETSC_COMM_WORLD.\n", sz);
+                    "Falling back to PETSC_COMM_WORLD.\n",
+                    sz);
             comm = PETSC_COMM_WORLD;
             impl.comm = comm;
         }
         MPI_Comm_rank(comm, &rk); // also warms up the comm; ignore return for brevity
     }
-    #endif
+#endif
 
     // ----- finest DMDA over interior cells -----
     const PetscInt nxi = impl.nxc_tot - 2 * impl.ng;
     const PetscInt nyi = impl.nyc_tot - 2 * impl.ng;
     const PetscInt nzi = impl.nzc_tot - 2 * impl.ng;
 
-    DMDACreate3d(comm, DM_BOUNDARY_NONE, DM_BOUNDARY_NONE, DM_BOUNDARY_NONE, DMDA_STENCIL_STAR, nxi,
-                 nyi, nzi, PETSC_DECIDE, PETSC_DECIDE, PETSC_DECIDE, 1, 1, nullptr, nullptr,
-                 nullptr, &impl.da_fine);
-    
+    // Periodicity from BCs OR mesh flags (mesh flags take precedence)
+    auto is_periodic = [](const BcSpec* s) { return s && s->type == BcSpec::Type::periodic; };
+    const bool perX = meshPerX || (is_periodic(pbc.W) && is_periodic(pbc.E));
+    const bool perY = meshPerY || (is_periodic(pbc.S) && is_periodic(pbc.N));
+    const bool perZ = meshPerZ || (is_periodic(pbc.B) && is_periodic(pbc.T));
+    DMBoundaryType bx = perX ? DM_BOUNDARY_PERIODIC : DM_BOUNDARY_NONE;
+    DMBoundaryType by = perY ? DM_BOUNDARY_PERIODIC : DM_BOUNDARY_NONE;
+    DMBoundaryType bz = perZ ? DM_BOUNDARY_PERIODIC : DM_BOUNDARY_NONE;
+
+    DMDACreate3d(comm, bx, by, bz, DMDA_STENCIL_STAR, nxi, nyi, nzi, PETSC_DECIDE, PETSC_DECIDE,
+                 PETSC_DECIDE, 1, 1, nullptr, nullptr, nullptr, &impl.da_fine);
+
     DMSetUp(impl.da_fine);
     DMDASetInterpolationType(impl.da_fine, DMDA_Q0); // Q0 = cell-centered (FV) transfers
 
@@ -863,7 +934,9 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc)
                             (!pbc.B || norm_p_type(pbc.B->type) == BcSpec::Type::neumann) &&
                             (!pbc.T || norm_p_type(pbc.T->type) == BcSpec::Type::neumann);
 
-    impl.all_neumann = allNeumann;
+    // Treat fully periodic box as having a constant nullspace too.
+    const bool fullyPeriodic = perX && perY && perZ;
+    impl.all_neumann = allNeumann || fullyPeriodic;
     // When all faces are (effective) Neumann, ∇·(β∇·) has a constant nullspace.
     // Otherwise (any Dirichlet present), the operator is SPD without a nullspace.
     // We’ll attach MatNullSpace only when allNeumann == true.
@@ -1001,6 +1074,11 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc)
         ctx->beta_const = impl.varrho ? 1.0 : (1.0 / impl.rho_const);
         ctx->pbc = pbc;
 
+        // propagate periodicity to shell contexts
+        ctx->perX = perX;
+        ctx->perY = perY;
+        ctx->perZ = perZ;
+
         Mat A;
         MatCreateShell(comm, PETSC_DECIDE, PETSC_DECIDE, M, N, (void*) ctx.get(), &A);
         MatShellSetOperation(A, MATOP_MULT, (void (*)(void)) ShellMult);
@@ -1113,7 +1191,6 @@ PressurePoisson::PressurePoisson(double rho, double dx, double dy, double dz, in
     info_.phases = core::master::plugin::Phase::PostExchange;
     info_.access.reads = {{"u", 1}, {"v", 1}, {"w", 1}, {"p", 1}, {"rho", 1}};
     info_.access.writes = {{"p", 1}};
-    info_.access.halos = {{"p", 1}};
 }
 
 void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, double dt)
@@ -1133,21 +1210,23 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
     const int nx = tile.box.hi[0] - tile.box.lo[0];
     const int ng = (nxc_tot - nx) / 2;
 
-    // Borrowed communicator: if null, fall back to self for single-rank use.
-    #ifdef HAVE_MPI
-        // Robust unbox + validate. Prefer the app comm; fall back to PETSC_COMM_WORLD.
-        MPI_Comm user_comm = PETSC_COMM_WORLD;
-        if (mpi_comm_) {
-            // Our public headers promise "boxed" MPI_Comm via mpi_box(); unbox it if so.
-            MPI_Comm cand = mpi_unbox(mpi_comm_);
-            user_comm = valid_comm_or(cand, PETSC_COMM_WORLD);
-        }
-        int sz = 1;
-        MPI_Comm_size(user_comm, &sz);
-        if (sz == 1) user_comm = PETSC_COMM_SELF;
-    #else
-        MPI_Comm user_comm = PETSC_COMM_SELF;
-    #endif
+// Borrowed communicator: if null, fall back to self for single-rank use.
+#ifdef HAVE_MPI
+    // Robust unbox + validate. Prefer the app comm; fall back to PETSC_COMM_WORLD.
+    MPI_Comm user_comm = PETSC_COMM_WORLD;
+    if (mpi_comm_)
+    {
+        // Our public headers promise "boxed" MPI_Comm via mpi_box(); unbox it if so.
+        MPI_Comm cand = mpi_unbox(mpi_comm_);
+        user_comm = valid_comm_or(cand, PETSC_COMM_WORLD);
+    }
+    int sz = 1;
+    MPI_Comm_size(user_comm, &sz);
+    if (sz == 1)
+        user_comm = PETSC_COMM_SELF;
+#else
+    MPI_Comm user_comm = PETSC_COMM_SELF;
+#endif
 
     // rebuild hierarchy if geometry changed
     if (!impl_ || impl_->nxc_tot != nxc_tot || impl_->nyc_tot != nyc_tot ||
@@ -1173,13 +1252,39 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
             auto it = bcs_.find(std::string("p.") + k);
             return (it == bcs_.end() ? nullptr : &it->second);
         };
+        // Start from deck BCs, then override with mesh.periodic if requested
         PBC pbc{find_bc("west"),  find_bc("east"),   find_bc("south"),
                 find_bc("north"), find_bc("bottom"), find_bc("top")};
 
-        build_hierarchy(*impl_, user_comm, pbc);
+        const bool perX = tile.mesh && tile.mesh->periodic[0];
+        const bool perY = tile.mesh && tile.mesh->periodic[1];
+        const bool perZ = tile.mesh && tile.mesh->periodic[2];
+        static const BcSpec kPeriodic{BcSpec::Type::periodic, 0.0};
+        if (perX)
+        {
+            pbc.W = &kPeriodic;
+            pbc.E = &kPeriodic;
+        }
+        if (perY)
+        {
+            pbc.S = &kPeriodic;
+            pbc.N = &kPeriodic;
+        }
+        if (perZ)
+        {
+            pbc.B = &kPeriodic;
+            pbc.T = &kPeriodic;
+        }
+
+        // Gather mesh periodicity (authoritative when true)
+        const bool meshPerX = (tile.mesh && tile.mesh->periodic[0]);
+        const bool meshPerY = (tile.mesh && tile.mesh->periodic[1]);
+        const bool meshPerZ = (tile.mesh && tile.mesh->periodic[2]);
+
+        build_hierarchy(*impl_, user_comm, pbc, meshPerX, meshPerY, meshPerZ);
     }
 
-    // ---------------- RHS = (1/dt) * div(u*) plus BC contributions ----------------
+    // ---------------- RHS = - (1/dt) * div(u*) plus BC contributions ----------------
     std::vector<double> div(std::size_t(nxc_tot) * nyc_tot * nzc_tot, 0.0);
     divergence_mac_c(
         static_cast<const double*>(vu.host_ptr), static_cast<const double*>(vv.host_ptr),
@@ -1360,11 +1465,18 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
                         std::size_t(i + ng) +
                         std::size_t(nxc_tot) *
                             (std::size_t(j + ng) + std::size_t(nyc_tot) * std::size_t(k + ng));
+                    // A is -div(β∇p) (SPD). Projection gives -div(β∇p) = -(1/dt) div(u*).
                     double rhs = -div[c] / dt;
 
-                    const bool hasW = (i > 0), hasE = (i < (nxc_tot - 2 * ng) - 1);
-                    const bool hasS = (j > 0), hasN = (j < (nyc_tot - 2 * ng) - 1);
-                    const bool hasB = (k > 0), hasT = (k < (nzc_tot - 2 * ng) - 1);
+                    // Use the finest-level periodic flags
+                    const ShellCtx* fctx = impl_->ctx_lvl.back().get();
+                    const bool perX = fctx->perX, perY = fctx->perY, perZ = fctx->perZ;
+                    const bool hasW = (i > 0) || perX;
+                    const bool hasE = (i < (nxc_tot - 2 * ng) - 1) || perX;
+                    const bool hasS = (j > 0) || perY;
+                    const bool hasN = (j < (nyc_tot - 2 * ng) - 1) || perY;
+                    const bool hasB = (k > 0) || perZ;
+                    const bool hasT = (k < (nzc_tot - 2 * ng) - 1) || perZ;
 
                     const double te = hasE ? Te(i, j, k) : 0.0;
                     const double tw = hasW ? Tw(i, j, k) : 0.0;
@@ -1373,10 +1485,10 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
                     const double tt = hasT ? Tt(i, j, k) : 0.0;
                     const double tb = hasB ? Tb(i, j, k) : 0.0;
 
-                    // Dirichlet: RHS += (1/V) * T_face * value
-                    auto add_dirichlet = [&](const BcSpec* s, double coef, double value)
+                    // Dirichlet: RHS += (1/V) * T_face * value (honor axis periodicity)
+                    auto add_dirichlet = [&](const BcSpec* s, bool per_axis, double coef, double value)
                     {
-                        if (s && norm_p_type(s->type) == BcSpec::Type::dirichlet)
+                        if (!per_axis && s && norm_p_type(s->type) == BcSpec::Type::dirichlet)
                             rhs += invV * coef * value;
                     };
                     // Neumann: flux = -β A * (∂p/∂n) ⇒ RHS += (1/V) * (± β A * g) = (± invV *
@@ -1387,36 +1499,36 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
                             rhs += sgn * invV * (Tface * h) * s->value;
                     };
                     // WEST/EAST
-                    if (!hasW)
+                    if (!hasW && !perX)
                     {
-                        add_dirichlet(pbc.W, Tw(i, j, k), pbc.W ? pbc.W->value : 0.0);
+                        add_dirichlet(pbc.W, perX, Tw(i,j,k), pbc.W ? pbc.W->value : 0.0);
                         add_neumann(pbc.W, Tw(i, j, k), dx_, -1);
                     }
-                    if (!hasE)
+                    if (!hasE && !perX)
                     {
-                        add_dirichlet(pbc.E, Te(i, j, k), pbc.E ? pbc.E->value : 0.0);
+                        add_dirichlet(pbc.E, perX, Te(i,j,k), pbc.E ? pbc.E->value : 0.0);
                         add_neumann(pbc.E, Te(i, j, k), dx_, +1);
                     }
                     // SOUTH/NORTH
-                    if (!hasS)
+                    if (!hasS && !perY)
                     {
-                        add_dirichlet(pbc.S, Ts(i, j, k), pbc.S ? pbc.S->value : 0.0);
+                        add_dirichlet(pbc.S, perY, Ts(i,j,k), pbc.S ? pbc.S->value : 0.0);
                         add_neumann(pbc.S, Ts(i, j, k), dy_, -1);
                     }
-                    if (!hasN)
+                    if (!hasN && !perY)
                     {
-                        add_dirichlet(pbc.N, Tn(i, j, k), pbc.N ? pbc.N->value : 0.0);
+                        add_dirichlet(pbc.N, perY, Tn(i,j,k), pbc.N ? pbc.N->value : 0.0);
                         add_neumann(pbc.N, Tn(i, j, k), dy_, +1);
                     }
                     // BOTTOM/TOP
-                    if (!hasB)
+                    if (!hasB && !perZ)
                     {
-                        add_dirichlet(pbc.B, Tb(i, j, k), pbc.B ? pbc.B->value : 0.0);
+                        add_dirichlet(pbc.B, perZ, Tb(i,j,k), pbc.B ? pbc.B->value : 0.0);
                         add_neumann(pbc.B, Tb(i, j, k), dz_, -1);
                     }
-                    if (!hasT)
+                    if (!hasT && !perZ)
                     {
-                        add_dirichlet(pbc.T, Tt(i, j, k), pbc.T ? pbc.T->value : 0.0);
+                        add_dirichlet(pbc.T, perZ, Tt(i,j,k), pbc.T ? pbc.T->value : 0.0);
                         add_neumann(pbc.T, Tt(i, j, k), dz_, +1);
                     }
 
@@ -1507,7 +1619,8 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
         KSPSetTolerances(impl_->ksp, rtol, atol, 1e50, 200);
     }
     // solve
-    MPI_Comm pcomm; PetscObjectGetComm((PetscObject)impl_->ksp, &pcomm);
+    MPI_Comm pcomm;
+    PetscObjectGetComm((PetscObject) impl_->ksp, &pcomm);
     PetscCallAbort(pcomm, KSPSolve(impl_->ksp, impl_->b, impl_->x));
 
     // Gauge fix for pure Neumann (zero-mean)
@@ -1544,14 +1657,13 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
         DMDAVecRestoreArrayRead(impl_->da_fine, impl_->x, &xarr);
     }
 
-    // Only perform halo exchange if caller provided a mesh description.
-    // Tests construct a bare MeshTileView with tile.mesh == nullptr.
-    if (tile.mesh)
+    // SYNC: copy the solved pressure from our host scratch into the actual
+    // field catalog storage so downstream stages (halo exchange + corrector)
+    // see the updated 'p'.
     {
-        core::mesh::Mesh mesh_like = *tile.mesh; // safe now: tile.mesh != nullptr
-        mesh_like.local = {nxc_tot - 2 * ng, nyc_tot - 2 * ng, nzc_tot - 2 * ng};
-        mesh_like.ng = ng;
-        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"p"});
+        auto vp_sync = fields.view("p");
+        const std::size_t nTot = std::size_t(nxc_tot) * nyc_tot * nzc_tot;
+        std::memcpy(vp_sync.host_ptr, impl_->p_host.data(), nTot * sizeof(double));
     }
 }
 

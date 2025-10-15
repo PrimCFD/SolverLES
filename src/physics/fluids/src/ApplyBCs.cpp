@@ -36,6 +36,8 @@ static inline BCOp to_op(BcSpec::Type t)
         return BCOp::Extrapolate1;
     case BcSpec::Type::mirror:
         return BCOp::Mirror;
+    case BcSpec::Type::periodic:
+        return BCOp::Periodic; // no-op here; periodic handled by halo exchange
     }
     return BCOp::Dirichlet;
 }
@@ -67,6 +69,12 @@ std::shared_ptr<IAction> make_apply_bcs(const KV& kv)
 
 void ApplyBCs::execute(const MeshTileView& tile, FieldCatalog& fields, double)
 {
+
+    // Respect periodicity from the mesh itself
+    const bool perX = tile.mesh && tile.mesh->periodic[0];
+    const bool perY = tile.mesh && tile.mesh->periodic[1];
+    const bool perZ = tile.mesh && tile.mesh->periodic[2];
+    static const BcSpec kPeriodic{BcSpec::Type::periodic, 0.0};
 
     // Interior x-extent of this tile (used to infer each field's ghost width)
     const int nx = tile.box.hi[0] - tile.box.lo[0];
@@ -132,6 +140,12 @@ void ApplyBCs::execute(const MeshTileView& tile, FieldCatalog& fields, double)
         const BcSpec* sv = find_bc(bcs_, std::string("v.") + f.key);
         const BcSpec* sw = find_bc(bcs_, std::string("w.") + f.key);
         const BcSpec* sp = find_bc(bcs_, std::string("p.") + f.key);
+
+        // Override from mesh.periodic when set (authoritative)
+        if ((f.ax == Axis::I && perX) || (f.ax == Axis::J && perY) || (f.ax == Axis::K && perZ))
+        {
+            su = sv = sw = sp = &kPeriodic;
+        }
 
         // Vector mirror if requested on all 3 velocity components and present
         if (have("u") && have("v") && have("w") && is_mirror(su) && is_mirror(sv) && is_mirror(sw))

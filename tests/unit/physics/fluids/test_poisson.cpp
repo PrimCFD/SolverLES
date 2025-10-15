@@ -204,7 +204,7 @@ TEST_CASE("MG Poisson reproduces manufactured p* (β=1) using FieldCatalog::regi
             for (int I = ng; I < nx + ng; ++I)
             {
                 const size_t c = cidx(I, J, K, nxc_tot, nyc_tot);
-                const long double d = (p[c] - mp) - (pstar[c] - mps);
+                const long double d = (p[c] - mp) - (pstar[c] - mps); // Matches sign convention
                 num2 += d * d;
                 const long double b = (pstar[c] - mps);
                 den2 += b * b + 1e-30L;

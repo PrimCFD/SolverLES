@@ -132,7 +132,7 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
     auto pressure_correction = [&]()
     {
         psolve_->execute(tile, fields, dt);
-        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"p"}); 
+        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"p"});
         corr_->execute(tile, fields, dt);
         core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
 
@@ -153,14 +153,14 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
         if (bc_)
             bc_->execute(tile, fields, 0.0);
 
-        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u","v","w"});
+        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
 
         // Baseline divergence for relative drop criterion
         double r0 = compute_div_linf(tile, fields);
         if (r0 == 0.0)
             r0 = 1.0;
 
-        const int nCorr = std::max(1, opt_.num_corrections);
+        const int nCorr = std::max(0, opt_.num_corrections);
         for (int m = 0; m < nCorr; ++m)
         {
             pressure_correction();
@@ -186,7 +186,7 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
         if (bc_)
             bc_->execute(tile, fields, 0.0);
 
-        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u","v","w"});
+        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
 
         const int n = std::max(1, opt_.fe_iters);
         for (int it = 0; it < n; ++it)
@@ -206,7 +206,7 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
     if (bc_)
         bc_->execute(tile, fields, 0.0);
 
-    core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u","v","w"});
+    core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
 
     double r0 = compute_div_linf(tile, fields);
     if (r0 == 0.0)

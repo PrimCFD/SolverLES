@@ -41,7 +41,3 @@ register_catch_tests(
 if(ENABLE_CUDA)
   add_subdirectory(gpu)
 endif()
-
-if(ENABLE_MPI)
-  add_subdirectory(mpi)
-endif()

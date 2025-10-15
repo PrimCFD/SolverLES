@@ -96,7 +96,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
 
     // Center totals (still used by diffusion/BE path below)
     const int nx_tot = vp.extents[0], ny_tot = vp.extents[1], nz_tot = vp.extents[2];
-    const std::size_t Ncenter = (std::size_t)nx_tot * ny_tot * nz_tot;
+    const std::size_t Ncenter = (std::size_t) nx_tot * ny_tot * nz_tot;
 
     // Per-face totals for advection
     const int nxu_tot = vu.extents[0], nyu_tot = vu.extents[1], nzu_tot = vu.extents[2];
@@ -115,16 +115,14 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
         throw std::runtime_error("[fluids.predictor] ghost width mismatch between u/v/w/p");
     }
 
-    const std::size_t Nu = (size_t)nxu_tot * nyu_tot * nzu_tot;
-    const std::size_t Nv = (size_t)nxv_tot * nyv_tot * nzv_tot;
-    const std::size_t Nw = (size_t)nxw_tot * nyw_tot * nzw_tot;
+    const std::size_t Nu = (size_t) nxu_tot * nyu_tot * nzu_tot;
+    const std::size_t Nv = (size_t) nxv_tot * nyv_tot * nzv_tot;
+    const std::size_t Nw = (size_t) nxw_tot * nyw_tot * nzw_tot;
     // Freeze RHS = u^n, v^n, w^n for this timestep
     std::vector<double> urhs(Nu), vrhs(Nv), wrhs(Nw);
-    std::copy_n((const double*)vu.host_ptr, Nu, urhs.data());
-    std::copy_n((const double*)vv.host_ptr, Nv, vrhs.data());
-    std::copy_n((const double*)vw.host_ptr, Nw, wrhs.data());
-
-
+    std::copy_n((const double*) vu.host_ptr, Nu, urhs.data());
+    std::copy_n((const double*) vv.host_ptr, Nv, vrhs.data());
+    std::copy_n((const double*) vw.host_ptr, Nw, wrhs.data());
 
     // Effective viscosity array: nu + nu_t (if present)
     std::vector<double> nu_eff(Ncenter, nu_);
@@ -184,9 +182,12 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
         // Add advection explicitly (AB1/Euler): u^{n+1} = u^n + dt*νΔu^n + dt*N(u^n)
         if (advect_enabled_)
         {
-            for (std::size_t q = 0; q < Nu; ++q) us_[q] += dt * Nu_t[q];
-            for (std::size_t q = 0; q < Nv; ++q) vs_[q] += dt * Nv_t[q];
-            for (std::size_t q = 0; q < Nw; ++q) ws_[q] += dt * Nw_t[q];
+            for (std::size_t q = 0; q < Nu; ++q)
+                us_[q] += dt * Nu_t[q];
+            for (std::size_t q = 0; q < Nv; ++q)
+                vs_[q] += dt * Nv_t[q];
+            for (std::size_t q = 0; q < Nw; ++q)
+                ws_[q] += dt * Nw_t[q];
         }
 
         std::memcpy(u_ptr, us_.data(), Nu * sizeof(double));
@@ -209,9 +210,12 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
         const std::size_t NvN = static_cast<std::size_t>(nxv_tot) * nyv_tot * nzv_tot;
         const std::size_t NwN = static_cast<std::size_t>(nxw_tot) * nyw_tot * nzw_tot;
         // us_/vs_/ws_ are face-layout aligned with u_ptr/v_ptr/w_ptr
-        for (std::size_t q = 0; q < NuN; ++q) us_[q] += dt * Nu_t[q];
-        for (std::size_t q = 0; q < NvN; ++q) vs_[q] += dt * Nv_t[q];
-        for (std::size_t q = 0; q < NwN; ++q) ws_[q] += dt * Nw_t[q];
+        for (std::size_t q = 0; q < NuN; ++q)
+            us_[q] += dt * Nu_t[q];
+        for (std::size_t q = 0; q < NvN; ++q)
+            vs_[q] += dt * Nv_t[q];
+        for (std::size_t q = 0; q < NwN; ++q)
+            ws_[q] += dt * Nw_t[q];
     }
 
     const int kmax = std::max(1, be_max_iters_);
