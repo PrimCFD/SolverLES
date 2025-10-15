@@ -40,6 +40,16 @@
 
 #include "memory/MpiBox.hpp"
 
+#ifdef HAVE_MPI
+static inline MPI_Comm valid_comm_or(MPI_Comm cand, MPI_Comm fallback)
+{
+    if (cand == MPI_COMM_NULL) return fallback;
+    int sz = -1, rc = MPI_Comm_size(cand, &sz);
+    if (rc == MPI_SUCCESS && sz > 0) return cand;
+    return fallback;
+}
+#endif
+
 using core::master::FieldCatalog;
 using core::master::MeshTileView;
 
@@ -791,6 +801,20 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc)
         impl.comm = user_comm_in;
     MPI_Comm comm = impl.comm;
 
+    #ifdef HAVE_MPI
+    {
+        int sz = -1, rk = -1;
+        if (MPI_Comm_size(comm, &sz) != MPI_SUCCESS || sz < 1) {
+            fprintf(stderr,
+                    "FATAL: invalid MPI_Comm passed into PressurePoisson (size=%d). "
+                    "Falling back to PETSC_COMM_WORLD.\n", sz);
+            comm = PETSC_COMM_WORLD;
+            impl.comm = comm;
+        }
+        MPI_Comm_rank(comm, &rk); // also warms up the comm; ignore return for brevity
+    }
+    #endif
+
     // ----- finest DMDA over interior cells -----
     const PetscInt nxi = impl.nxc_tot - 2 * impl.ng;
     const PetscInt nyi = impl.nyc_tot - 2 * impl.ng;
@@ -799,6 +823,7 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc)
     DMDACreate3d(comm, DM_BOUNDARY_NONE, DM_BOUNDARY_NONE, DM_BOUNDARY_NONE, DMDA_STENCIL_STAR, nxi,
                  nyi, nzi, PETSC_DECIDE, PETSC_DECIDE, PETSC_DECIDE, 1, 1, nullptr, nullptr,
                  nullptr, &impl.da_fine);
+    
     DMSetUp(impl.da_fine);
     DMDASetInterpolationType(impl.da_fine, DMDA_Q0); // Q0 = cell-centered (FV) transfers
 
@@ -1109,9 +1134,20 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
     const int ng = (nxc_tot - nx) / 2;
 
     // Borrowed communicator: if null, fall back to self for single-rank use.
-    const MPI_Comm user_comm = (mpi_comm_ && mpi_unbox(mpi_comm_) != MPI_COMM_NULL)
-                                   ? mpi_unbox(mpi_comm_)
-                                   : PETSC_COMM_SELF;
+    #ifdef HAVE_MPI
+        // Robust unbox + validate. Prefer the app comm; fall back to PETSC_COMM_WORLD.
+        MPI_Comm user_comm = PETSC_COMM_WORLD;
+        if (mpi_comm_) {
+            // Our public headers promise "boxed" MPI_Comm via mpi_box(); unbox it if so.
+            MPI_Comm cand = mpi_unbox(mpi_comm_);
+            user_comm = valid_comm_or(cand, PETSC_COMM_WORLD);
+        }
+        int sz = 1;
+        MPI_Comm_size(user_comm, &sz);
+        if (sz == 1) user_comm = PETSC_COMM_SELF;
+    #else
+        MPI_Comm user_comm = PETSC_COMM_SELF;
+    #endif
 
     // rebuild hierarchy if geometry changed
     if (!impl_ || impl_->nxc_tot != nxc_tot || impl_->nyc_tot != nyc_tot ||
@@ -1471,7 +1507,8 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
         KSPSetTolerances(impl_->ksp, rtol, atol, 1e50, 200);
     }
     // solve
-    PetscCallAbort(impl_->comm, KSPSolve(impl_->ksp, impl_->b, impl_->x));
+    MPI_Comm pcomm; PetscObjectGetComm((PetscObject)impl_->ksp, &pcomm);
+    PetscCallAbort(pcomm, KSPSolve(impl_->ksp, impl_->b, impl_->x));
 
     // Gauge fix for pure Neumann (zero-mean)
     if (impl_->all_neumann)

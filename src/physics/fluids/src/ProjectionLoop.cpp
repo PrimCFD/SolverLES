@@ -132,6 +132,7 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
     auto pressure_correction = [&]()
     {
         psolve_->execute(tile, fields, dt);
+        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"p"}); 
         corr_->execute(tile, fields, dt);
         core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
 
@@ -151,6 +152,8 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
         pred_->execute(tile, fields, dt); // momentum predictor once per step
         if (bc_)
             bc_->execute(tile, fields, 0.0);
+
+        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u","v","w"});
 
         // Baseline divergence for relative drop criterion
         double r0 = compute_div_linf(tile, fields);
@@ -183,6 +186,8 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
         if (bc_)
             bc_->execute(tile, fields, 0.0);
 
+        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u","v","w"});
+
         const int n = std::max(1, opt_.fe_iters);
         for (int it = 0; it < n; ++it)
             pressure_correction();
@@ -200,6 +205,8 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
     pred_->execute(tile, fields, dt);
     if (bc_)
         bc_->execute(tile, fields, 0.0);
+
+    core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u","v","w"});
 
     double r0 = compute_div_linf(tile, fields);
     if (r0 == 0.0)

@@ -2,6 +2,7 @@
 #include "master/FieldCatalog.hpp"
 #include "mesh/Field.hpp"
 #include "mesh/Mesh.hpp"
+#include "memory/MpiBox.hpp"
 
 #ifdef HAVE_MPI
 #include "mesh/HaloExchange.hpp"
@@ -64,7 +65,7 @@ inline void exchange_all_fields(FieldCatalog& cat, const core::mesh::Mesh& m,
 #ifdef HAVE_MPI
     if (mpi_comm_void)
     {
-        MPI_Comm comm = static_cast<MPI_Comm>(mpi_comm_void);
+        MPI_Comm comm = mpi_unbox(mpi_comm_void);
         for (const AnyFieldView& v : cat.all_views())
         {
             const auto e = v.extents;
@@ -110,7 +111,7 @@ inline void exchange_named_fields(FieldCatalog& cat, const core::mesh::Mesh& m,
 #ifdef HAVE_MPI
     if (mpi_comm_void)
     {
-        MPI_Comm comm = static_cast<MPI_Comm>(mpi_comm_void);
+        MPI_Comm comm = mpi_unbox(mpi_comm_void);
         for (const char* name : names)
         {
             if (!cat.contains(name))

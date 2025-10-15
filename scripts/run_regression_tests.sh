@@ -26,10 +26,11 @@ if [[ -f "scripts/mpi_env.sh" ]]; then
   # You can override with MPI_MODE=cluster|emulate when needed.
   # shellcheck source=/dev/null
   source scripts/mpi_env.sh "${MPI_MODE:-auto}"
-  export OMP_NUM_THREADS=2 # limit thread number for small runs (32^3)
+  export OMP_NUM_THREADS=1 # limit thread number for small runs (32^3)
+  export OPENBLAS_NUM_THREADS=1
   # If a launcher is available, default to building PETSc with MPI.
   if [[ -n "${MPIEXEC_EXECUTABLE:-}" ]]; then
-    : "${ENABLE_MPI:=ON}"
+    : "${ENABLE_MPI:=On}"
   fi
 fi
 
@@ -42,15 +43,20 @@ REPORT_DIR=${REPORT_DIR:-"${BUILD_DIR}/test-reports/regression"}
 LABEL_RE=${LABEL_RE:-regression}
 CTEST_NAME_REGEX=${CTEST_NAME_REGEX:-}
 
-PETSC_OPTIONS="-ksp_converged_reason \
-  -ksp_error_if_not_converged true \
-  -ksp_monitor_true_residual -ksp_monitor_short \
-  -ksp_view \
-  -mg_levels_ksp_view \
-  -mg_levels_ksp_monitor \
-  -pc_mg_log \
-  -log_view \
-  -options_left"
+PETSC_OPTIONS="-malloc_debug -check_pointer_intensity 1 -assert \
+-ksp_converged_reason -ksp_error_if_not_converged true -options_left \
+-log_view :/home/antho/SolverLES/petsc_log.%d.txt \
+-info :/home/antho/SolverLES/petsc_info.%d.txt"
+
+#"-ksp_converged_reason \
+#  -ksp_error_if_not_converged true \
+#  -ksp_monitor_true_residual -ksp_monitor_short \
+#  -ksp_view \
+#  -mg_levels_ksp_view \
+#  -mg_levels_ksp_monitor \
+#  -pc_mg_log \
+#  -log_view \
+#  -options_left"
 
 # Uncomment for PETSC linear solve logging
 # export PETSC_OPTIONS

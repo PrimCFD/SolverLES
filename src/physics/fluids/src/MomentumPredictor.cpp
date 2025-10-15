@@ -96,6 +96,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
 
     // Center totals (still used by diffusion/BE path below)
     const int nx_tot = vp.extents[0], ny_tot = vp.extents[1], nz_tot = vp.extents[2];
+    const std::size_t Ncenter = (std::size_t)nx_tot * ny_tot * nz_tot;
 
     // Per-face totals for advection
     const int nxu_tot = vu.extents[0], nyu_tot = vu.extents[1], nzu_tot = vu.extents[2];
@@ -114,30 +115,33 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
         throw std::runtime_error("[fluids.predictor] ghost width mismatch between u/v/w/p");
     }
 
-    const std::size_t N = static_cast<std::size_t>(nx_tot) * ny_tot * nz_tot;
-
+    const std::size_t Nu = (size_t)nxu_tot * nyu_tot * nzu_tot;
+    const std::size_t Nv = (size_t)nxv_tot * nyv_tot * nzv_tot;
+    const std::size_t Nw = (size_t)nxw_tot * nyw_tot * nzw_tot;
     // Freeze RHS = u^n, v^n, w^n for this timestep
-    std::vector<double> urhs(N), vrhs(N), wrhs(N);
-    std::copy_n(static_cast<const double*>(vu.host_ptr), N, urhs.data());
-    std::copy_n(static_cast<const double*>(vv.host_ptr), N, vrhs.data());
-    std::copy_n(static_cast<const double*>(vw.host_ptr), N, wrhs.data());
+    std::vector<double> urhs(Nu), vrhs(Nv), wrhs(Nw);
+    std::copy_n((const double*)vu.host_ptr, Nu, urhs.data());
+    std::copy_n((const double*)vv.host_ptr, Nv, vrhs.data());
+    std::copy_n((const double*)vw.host_ptr, Nw, wrhs.data());
+
+
 
     // Effective viscosity array: nu + nu_t (if present)
-    std::vector<double> nu_eff(N, nu_);
+    std::vector<double> nu_eff(Ncenter, nu_);
     if (fields.contains("nu_t"))
     {
         auto vt = fields.view("nu_t");
         const double* t = static_cast<const double*>(vt.host_ptr);
-        for (std::size_t q = 0; q < N; ++q)
+        for (std::size_t q = 0; q < Ncenter; ++q)
             nu_eff[q] = nu_ + t[q];
     }
 
     // Scratch storage for FE or BE next iterate
-    if (us_.size() != N)
+    if (us_.size() != Nu || vs_.size() != Nv || ws_.size() != Nw)
     {
-        us_.assign(N, 0.0);
-        vs_.assign(N, 0.0);
-        ws_.assign(N, 0.0);
+        us_.assign(Nu, 0.0);
+        vs_.assign(Nv, 0.0);
+        ws_.assign(Nw, 0.0);
     }
 
     if (!tile.mesh)
@@ -151,20 +155,20 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
     core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
 
     // ---- Advection: KK3 tendency N(u) = -(u·∇)u on faces (explicit) ----
-    std::vector<double> Nu, Nv, Nw;
+    std::vector<double> Nu_t, Nv_t, Nw_t;
     if (advect_enabled_)
     {
-        const std::size_t NuN = static_cast<std::size_t>(nxu_tot) * nyu_tot * nzu_tot;
-        const std::size_t NvN = static_cast<std::size_t>(nxv_tot) * nyv_tot * nzv_tot;
-        const std::size_t NwN = static_cast<std::size_t>(nxw_tot) * nyw_tot * nzw_tot;
-        Nu.assign(NuN, 0.0);
-        Nv.assign(NvN, 0.0);
-        Nw.assign(NwN, 0.0);
+        const std::size_t NuN = Nu;
+        const std::size_t NvN = Nv;
+        const std::size_t NwN = Nw;
+        Nu_t.assign(NuN, 0.0);
+        Nv_t.assign(NvN, 0.0);
+        Nw_t.assign(NwN, 0.0);
         advect_velocity_kk3_mac_c(static_cast<const double*>(vu.host_ptr), nxu_tot, nyu_tot,
                                   nzu_tot, static_cast<const double*>(vv.host_ptr), nxv_tot,
                                   nyv_tot, nzv_tot, static_cast<const double*>(vw.host_ptr),
                                   nxw_tot, nyw_tot, nzw_tot, ng, dx_, dy_, dz_, adv_blend_,
-                                  Nu.data(), Nv.data(), Nw.data());
+                                  Nu_t.data(), Nv_t.data(), Nw_t.data());
     }
 
     double* u_ptr = static_cast<double*>(vu.host_ptr);
@@ -180,17 +184,14 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
         // Add advection explicitly (AB1/Euler): u^{n+1} = u^n + dt*νΔu^n + dt*N(u^n)
         if (advect_enabled_)
         {
-            for (std::size_t q = 0; q < N; ++q)
-            {
-                us_[q] += dt * Nu[q];
-                vs_[q] += dt * Nv[q];
-                ws_[q] += dt * Nw[q];
-            }
+            for (std::size_t q = 0; q < Nu; ++q) us_[q] += dt * Nu_t[q];
+            for (std::size_t q = 0; q < Nv; ++q) vs_[q] += dt * Nv_t[q];
+            for (std::size_t q = 0; q < Nw; ++q) ws_[q] += dt * Nw_t[q];
         }
 
-        std::memcpy(u_ptr, us_.data(), N * sizeof(double));
-        std::memcpy(v_ptr, vs_.data(), N * sizeof(double));
-        std::memcpy(w_ptr, ws_.data(), N * sizeof(double));
+        std::memcpy(u_ptr, us_.data(), Nu * sizeof(double));
+        std::memcpy(v_ptr, vs_.data(), Nv * sizeof(double));
+        std::memcpy(w_ptr, ws_.data(), Nw * sizeof(double));
         core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
         return;
     }
@@ -208,12 +209,9 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
         const std::size_t NvN = static_cast<std::size_t>(nxv_tot) * nyv_tot * nzv_tot;
         const std::size_t NwN = static_cast<std::size_t>(nxw_tot) * nyw_tot * nzw_tot;
         // us_/vs_/ws_ are face-layout aligned with u_ptr/v_ptr/w_ptr
-        for (std::size_t q = 0; q < NuN; ++q)
-            us_[q] += dt * Nu[q];
-        for (std::size_t q = 0; q < NvN; ++q)
-            vs_[q] += dt * Nv[q];
-        for (std::size_t q = 0; q < NwN; ++q)
-            ws_[q] += dt * Nw[q];
+        for (std::size_t q = 0; q < NuN; ++q) us_[q] += dt * Nu_t[q];
+        for (std::size_t q = 0; q < NvN; ++q) vs_[q] += dt * Nv_t[q];
+        for (std::size_t q = 0; q < NwN; ++q) ws_[q] += dt * Nw_t[q];
     }
 
     const int kmax = std::max(1, be_max_iters_);
@@ -228,9 +226,9 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
                                         nu_eff.data(), nx_tot, ny_tot, nz_tot, ng, dx_, dy_, dz_,
                                         dt, us_.data(), vs_.data(), ws_.data());
 
-            std::copy_n(us_.data(), N, u_ptr);
-            std::copy_n(vs_.data(), N, v_ptr);
-            std::copy_n(ws_.data(), N, w_ptr);
+            std::copy_n(us_.data(), Nu, u_ptr);
+            std::copy_n(vs_.data(), Nv, v_ptr);
+            std::copy_n(ws_.data(), Nw, w_ptr);
             core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
         }
         else

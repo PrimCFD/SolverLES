@@ -231,11 +231,11 @@ int main(int argc, char** argv)
         MPI_Comm_rank(comm, &rc.world_rank);
         MPI_Comm_size(comm, &rc.world_size);
 
-        // Optional (nice for early diagnostics)
+        // Early diagnostics
         std::cerr << "MPI: rank=" << rc.world_rank << " size=" << rc.world_size << "\n";
 
-        // Optional: make errors return codes instead of aborts during bring-up
-        // MPI_Comm_set_errhandler(comm, MPI_ERRORS_RETURN);
+        // Make errors return codes instead of aborts during bring-up
+        MPI_Comm_set_errhandler(comm, MPI_ERRORS_RETURN);
     }
 #else
     rc.world_rank = 0;

@@ -25,7 +25,7 @@ time:
 
 # I/O policy & backend
 io:
-  backend: xdmf # xdmf | cgns | null
+  backend: xdmf # xdmf(single rank only) | cgns (parrallel writer) | null
   xdmf_version : v3 # xdmf version
   path: out # output directory
   precision: native # native | float64 | float32 (packing override)
