@@ -122,22 +122,41 @@ static void apply_divbgrad(const std::vector<double>& beta_c, const std::vector<
             for (int I = ng; I < nx + ng; ++I)
             {
                 const size_t c = cidx(I, J, K, nxc_tot, nyc_tot);
-                const size_t W = cidx(I - 1, J, K, nxc_tot, nyc_tot);
-                const size_t E = cidx(I + 1, J, K, nxc_tot, nyc_tot);
-                const size_t S = cidx(I, J - 1, K, nxc_tot, nyc_tot);
-                const size_t N = cidx(I, J + 1, K, nxc_tot, nyc_tot);
-                const size_t B = cidx(I, J, K - 1, nxc_tot, nyc_tot);
-                const size_t T = cidx(I, J, K + 1, nxc_tot, nyc_tot);
-
-                const double txW = harm(beta_c[W], beta_c[c]) / (dx * dx);
-                const double txE = harm(beta_c[E], beta_c[c]) / (dx * dx);
-                const double tyS = harm(beta_c[S], beta_c[c]) / (dy * dy);
-                const double tyN = harm(beta_c[N], beta_c[c]) / (dy * dy);
-                const double tzB = harm(beta_c[B], beta_c[c]) / (dz * dz);
-                const double tzT = harm(beta_c[T], beta_c[c]) / (dz * dz);
-
-                out[c] = txE * (p[E] - p[c]) + txW * (p[W] - p[c]) + tyN * (p[N] - p[c]) +
-                         tyS * (p[S] - p[c]) + tzT * (p[T] - p[c]) + tzB * (p[B] - p[c]);
+                double acc = 0.0;
+                // WEST/EAST (only if neighbor is interior)
+                if (I > ng) {
+                    const size_t W = cidx(I - 1, J, K, nxc_tot, nyc_tot);
+                    const double txW = harm(beta_c[W], beta_c[c]) / (dx * dx);
+                    acc += txW * (p[W] - p[c]);
+                }
+                if (I < nx + ng - 1) {
+                    const size_t E = cidx(I + 1, J, K, nxc_tot, nyc_tot);
+                    const double txE = harm(beta_c[E], beta_c[c]) / (dx * dx);
+                    acc += txE * (p[E] - p[c]);
+                }
+                // SOUTH/NORTH
+                if (J > ng) {
+                    const size_t S = cidx(I, J - 1, K, nxc_tot, nyc_tot);
+                    const double tyS = harm(beta_c[S], beta_c[c]) / (dy * dy);
+                    acc += tyS * (p[S] - p[c]);
+                }
+                if (J < ny + ng - 1) {
+                    const size_t N = cidx(I, J + 1, K, nxc_tot, nyc_tot);
+                    const double tyN = harm(beta_c[N], beta_c[c]) / (dy * dy);
+                    acc += tyN * (p[N] - p[c]);
+                }
+                // BOTTOM/TOP
+                if (K > ng) {
+                    const size_t B = cidx(I, J, K - 1, nxc_tot, nyc_tot);
+                    const double tzB = harm(beta_c[B], beta_c[c]) / (dz * dz);
+                    acc += tzB * (p[B] - p[c]);
+                }
+                if (K < nz + ng - 1) {
+                    const size_t T = cidx(I, J, K + 1, nxc_tot, nyc_tot);
+                    const double tzT = harm(beta_c[T], beta_c[c]) / (dz * dz);
+                    acc += tzT * (p[T] - p[c]);
+                }
+                out[c] = acc;
             }
 }
 
@@ -178,7 +197,7 @@ TEST_CASE("MG variable-β Poisson: A p ≈ rhs and β→1 consistency", "[fluids
         for (int J = 0; J < nyc_tot; ++J)
             for (int I = 0; I < nxc_tot; ++I)
             {
-                pstar[cidx(I, J, K, nxc_tot, nyc_tot)] = std::sin(2 * M_PI * (I - 0.5) / nx) +
+                pstar[cidx(I, J, K, nxc_tot, nyc_tot)] = std::cos(2 * M_PI * (I - 0.5) / nx) +
                                                          0.3 * std::cos(2 * M_PI * (J - 0.5) / ny) +
                                                          0.2 * std::cos(2 * M_PI * (K - 0.5) / nz);
             }
@@ -217,11 +236,8 @@ TEST_CASE("MG variable-β Poisson: A p ≈ rhs and β→1 consistency", "[fluids
         {"div_tol", "5e-11"}
         // leave pressure BCs unset → natural Neumann; solver should handle gauge (zero-mean)
     };
+
     core::master::RunContext rc{};
-    if (PetscTestGuard::petsc_uses_mpi())
-    {
-        rc.mpi_comm = const_cast<void*>(_petsc_guard.mpi_comm_ptr()); // else leave nullptr
-    }
     auto poisson = fluids::make_poisson(kv, rc);
 
     poisson->execute(tile, fields, dt);

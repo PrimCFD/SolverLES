@@ -136,7 +136,7 @@ TEST_CASE("MG Poisson reproduces manufactured p* (β=1) using FieldCatalog::regi
         for (int J = 0; J < nyc_tot; ++J)
             for (int I = 0; I < nxc_tot; ++I)
             {
-                pstar[cidx(I, J, K, nxc_tot, nyc_tot)] = std::sin(2 * M_PI * (I - 0.5) / nx) +
+                pstar[cidx(I, J, K, nxc_tot, nyc_tot)] = std::cos(2 * M_PI * (I - 0.5) / nx) +
                                                          0.3 * std::cos(2 * M_PI * (J - 0.5) / ny) +
                                                          0.2 * std::cos(2 * M_PI * (K - 0.5) / nz);
             }
@@ -176,20 +176,9 @@ TEST_CASE("MG Poisson reproduces manufactured p* (β=1) using FieldCatalog::regi
           {"dz", std::to_string(dz)},
           {"rho", "1.0"},
           {"iters", "50"},
-          {"div_tol", "1e-10"},
-          // Pin gauge to avoid nullspace ambiguity:
-          {"p.west", "dirichlet:0"},
-          {"p.east", "dirichlet:0"},
-          {"p.south", "dirichlet:0"},
-          {"p.north", "dirichlet:0"},
-          {"p.bottom", "dirichlet:0"},
-          {"p.top", "dirichlet:0"}};
+          {"div_tol", "1e-10"},};
 
     core::master::RunContext rc{};
-    if (PetscTestGuard::petsc_uses_mpi())
-    {
-        rc.mpi_comm = const_cast<void*>(_petsc_guard.mpi_comm_ptr()); // else leave nullptr
-    }
     auto poisson = fluids::make_poisson(kv, rc);
 
     poisson->execute(tile, fields, dt);

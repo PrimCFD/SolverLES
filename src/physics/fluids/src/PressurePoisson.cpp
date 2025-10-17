@@ -1144,6 +1144,7 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
         impl.Afine_aij = nullptr;
     }
     PetscCallAbort(comm, AssembleAIJFromShell(*impl.ctx_lvl[L - 1], &impl.Afine_aij));
+    MatSetOption(impl.Afine_aij, MAT_SYMMETRIC, PETSC_TRUE);
     if (!impl.all_neumann)
     {
         MatSetOption(impl.Afine_aij, MAT_SPD, PETSC_TRUE);
