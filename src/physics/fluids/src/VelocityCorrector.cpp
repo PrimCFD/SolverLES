@@ -4,6 +4,12 @@
 #include <stdexcept>
 #include <vector>
 #include "kernels_fluids.h"
+#include <algorithm>
+#include <iostream>
+#include <limits>
+#ifdef HAVE_MPI
+#include <mpi.h>
+#endif
 
 using namespace core::master;
 

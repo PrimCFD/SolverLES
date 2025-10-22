@@ -6,18 +6,23 @@ set -euo pipefail
 # Values: "mpich" to cache MPICH tarballs; empty/anything else = no MPI cached.
 # You can also pass --mpi=mpich on the command line.
 PREFETCH_MPI="${PREFETCH_MPI:-}"
+# Enable PETSc/MUMPS download URL discovery (parallel LU stack)
+PREFETCH_MUMPS="${PREFETCH_MUMPS:-1}"
 
 for arg in "$@"; do
   case "$arg" in
     --mpi=mpich) PREFETCH_MPI="mpich" ;;
     --mpi=none|--mpi=system|--mpi="") PREFETCH_MPI="" ;;
+    --mumps) PREFETCH_MUMPS="1" ;;
     -h|--help)
       cat <<EOF
-Usage: $(basename "$0") [--mpi=mpich|none]
+Usage: $(basename "$0") [--mpi=mpich|none] [--mumps]
   --mpi=mpich  Cache MPICH tarballs for PETSc offline configure
   --mpi=none   Do not cache an MPI (default); PETSc will use system MPI at build time
+  --mumps      Also cache MUMPS + ScaLAPACK/BLACS + ParMETIS/METIS (+PT-Scotch/Scotch)
 Environment:
   PREFETCH_MPI=mpich   Same as --mpi=mpich
+  PREFETCH_MUMPS=1     Same as --mumps
 EOF
       exit 0;;
   esac
@@ -79,27 +84,41 @@ if [[ -d "${petsc_src}" ]]; then
   # Ask configure to print only the URLs needed for our requested downloads.
   # (PETSc docs: --with-packages-download-dir makes configure list the URLs.) 
   # Optionally cache MPI vendor tarballs for offline PETSc configure.
-  # When PREFETCH_MPI=mpich, we request MPICH; otherwise we let PETSc use system MPI later.  set +e
-  if [[ "${PREFETCH_MPI}" == "mpich" ]]; then
-    echo "⚙️   PETSc configure (URL discovery) with --download-mpich"
-    CFG_OUT="$(python3 ./configure \
-      --with-packages-download-dir="${pkg_cache}" \
-      --download-mpich \
-      --with-debugging=0 \
-      --prefix=/tmp/prefetch-petsc 2>&1)"
-  set -e
-  # Extract, sanitize, and keep only MPICH (we use our own OpenBLAS for BLAS/LAPACK).
-
-  echo "${CFG_OUT}" \
-    | grep -Eo 'https?://[^[:space:]]+' \
-    | sed -E "s/[\"',)]+$//" \
-    | grep -Ei '/mpich[^/]*\.(tar\.(gz|bz2|xz)|tgz)$' \
-    | sort -u > "${urls_file}"
-
+  # When PREFETCH_MPI=mpich, we request MPICH; otherwise we let PETSc use system MPI later.
+  if [[ "${PREFETCH_MPI}" == "mpich" || -n "${PREFETCH_MUMPS}" ]]; then
+    echo "⚙️   PETSc configure (URL discovery)"
+    CFG_ARGS=(--with-packages-download-dir="${pkg_cache}" --with-debugging=0 --prefix=/tmp/prefetch-petsc)
+    [[ "${PREFETCH_MPI}" == "mpich" ]] && CFG_ARGS+=(--download-mpich)
+    if [[ -n "${PREFETCH_MUMPS}" ]]; then
+      # Ask PETSc to include parallel LU stack URLs:
+      # MUMPS + ScaLAPACK/BLACS + ParMETIS/METIS (+ optional PT-Scotch/Scotch)
+      # (PETSc knows and publishes the exact tarball URLs during configure.)  <!-- docs: install & MUMPS -->
+      CFG_ARGS+=(--download-mumps --download-scalapack --download-blacs \
+                 --download-parmetis --download-metis)
+    fi
+    echo "     configure args: ${CFG_ARGS[*]}"
+    # Save full configure output for debugging and grep from file (more reliable than a shell var)
+    CFG_LOG="${pkg_cache}/configure_url_discovery.log"
+    python3 ./configure "${CFG_ARGS[@]}" > "${CFG_LOG}" 2>&1 || true
   else
-    echo "ℹ️   No MPI vendor selected for caching; PETSc will use system MPI during build."
-    : > "${urls_file}"  # create empty list
+    echo "⚙️   PETSc configure (URL discovery) without extra downloads"
+    CFG_LOG="${pkg_cache}/configure_url_discovery.log"
+    python3 ./configure --with-packages-download-dir="${pkg_cache}" --with-debugging=0 --prefix=/tmp/prefetch-petsc > "${CFG_LOG}" 2>&1 || true
   fi
+
+  set -e
+
+  # Extract candidate URLs from PETSc configure output:
+  #  - Allow Bitbucket (pkg-metis / pkg-parmetis), GitHub (Reference-ScaLAPACK),
+  #    INRIA GitLab (scotch), MUMPS site, and PETSc mirrors.
+  #  - Do NOT require the package name to appear in the filename (ScaLAPACK uses commit-hash tarballs).
+  : > "${urls_file}"
+  grep -Eo 'https?://[^[:space:]'"'"'"]+\.(tar\.(gz|bz2|xz)|tgz)(\?[^[:space:]'"'"'"]*)?' "${CFG_LOG}" \
+  | sed -E 's/[)",]+$//' \
+  | grep -Ei '(bitbucket\.org/petsc/pkg-(metis|parmetis)|github\.com/Reference-ScaLAPACK|mumps-solver\.org|/projects/petsc/(mirror|download)/externalpackages/)' \
+  | sort -u > "${urls_file}" || true
+
+  echo "📝  Configure log saved: ${CFG_LOG}"
 
   set -e
 

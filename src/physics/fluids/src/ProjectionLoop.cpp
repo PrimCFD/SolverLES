@@ -138,6 +138,7 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
 
         if (bc_)
             bc_->execute(tile, fields, 0.0);
+        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"p", "u", "v", "w"});
     };
 
     // --------- IPISO mode (predictor once, then fixed # pressure corrections) ---------

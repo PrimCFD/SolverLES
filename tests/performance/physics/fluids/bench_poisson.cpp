@@ -3,16 +3,19 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <cstdlib>
+#include <string>
 
 // PETSc/MPI lifecycle
 #include "test_petsc_guard.hpp"
-static PetscTestGuard _petsc_guard; // ensures PETSc (and MPI if available) is (de)initialized
+#include <petsc.h>
 
 #include "PressurePoisson.hpp" // fluids::make_poisson
 #include "Program.hpp"         // KV, BcTable consumed inside make_poisson
 #include "master/FieldCatalog.hpp"
 #include "master/RunContext.hpp"
 #include "master/Views.hpp"
+
 
 // Byte-stride helper
 static inline std::array<std::ptrdiff_t, 3> strides_bytes(int nx, int ny)
@@ -83,10 +86,24 @@ static void build_faces_from_pstar(const std::vector<double>& pstar, std::vector
             }
 }
 
-int main()
+int main(int argc, char** argv)
 {
-    // Problem size & geometry
-    const int nx = 64, ny = 64, nz = 64, ng = 1;
+
+    PetscTestGuard petsc_guard(argc, argv); // Honours runtime flags
+
+    // Problem size & geometry (overridable via PETSc options -nx/-ny/-nz)
+    int nx = 64, ny = 64, nz = 64;
+    const int ng = 1;
+
+    // Allow override via PETSc options: -nx/-ny/-nz
+    {
+        PetscBool setx = PETSC_FALSE, sety = PETSC_FALSE, setz = PETSC_FALSE;
+        (void)PetscOptionsGetInt(NULL, NULL, "-nx", &nx, &setx);
+        (void)PetscOptionsGetInt(NULL, NULL, "-ny", &ny, &sety);
+        (void)PetscOptionsGetInt(NULL, NULL, "-nz", &nz, &setz);
+        (void)PetscPrintf(PETSC_COMM_WORLD, "[bench] grid chosen: nx=%d ny=%d nz=%d\n", nx, ny, nz);
+    }
+
     const int nxc_tot = nx + 2 * ng, nyc_tot = ny + 2 * ng, nzc_tot = nz + 2 * ng;
     const int nxu_tot = nxc_tot + 1, nyu_tot = nyc_tot, nzu_tot = nzc_tot;
     const int nxv_tot = nxc_tot, nyv_tot = nyc_tot + 1, nzv_tot = nzc_tot;
@@ -107,7 +124,7 @@ int main()
             for (int I = 0; I < nxc_tot; ++I)
                 pstar[(size_t) I +
                       (size_t) nxc_tot * ((size_t) J + (size_t) nyc_tot * (size_t) K)] =
-                    std::sin(2 * M_PI * (I - 0.5) / nx) +
+                    std::cos(2 * M_PI * (I - 0.5) / nx) +
                     0.3 * std::cos(2 * M_PI * (J - 0.5) / ny) +
                     0.2 * std::cos(2 * M_PI * (K - 0.5) / nz);
 
@@ -135,29 +152,34 @@ int main()
     fields.register_scalar("rho", rho.data(), sizeof(double), {nxc_tot, nyc_tot, nzc_tot},
                            strides_bytes(nxc_tot, nyc_tot));
 
-    // Build the MG Poisson actio
+    // Build the MG Poisson action
     core::master::plugin::KV kv{{"dx", std::to_string(dx)},
                                 {"dy", std::to_string(dy)},
                                 {"dz", std::to_string(dz)},
                                 {"rho", "1.0"},
                                 {"iters", "50"},
-                                {"div_tol", "1e-10"},
-                                // Dirichlet on all sides to pin the gauge
-                                {"p.west", "dirichlet:0"},
-                                {"p.east", "dirichlet:0"},
-                                {"p.south", "dirichlet:0"},
-                                {"p.north", "dirichlet:0"},
-                                {"p.bottom", "dirichlet:0"},
-                                {"p.top", "dirichlet:0"}};
+                                {"div_tol", "1e-10"}};
+
     core::master::RunContext rc{};
-    if (PetscTestGuard::petsc_uses_mpi())
-    {
-        rc.mpi_comm = const_cast<void*>(_petsc_guard.mpi_comm_ptr()); // else leave nullptr
-    }
-    auto poisson = fluids::make_poisson(kv, rc);
 
     // Time a full action execute (this runs MG inside PressurePoisson)
-    auto [mean_ms, std_ms] = bench::run([&] { poisson->execute(tile, fields, dt); });
-    bench::report("fluids_poisson_mg_fullpath_64^3", mean_ms, std_ms, /*bytes=*/0.0);
+    // >>> Build the solver ONCE <<<
+    auto poisson = fluids::make_poisson(kv, rc);
+
+    // Warm-up once to pay any one-time setup (coarse Pmats via Galerkin, etc.)
+    poisson->execute(tile, fields, dt);
+
+    // Allow quick override of iterations: BENCH_ITERS (default 5 for heavy tests)
+    int iters = 5;
+    if (const char* s = std::getenv("BENCH_ITERS")) {
+        try { iters = std::max(1, std::stoi(std::string{s})); } catch (...) {}
+    }
+
+    auto [mean_us, stddev_us] = bench::run([&]{
+        // Just solve; no reconstruction of objects
+        poisson->execute(tile, fields, dt);
+    }, iters);
+
+    bench::report("fluids_poisson_petsc_mg_64^3", mean_us, stddev_us, 0.0);
     return 0;
 }

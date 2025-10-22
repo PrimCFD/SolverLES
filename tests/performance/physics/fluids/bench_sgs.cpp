@@ -37,12 +37,16 @@ int main()
     auto [mean, stddev] = bench::run(
         [&]
         {
-            // New MAC-face kernel signature:
-            // sgs_smagorinsky_mac_c(u, nxu, nyu, nzu, v, nxv, nyv, nzv, w, nxw, nyw, nzw,
+            // MAC-face kernel signature:
+            // sgs_smagorinsky_mac_c(u, v, w,
+            //                       nxu, nyu, nzu, nxv, nyv, nzv, nxw, nyw, nzw,
             //                       nxc, nyc, nzc, ng, dx, dy, dz, Cs, nu_t_centers)
-            sgs_smagorinsky_mac_c(u.data(), nxu_tot, nyu_tot, nzu_tot, v.data(), nxv_tot, nyv_tot,
-                                  nzv_tot, w.data(), nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot,
-                                  nzc_tot, ng, dx, dy, dz, Cs, nu_t.data());
+            sgs_smagorinsky_mac_c(u.data(), v.data(), w.data(),
+                                  nxu_tot, nyu_tot, nzu_tot,
+                                  nxv_tot, nyv_tot, nzv_tot,
+                                  nxw_tot, nyw_tot, nzw_tot,
+                                  nxc_tot, nyc_tot, nzc_tot, ng,
+                                  dx, dy, dz, Cs, nu_t.data());
         });
 
     // Rough I/O traffic: read u/v/w faces + write center nu_t

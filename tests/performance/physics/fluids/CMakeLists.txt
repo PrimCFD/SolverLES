@@ -34,7 +34,7 @@ target_include_directories(
           ${CMAKE_SOURCE_DIR}/tests/performance)
 add_perf_test(perf_be_jacobi_fluids bench_diffuse_be_fluids)
 
-# Poisson - Jacobi
+# Poisson - PETSc MG
 add_executable(bench_poisson_fluids bench_poisson.cpp ${SIMPLE_BENCH_HDR})
 target_link_libraries(bench_poisson_fluids PRIVATE physics_fluids core
                                                    PETSC::petsc)
@@ -54,7 +54,7 @@ set_target_properties(
     INSTALL_RPATH
     "${_origin}/../lib;${_origin}/../lib/plugins;$<TARGET_FILE_DIR:PETSC::petsc_lib>"
 )
-add_perf_test(perf_poisson_jacobi_fluids bench_poisson_fluids)
+add_perf_test(perf_poisson_petsc_fluids bench_poisson_fluids)
 
 # Gradient / Divergence / Corrector
 add_executable(bench_grad_div_correct_fluids bench_grad_div_correct.cpp

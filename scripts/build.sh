@@ -57,11 +57,9 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-$NPROCS}"
 export OMP_PLACES="${OMP_PLACES:-cores}"
 export OMP_PROC_BIND="${OMP_PROC_BIND:-close}"
 export OMP_DYNAMIC="${OMP_DYNAMIC:-FALSE}"
-# Optional (Intel runtime): uncomment for very steady latency
-# export KMP_BLOCKTIME="${KMP_BLOCKTIME:-0}"
-
-# --- BLAS threading hygiene (avoid oversubscription with OpenMP kernels)
+# Avoid nested BLAS threads stepping on OpenMP
 export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 
 # --- Defaults (overridable)
 CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
@@ -93,11 +91,29 @@ cmake_args=(
   -DUSE_SYSTEM_BLAS=OFF
   -DUSE_SYSTEM_CATCH2=OFF
   -DBUILD_TESTS="${BUILD_TESTS}"
-  -DENABLE_MPI="${ENABLE_MPI}"
   -DENABLE_CUDA="${ENABLE_CUDA}"
   -DUSE_CUDA_UM="${USE_CUDA_UM}"
   -DCMAKE_MESSAGE_LOG_LEVEL=WARNING -Wno-dev
 )
+
+ # Only forward ENABLE_MPI if user/runner explicitly set it
+ if [[ -n "${ENABLE_MPI+x}" ]]; then
+   cmake_args+=( -DENABLE_MPI="${ENABLE_MPI}" )
+ fi
+
+# If the user points to a system PETSc, prefer it
+if [[ -n "${PETSC_DIR:-}" ]]; then
+  cmake_args+=( -DUSE_SYSTEM_PETSC=ON )
+  [[ -n "${PETSC_ARCH:-}" ]] && cmake_args+=( -DPETSC_ARCH="${PETSC_ARCH}" )
+fi
+
+ # Strong but *overridable* defaults
+ : "${OPT_LEVEL:=3}"          # allow OPT_LEVEL=2 etc.
+ : "${ARCH_FLAGS:=-march=native}"  # allow ARCH_FLAGS="" for portability builds
+ rel_flags="-O${OPT_LEVEL} -DNDEBUG ${ARCH_FLAGS}"
+ if [[ -z "${CMAKE_C_FLAGS_RELEASE:-}" ]];      then cmake_args+=( -DCMAKE_C_FLAGS_RELEASE="${rel_flags}" ); fi
+ if [[ -z "${CMAKE_CXX_FLAGS_RELEASE:-}" ]];    then cmake_args+=( -DCMAKE_CXX_FLAGS_RELEASE="${rel_flags}" ); fi
+ if [[ -z "${CMAKE_Fortran_FLAGS_RELEASE:-}" ]]; then cmake_args+=( -DCMAKE_Fortran_FLAGS_RELEASE="${rel_flags}" ); fi
 
 [[ -n "${MPIEXEC_NUMPROC_FLAG:-}" ]] && cmake_args+=( -DMPIEXEC_NUMPROC_FLAG="${MPIEXEC_NUMPROC_FLAG}" )
 [[ -n "${MPIEXEC_PREFLAGS:-}"    ]] && cmake_args+=( -DMPIEXEC_PREFLAGS="${MPIEXEC_PREFLAGS}" )
@@ -172,6 +188,19 @@ if [[ -n "${EXTRA_CMAKE_ARGS:-}" ]]; then
   extra_args=(${EXTRA_CMAKE_ARGS})
 fi
 
+# If PETSC_DIR is set by the user (system PETSc), make it win
+if [[ -n "${PETSC_DIR:-}" ]]; then
+  export PKG_CONFIG_PATH="${PETSC_DIR}/lib/pkgconfig:${PETSC_DIR}/${PETSC_ARCH:-}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+  export CMAKE_PREFIX_PATH="${PETSC_DIR}:${CMAKE_PREFIX_PATH:-}"
+fi
+
+# If using vendored PETSc, expose its pkg-config after it’s built:
+# (on re-configures, it may already exist; adding path early is harmless)
+if [[ -z "${PETSC_DIR:-}" ]]; then
+  export PKG_CONFIG_PATH="${BUILD_DIR:-build}/_deps/petsc-install/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+  export CMAKE_PREFIX_PATH="${BUILD_DIR:-build}/_deps/petsc-install:${CMAKE_PREFIX_PATH:-}"
+fi
+
 # --- Log summary
 echo "📁 Repo root:        ${repo_root}"
 echo "🏗️  Build dir:        ${build_dir}"
@@ -186,9 +215,46 @@ echo "🌀 OMP_DYNAMIC:       ${OMP_DYNAMIC}"
 [[ -n "${MPIEXEC_PREFLAGS:-}" ]] && echo "🚀 MPI pref.:          ${MPIEXEC_PREFLAGS}"
 [[ -n "${EXTRA_CMAKE_ARGS:-}" ]] && echo "➕ Extra CMake args:   ${EXTRA_CMAKE_ARGS}"
 [[ "${OFFLINE:-0}" == "1" || "$all_offline" == true ]] && echo "📦 FetchContent:       disconnected"
+echo "🐾 PETSC_DIR:          ${PETSC_DIR:-<unset>}"
+echo "🐾 PKG_CONFIG_PATH:    ${PKG_CONFIG_PATH:-<unset>}"
+
+petsc_doctor() {
+  # Only run if pkg-config can find PETSc (system or vendored staged)
+  if ! pkg-config --exists petsc 2>/dev/null; then
+    echo "ℹ️  PETSc not on pkg-config yet (vendored build may add it later)."
+    return 0
+  fi
+  local ver pref req mpiexec cflags xflags
+  ver="$(pkg-config --modversion petsc 2>/dev/null || true)"
+  pref="$(pkg-config --variable=prefix petsc 2>/dev/null || true)"
+  req="$(pkg-config --variable=requires_private petsc 2>/dev/null || true)"
+  mpiexec="$(pkg-config --variable=mpiexec petsc 2>/dev/null || true)"
+  cflags="$(pkg-config --variable=cflags_extra petsc 2>/dev/null || true)"
+  xflags="$(pkg-config --variable=cxxflags_extra petsc 2>/dev/null || true)"
+  echo "🔎 PETSc doctor:"
+  echo "   • version:   ${ver}"
+  echo "   • prefix:    ${pref}"
+  echo "   • requires:  ${req}"
+  echo "   • mpiexec:   ${mpiexec}"
+  echo "   • cflags:    ${cflags}"
+  echo "   • cxxflags:  ${xflags}"
+
+  # Hard failures when the selection contradicts the build mode
+  if [[ "${ENABLE_MPI:-OFF}" =~ ^[Oo][Nn]$ ]] && [[ "${mpiexec}" == *"petsc-mpiexec.uni"* ]]; then
+    echo "❌ You asked for MPI (ENABLE_MPI=ON) but PETSc is serial (mpiuni)."
+    echo "   Fix by exporting PETSC_DIR (MPI build) or rebuilding vendored PETSc with --with-mpi=1."
+    exit 2
+  fi
+  if [[ "${CMAKE_BUILD_TYPE:-Release}" =~ ^[Rr]elease$ ]] && [[ "${cflags}${xflags}" == *"-O0"* ]]; then
+    echo "❌ PETSc was compiled with -O0 (debug) but you requested a Release build."
+    echo "   Fix by using an optimized system PETSc, or pass optimized configure options to vendored PETSc."
+    exit 3
+  fi
+}
 
 # --- Configure & build
 echo -e "\n⚙️  Configuring CMake…"
+petsc_doctor
 cmake "${cmake_args[@]}" "${extra_args[@]}"
 
 echo -e "\n🛠️  Building…"

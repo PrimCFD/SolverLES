@@ -1,14 +1,11 @@
 module fluids_kernels
   use, intrinsic :: iso_c_binding
   implicit none
-  ! Reusable scratch for poisson_jacobi_c
-  real(c_double), allocatable, save :: pn_scratch(:)
 contains
 
   subroutine fluids_kernels_free_scratch() bind(C, name="fluids_kernels_free_scratch")
     use, intrinsic :: iso_c_binding
     implicit none
-    if (allocated(pn_scratch)) deallocate (pn_scratch)
   end subroutine fluids_kernels_free_scratch
 
   subroutine sgs_smagorinsky_mac_c(u, v, w, &
@@ -168,142 +165,6 @@ contains
       end do
     end do
   end subroutine divergence_mac_c
-
-  ! Legacy Poisson solvers
-
-  subroutine poisson_jacobi_c(rhs, nx_tot, ny_tot, nz_tot, ng, dx, dy, dz, iters, p) &
-    bind(C, name="poisson_jacobi_c")
-    implicit none
-    integer(c_int), value :: nx_tot, ny_tot, nz_tot, ng, iters
-    real(c_double), value :: dx, dy, dz
-    real(c_double), intent(in)    :: rhs(*)
-    real(c_double), intent(inout) :: p(*)
-    integer :: i, j, k, nx, ny, nz, iter
-    real(c_double) :: ax, ay, az, ap, invap
-    integer(c_size_t) :: c, ip, im, jp, jm, kp, km, sx, sy, sz
-    integer(c_size_t) :: Ntot, c0
-
-    nx = nx_tot-2*ng; ny = ny_tot-2*ng; nz = nz_tot-2*ng
-    Ntot = int(nx_tot, c_size_t)*int(ny_tot, c_size_t)*int(nz_tot, c_size_t)
-
-    ! Allocate or resize the module-static scratch once; reuse across calls.
-    if (.not. allocated(pn_scratch)) then
-      allocate (pn_scratch(Ntot))
-    else if (size(pn_scratch) /= int(Ntot)) then
-      deallocate (pn_scratch)
-      allocate (pn_scratch(Ntot))
-    end if
-
-    ax = 1.0d0/(dx*dx); ay = 1.0d0/(dy*dy); az = 1.0d0/(dz*dz)
-    ap = 2.0d0*(ax+ay+az); invap = 1.0d0/ap
-
-    sx = 1_c_size_t
-    sy = int(nx_tot, c_size_t)
-    sz = sy*int(ny_tot, c_size_t)
-
-    !$omp parallel default(shared) private(iter,i,j,k,c,c0,ip,im,jp,jm,kp,km)
-    do iter = 1, iters
-      !$omp do collapse(2) schedule(static)
-      do k = 0, nz-1
-        do j = 0, ny-1
-          c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
-          c = c0
-          !$omp simd linear(c:1)
-          do i = 0, nx-1
-            ip = c+sx; im = c-sx
-            jp = c+sy; jm = c-sy
-            kp = c+sz; km = c-sz
-            pn_scratch(c) = (ax*(p(ip)+p(im))+ay*(p(jp)+p(jm))+az*(p(kp)+p(km))-rhs(c))*invap
-            c = c+1_c_size_t
-          end do
-        end do
-      end do
-
-      !$omp do collapse(2) schedule(static)
-      do k = 0, nz-1
-        do j = 0, ny-1
-          c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
-          c = c0
-          !$omp simd linear(c:1)
-          do i = 0, nx-1
-            p(c) = pn_scratch(c)
-            c = c+1_c_size_t
-          end do
-        end do
-      end do
-    end do
-    !$omp end parallel
-
-  end subroutine poisson_jacobi_c
-
-  subroutine poisson_jacobi_varcoef_c(rhs, beta, nx_tot, ny_tot, nz_tot, &
-                                      ng, dx, dy, dz, iters, p) &
-    bind(C, name="poisson_jacobi_varcoef_c")
-    use, intrinsic :: iso_c_binding
-    implicit none
-    integer(c_int), value :: nx_tot, ny_tot, nz_tot, ng, iters
-    real(c_double), value :: dx, dy, dz
-    real(c_double), intent(in)    :: rhs(*), beta(*)
-    real(c_double), intent(inout) :: p(*)
-
-    integer :: i, j, k, nx, ny, nz, iter
-    real(c_double) :: ax, ay, az, denom, be, bw, bn, bs, bt, bb
-    integer(c_size_t) :: c, ip, im, jp, jm, kp, km, sx, sy, sz, c0, Ntot
-
-    nx = nx_tot-2*ng; ny = ny_tot-2*ng; nz = nz_tot-2*ng
-    Ntot = int(nx_tot, c_size_t)*int(ny_tot, c_size_t)*int(nz_tot, c_size_t)
-
-    if (.not. allocated(pn_scratch)) then
-      allocate (pn_scratch(Ntot))
-    else if (size(pn_scratch) /= int(Ntot)) then
-      deallocate (pn_scratch); allocate (pn_scratch(Ntot))
-    end if
-
-    ax = 1.0d0/(dx*dx); ay = 1.0d0/(dy*dy); az = 1.0d0/(dz*dz)
-    sx = 1_c_size_t; sy = int(nx_tot, c_size_t); sz = sy*int(ny_tot, c_size_t)
-
-    !$omp parallel default(shared) private(iter,i,j,k,c,c0,ip,im,jp,jm,kp,km,be,bw,bn,bs,bt,bb,denom)
-    do iter = 1, iters
-      !$omp do collapse(2) schedule(static)
-      do k = 0, nz-1
-        do j = 0, ny-1
-          c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
-          c = c0
-          !$omp simd linear(c:1)
-          do i = 0, nx-1
-            ip = c+sx; im = c-sx; jp = c+sy; jm = c-sy; kp = c+sz; km = c-sz
-            ! beta = 1/rho at cell centers
-            ! face (1/rho)_f via harmonic average of beta:
-            be = 2.0d0/(1.0d0/beta(c)+1.0d0/beta(ip))
-            bw = 2.0d0/(1.0d0/beta(c)+1.0d0/beta(im))
-            bn = 2.0d0/(1.0d0/beta(c)+1.0d0/beta(jp))
-            bs = 2.0d0/(1.0d0/beta(c)+1.0d0/beta(jm))
-            bt = 2.0d0/(1.0d0/beta(c)+1.0d0/beta(kp))
-            bb = 2.0d0/(1.0d0/beta(c)+1.0d0/beta(km))
-
-            denom = ax*(be+bw)+ay*(bn+bs)+az*(bt+bb)
-            pn_scratch(c) = (ax*(be*p(ip)+bw*p(im))+ay*(bn*p(jp)+bs*p(jm)) &
-                             +az*(bt*p(kp)+bb*p(km))-rhs(c))/denom
-            c = c+1_c_size_t
-          end do
-        end do
-      end do
-
-      !$omp do collapse(2) schedule(static)
-      do k = 0, nz-1
-        do j = 0, ny-1
-          c0 = 1_c_size_t+int(ng, c_size_t)+sy*int(j+ng, c_size_t)+sz*int(k+ng, c_size_t)
-          c = c0
-          !$omp simd linear(c:1)
-          do i = 0, nx-1
-            p(c) = pn_scratch(c)
-            c = c+1_c_size_t
-          end do
-        end do
-      end do
-    end do
-    !$omp end parallel
-  end subroutine poisson_jacobi_varcoef_c
 
   subroutine gradp_faces_c(p, nxc_tot, nyc_tot, nzc_tot, ng, dx, dy, dz, &
                            dpx_u, nxu_tot, nyu_tot, nzu_tot, &

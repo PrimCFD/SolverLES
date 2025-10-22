@@ -4,6 +4,7 @@
 #include "mesh/Field.hpp"    // core typed view
 #include <memory>
 #include <string>
+#include <iostream>
 
 using namespace core::master;
 using namespace core::master::plugin;
@@ -59,7 +60,7 @@ static inline MirrorMask mask_for(Axis ax)
 ApplyBCs::ApplyBCs(const Params& p) : bcs_(p.bcs)
 {
     info_.name = "apply_bcs";
-    info_.phases = plugin::Phase::PreExchange | plugin::Phase::Interior | plugin::Phase::PostBC;
+    info_.phases = plugin::Phase::PreExchange;
 }
 
 std::shared_ptr<IAction> make_apply_bcs(const KV& kv)

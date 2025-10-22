@@ -22,9 +22,6 @@ extern "C"
                        double* dpy_v, int nxv_tot, int nyv_tot, int nzv_tot, double* dpz_w,
                        int nxw_tot, int nyw_tot, int nzw_tot);
 
-    void poisson_jacobi_c(const double* rhs, int nx_tot, int ny_tot, int nz_tot, int ng, double dx,
-                          double dy, double dz, int iters, double* p_io);
-
     void poisson_jacobi_varcoef_c(const double* rhs, const double* beta, int nx_tot, int ny_tot,
                                   int nz_tot, int ng, double dx, double dy, double dz, int iters,
                                   double* p);

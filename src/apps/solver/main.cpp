@@ -204,15 +204,39 @@ int main(int argc, char** argv)
             MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &prov);
         }
 
-        // Give RunContext a pointer to a real MPI_Comm object
-        static MPI_Comm world = MPI_COMM_WORLD; // static = whole-program lifetime
-        rc.mpi_comm = mpi_box(MPI_COMM_WORLD);  // store a value-copy safely
+        // Build a 3D Cartesian communicator that matches our mesh periodicity.
+        // This enables MPI halo exchange (skipped on non-Cartesian comms).
+        MPI_Comm world = MPI_COMM_WORLD;
+
+        // Use MPI_Dims_create to pick a good 3D grid from the world size.
+        int size = 1;
+        MPI_Comm_size(world, &size);
+        int dims[3] = {0, 0, 0};
+        MPI_Dims_create(size, 3, dims); // fills dims with a near-cubic factorization
+
+        // Periodicity must match mesh.periodic[] so halos will wrap when requested.
+        int periods[3] = {
+            cfg.periodic[0] ? 1 : 0,
+            cfg.periodic[1] ? 1 : 0,
+            cfg.periodic[2] ? 1 : 0,
+        };
+
+        // Let MPI reorder for better placement if it wants to.
+        int reorder = 1;
+        MPI_Comm cart = MPI_COMM_NULL;
+        MPI_Cart_create(world, 3, dims, periods, reorder, &cart);
+
+        // Fallback: if Cart create failed (e.g., size==0?!), keep using WORLD.
+        if (cart == MPI_COMM_NULL) cart = world;
+
+        // Store the communicator we actually want to use everywhere.
+        rc.mpi_comm = mpi_box(cart);
     }
 #endif
 
 #ifdef HAVE_MPI
     {
-        // Unbox the communicator we actually intend to use everywhere
+        // Unbox the communicator we actually intend to use everywhere (Cartesian)
         MPI_Comm comm = mpi_unbox(rc.mpi_comm);
 
         // Fallbacks in case something odd happened

@@ -72,11 +72,6 @@ function(register_catch_tests target)
      AND NOT ENABLE_TESTS_UNIT)
     return()
   endif()
-  if(R_LABEL STREQUAL "mpi"
-     AND DEFINED ENABLE_TESTS_MPI
-     AND NOT ENABLE_TESTS_MPI)
-    return()
-  endif()
   if(R_LABEL STREQUAL "perf"
      AND DEFINED ENABLE_TESTS_PERF
      AND NOT ENABLE_TESTS_PERF)

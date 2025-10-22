@@ -12,6 +12,30 @@
 
 struct PetscTestGuard
 {
+    // Ctor that forwards argc/argv so PETSc can parse CLI options.
+    PetscTestGuard(int& argc, char**& argv)
+    {
+#if PETSC_TESTS_USE_MPI
+        int mpi_inited = 0;
+        MPI_Initialized(&mpi_inited);
+        if (!mpi_inited)
+        {
+            int prov = 0;
+            MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &prov);
+            owns_mpi_ = true;
+        }
+#endif
+
+        PetscBool pinit = PETSC_FALSE;
+        PetscInitialized(&pinit);
+        if (!pinit)
+        {
+            // Forward argc/argv so PETSc reads flags like -ksp_view, -nx/-ny/-nz, etc.
+            PetscInitialize(&argc, &argv, nullptr, nullptr);
+            owns_petsc_ = true;
+        }
+    }
+    
     PetscTestGuard()
     {
 #if PETSC_TESTS_USE_MPI

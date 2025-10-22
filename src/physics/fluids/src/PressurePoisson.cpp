@@ -167,6 +167,12 @@ static PetscErrorCode ShellMult(Mat A, Vec x, Vec y)
 
     const double invV = 1.0 / (ctx->dx * ctx->dy * ctx->dz);
 
+    // Constant-β fallback face conductances (used whenever no per-face Tx/Ty/Tz)
+    const double TXc = ctx->beta_const * (ctx->dy * ctx->dz / ctx->dx);
+    const double TYc = ctx->beta_const * (ctx->dx * ctx->dz / ctx->dy);
+    const double TZc = ctx->beta_const * (ctx->dx * ctx->dy / ctx->dz);
+    const bool constBeta = ctx->use_const_beta;
+
     PetscInt xs, ys, zs, xm, ym, zm;
     PetscCall(DMDAGetCorners(ctx->da, &xs, &ys, &zs, &xm, &ym, &zm));
 
@@ -203,129 +209,64 @@ static PetscErrorCode ShellMult(Mat A, Vec x, Vec y)
                 const PetscInt kb = k - 1;
                 const PetscInt kt = k + 1;
 
-                // Face transmissibilities (conductances)
-                // Constant-β fallback uses T = β * (A/Δ)
-                auto getTw = [&]()
-                {
-                    if (i > 0)
-                    {
-                        return useTx ? ctx->trans->TX(i - 1, j, k)
-                                     : ctx->beta_const * (ctx->dy * ctx->dz / ctx->dx);
-                    }
-                    else
-                    {
-                        const double b =
-                            ctx->use_const_beta ? ctx->beta_const : ctx->beta->B(i, j, k);
-                        return b * (ctx->dy * ctx->dz / ctx->dx);
-                    }
-                };
-                auto getTe = [&]()
-                {
-                    if (i < ctx->nxi - 1)
-                    {
-                        return useTx ? ctx->trans->TX(i, j, k)
-                                     : ctx->beta_const * (ctx->dy * ctx->dz / ctx->dx);
-                    }
-                    else
-                    {
-                        const double b =
-                            ctx->use_const_beta ? ctx->beta_const : ctx->beta->B(i, j, k);
-                        return b * (ctx->dy * ctx->dz / ctx->dx);
-                    }
-                };
-                auto getTs = [&]()
-                {
-                    if (j > 0)
-                    {
-                        return useTy ? ctx->trans->TY(i, j - 1, k)
-                                     : ctx->beta_const * (ctx->dx * ctx->dz / ctx->dy);
-                    }
-                    else
-                    {
-                        const double b =
-                            ctx->use_const_beta ? ctx->beta_const : ctx->beta->B(i, j, k);
-                        return b * (ctx->dx * ctx->dz / ctx->dy);
-                    }
-                };
-                auto getTn = [&]()
-                {
-                    if (j < ctx->nyi - 1)
-                    {
-                        return useTy ? ctx->trans->TY(i, j, k)
-                                     : ctx->beta_const * (ctx->dx * ctx->dz / ctx->dy);
-                    }
-                    else
-                    {
-                        const double b =
-                            ctx->use_const_beta ? ctx->beta_const : ctx->beta->B(i, j, k);
-                        return b * (ctx->dx * ctx->dz / ctx->dy);
-                    }
-                };
-                auto getTb = [&]()
-                {
-                    if (k > 0)
-                    {
-                        return useTz ? ctx->trans->TZ(i, j, k - 1)
-                                     : ctx->beta_const * (ctx->dx * ctx->dy / ctx->dz);
-                    }
-                    else
-                    {
-                        const double b =
-                            ctx->use_const_beta ? ctx->beta_const : ctx->beta->B(i, j, k);
-                        return b * (ctx->dx * ctx->dy / ctx->dz);
-                    }
-                };
-                auto getTt = [&]()
-                {
-                    if (k < ctx->nzi - 1)
-                    {
-                        return useTz ? ctx->trans->TZ(i, j, k)
-                                     : ctx->beta_const * (ctx->dx * ctx->dy / ctx->dz);
-                    }
-                    else
-                    {
-                        const double b =
-                            ctx->use_const_beta ? ctx->beta_const : ctx->beta->B(i, j, k);
-                        return b * (ctx->dx * ctx->dy / ctx->dz);
-                    }
-                };
+                // Face transmissibilities (conductances) computed once per cell.
+                // For interior faces, use precomputed Tx/Ty/Tz if present, else constant-β TXc/TYc/TZc.
+                // For boundary faces, fall back to local β * (A/Δ).
+                const double bC = constBeta ? ctx->beta_const : ctx->beta->B(i, j, k);
+
+                double Tw = 0.0, Te = 0.0, Ts = 0.0, Tn = 0.0, Tb = 0.0, Tt = 0.0;
+                // X faces
+                if (i > 0)        Tw = useTx ? ctx->trans->TX(i - 1, j, k) : TXc;
+                else              Tw = bC * (ctx->dy * ctx->dz / ctx->dx);
+                if (i < ctx->nxi - 1) Te = useTx ? ctx->trans->TX(i, j, k)     : TXc;
+                else                   Te = bC * (ctx->dy * ctx->dz / ctx->dx);
+                // Y faces
+                if (j > 0)        Ts = useTy ? ctx->trans->TY(i, j - 1, k) : TYc;
+                else              Ts = bC * (ctx->dx * ctx->dz / ctx->dy);
+                if (j < ctx->nyi - 1) Tn = useTy ? ctx->trans->TY(i, j, k)     : TYc;
+                else                   Tn = bC * (ctx->dx * ctx->dz / ctx->dy);
+                // Z faces
+                if (k > 0)        Tb = useTz ? ctx->trans->TZ(i, j, k - 1) : TZc;
+                else              Tb = bC * (ctx->dx * ctx->dy / ctx->dz);
+                if (k < ctx->nzi - 1) Tt = useTz ? ctx->trans->TZ(i, j, k)     : TZc;
+                else                   Tt = bC * (ctx->dx * ctx->dy / ctx->dz);
 
                 double acc = 0.0;
                 if (hasW)
-                    acc += getTw() * (xarr[k][j][iw] - xc);
+                    acc += Tw * (xarr[k][j][iw] - xc);
                 else if (!ctx->perX && ctx->pbc.W &&
                          norm_p_type(ctx->pbc.W->type) == BcSpec::Type::dirichlet)
-                    acc += getTw() * ((ctx->pbc.W ? ctx->pbc.W->value : 0.0) - xc);
+                    acc += Tw * ((ctx->pbc.W ? ctx->pbc.W->value : 0.0) - xc);
 
                 if (hasE)
-                    acc += getTe() * (xarr[k][j][ie] - xc);
+                    acc += Te * (xarr[k][j][ie] - xc);
                 else if (!ctx->perX && ctx->pbc.E &&
                          norm_p_type(ctx->pbc.E->type) == BcSpec::Type::dirichlet)
-                    acc += getTe() * ((ctx->pbc.E ? ctx->pbc.E->value : 0.0) - xc);
+                    acc += Te * ((ctx->pbc.E ? ctx->pbc.E->value : 0.0) - xc);
 
                 if (hasS)
-                    acc += getTs() * (xarr[k][js][i] - xc);
+                    acc += Ts * (xarr[k][js][i] - xc);
                 else if (!ctx->perY && ctx->pbc.S &&
                          norm_p_type(ctx->pbc.S->type) == BcSpec::Type::dirichlet)
-                    acc += getTs() * ((ctx->pbc.S ? ctx->pbc.S->value : 0.0) - xc);
+                    acc += Ts * ((ctx->pbc.S ? ctx->pbc.S->value : 0.0) - xc);
 
                 if (hasN)
-                    acc += getTn() * (xarr[k][jn][i] - xc);
+                    acc += Tn * (xarr[k][jn][i] - xc);
                 else if (!ctx->perY && ctx->pbc.N &&
                          norm_p_type(ctx->pbc.N->type) == BcSpec::Type::dirichlet)
-                    acc += getTn() * ((ctx->pbc.N ? ctx->pbc.N->value : 0.0) - xc);
+                    acc += Tn * ((ctx->pbc.N ? ctx->pbc.N->value : 0.0) - xc);
 
                 if (hasB)
-                    acc += getTb() * (xarr[kb][j][i] - xc);
+                    acc += Tb * (xarr[kb][j][i] - xc);
                 else if (!ctx->perZ && ctx->pbc.B &&
                          norm_p_type(ctx->pbc.B->type) == BcSpec::Type::dirichlet)
-                    acc += getTb() * ((ctx->pbc.B ? ctx->pbc.B->value : 0.0) - xc);
+                    acc += Tb * ((ctx->pbc.B ? ctx->pbc.B->value : 0.0) - xc);
 
                 if (hasT)
-                    acc += getTt() * (xarr[kt][j][i] - xc);
+                    acc += Tt * (xarr[kt][j][i] - xc);
                 else if (!ctx->perZ && ctx->pbc.T &&
                          norm_p_type(ctx->pbc.T->type) == BcSpec::Type::dirichlet)
-                    acc += getTt() * ((ctx->pbc.T ? ctx->pbc.T->value : 0.0) - xc);
+                    acc += Tt * ((ctx->pbc.T ? ctx->pbc.T->value : 0.0) - xc);
 
                 yarr[k][j][i] = -invV * acc;
             }
@@ -342,6 +283,13 @@ static PetscErrorCode ShellBuildDiagonal(ShellCtx* ctx)
     const bool useTy = (ctx->trans && !ctx->trans->Ty.empty());
     const bool useTz = (ctx->trans && !ctx->trans->Tz.empty());
     PetscFunctionBegin;
+
+    // Precompute constants for constant-β path
+    const double TXc = ctx->beta_const * (ctx->dy * ctx->dz / ctx->dx);
+    const double TYc = ctx->beta_const * (ctx->dx * ctx->dz / ctx->dy);
+    const double TZc = ctx->beta_const * (ctx->dx * ctx->dy / ctx->dz);
+    const bool constBeta = ctx->use_const_beta;
+
     if (!ctx->diag)
     {
         PetscCall(DMCreateGlobalVector(ctx->da, &ctx->diag));
@@ -365,88 +313,51 @@ static PetscErrorCode ShellBuildDiagonal(ShellCtx* ctx)
                 const bool hasN = (j < ctx->nyi - 1) || ctx->perY;
                 const bool hasB = (k > 0) || ctx->perZ;
                 const bool hasT = (k < ctx->nzi - 1) || ctx->perZ;
-                auto getTw = [&]()
-                {
-                    if (i > 0)
-                        return useTx ? ctx->trans->TX(i - 1, j, k)
-                                     : ctx->beta_const * (ctx->dy * ctx->dz / ctx->dx);
-                    const double b = ctx->use_const_beta ? ctx->beta_const : ctx->beta->B(i, j, k);
-                    return b * (ctx->dy * ctx->dz / ctx->dx);
-                };
-                auto getTe = [&]()
-                {
-                    if (i < ctx->nxi - 1)
-                        return useTx ? ctx->trans->TX(i, j, k)
-                                     : ctx->beta_const * (ctx->dy * ctx->dz / ctx->dx);
-                    const double b = ctx->use_const_beta ? ctx->beta_const : ctx->beta->B(i, j, k);
-                    return b * (ctx->dy * ctx->dz / ctx->dx);
-                };
-                auto getTs = [&]()
-                {
-                    if (j > 0)
-                        return useTy ? ctx->trans->TY(i, j - 1, k)
-                                     : ctx->beta_const * (ctx->dx * ctx->dz / ctx->dy);
-                    const double b = ctx->use_const_beta ? ctx->beta_const : ctx->beta->B(i, j, k);
-                    return b * (ctx->dx * ctx->dz / ctx->dy);
-                };
-                auto getTn = [&]()
-                {
-                    if (j < ctx->nyi - 1)
-                        return useTy ? ctx->trans->TY(i, j, k)
-                                     : ctx->beta_const * (ctx->dx * ctx->dz / ctx->dy);
-                    const double b = ctx->use_const_beta ? ctx->beta_const : ctx->beta->B(i, j, k);
-                    return b * (ctx->dx * ctx->dz / ctx->dy);
-                };
-                auto getTb = [&]()
-                {
-                    if (k > 0)
-                        return useTz ? ctx->trans->TZ(i, j, k - 1)
-                                     : ctx->beta_const * (ctx->dx * ctx->dy / ctx->dz);
-                    const double b = ctx->use_const_beta ? ctx->beta_const : ctx->beta->B(i, j, k);
-                    return b * (ctx->dx * ctx->dy / ctx->dz);
-                };
-                auto getTt = [&]()
-                {
-                    if (k < ctx->nzi - 1)
-                        return useTz ? ctx->trans->TZ(i, j, k)
-                                     : ctx->beta_const * (ctx->dx * ctx->dy / ctx->dz);
-                    const double b = ctx->use_const_beta ? ctx->beta_const : ctx->beta->B(i, j, k);
-                    return b * (ctx->dx * ctx->dy / ctx->dz);
-                };
+                const double bC = constBeta ? ctx->beta_const : ctx->beta->B(i, j, k);
+                double Tw, Te, Ts, Tn, Tb, Tt;
+                // X faces
+                if (i > 0)             Tw = useTx ? ctx->trans->TX(i - 1, j, k) : TXc;
+                else                   Tw = bC * (ctx->dy * ctx->dz / ctx->dx);
+                if (i < ctx->nxi - 1)  Te = useTx ? ctx->trans->TX(i, j, k)     : TXc;
+                else                   Te = bC * (ctx->dy * ctx->dz / ctx->dx);
+                // Y faces
+                if (j > 0)             Ts = useTy ? ctx->trans->TY(i, j - 1, k) : TYc;
+                else                   Ts = bC * (ctx->dx * ctx->dz / ctx->dy);
+                if (j < ctx->nyi - 1)  Tn = useTy ? ctx->trans->TY(i, j, k)     : TYc;
+                else                   Tn = bC * (ctx->dx * ctx->dz / ctx->dy);
+                // Z faces
+                if (k > 0)             Tb = useTz ? ctx->trans->TZ(i, j, k - 1) : TZc;
+                else                   Tb = bC * (ctx->dx * ctx->dy / ctx->dz);
+                if (k < ctx->nzi - 1)  Tt = useTz ? ctx->trans->TZ(i, j, k)     : TZc;
+                else                   Tt = bC * (ctx->dx * ctx->dy / ctx->dz);
 
                 double diag = 0.0;
-                if (hasE)
-                    diag += getTe();
-                if (hasW)
-                    diag += getTw();
-                if (hasN)
-                    diag += getTn();
-                if (hasS)
-                    diag += getTs();
-                if (hasT)
-                    diag += getTt();
-                if (hasB)
-                    diag += getTb();
+                if (hasE) diag += Te;
+                if (hasW) diag += Tw;
+                if (hasN) diag += Tn;
+                if (hasS) diag += Ts;
+                if (hasT) diag += Tt;
+                if (hasB) diag += Tb;
 
                 // Dirichlet faces contribute to diagonal
                 if (!hasW && !ctx->perX && ctx->pbc.W &&
                     norm_p_type(ctx->pbc.W->type) == BcSpec::Type::dirichlet)
-                    diag += getTw();
+                    diag += Tw;
                 if (!hasE && !ctx->perX && ctx->pbc.E &&
                     norm_p_type(ctx->pbc.E->type) == BcSpec::Type::dirichlet)
-                    diag += getTe();
+                    diag += Te;
                 if (!hasS && !ctx->perY && ctx->pbc.S &&
                     norm_p_type(ctx->pbc.S->type) == BcSpec::Type::dirichlet)
-                    diag += getTs();
+                    diag += Ts;
                 if (!hasN && !ctx->perY && ctx->pbc.N &&
                     norm_p_type(ctx->pbc.N->type) == BcSpec::Type::dirichlet)
-                    diag += getTn();
+                    diag += Tn;
                 if (!hasB && !ctx->perZ && ctx->pbc.B &&
                     norm_p_type(ctx->pbc.B->type) == BcSpec::Type::dirichlet)
-                    diag += getTb();
+                    diag += Tb;
                 if (!hasT && !ctx->perZ && ctx->pbc.T &&
                     norm_p_type(ctx->pbc.T->type) == BcSpec::Type::dirichlet)
-                    diag += getTt();
+                    diag += Tt;
 
                 darr[k][j][i] = invV * diag;
             }
@@ -490,6 +401,7 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aout)
     // Create a properly preallocated AIJ using the DMDA stencil (STAR, width=1)
     PetscCall(DMSetMatType(da, MATAIJ));
     PetscCall(DMCreateMatrix(da, Aout)); // Aout gets AIJ with 7-pt prealloc
+    PetscCall(MatSetOption(*Aout, MAT_IGNORE_ZERO_ENTRIES, PETSC_TRUE));
 
     const double invV = 1.0 / (ctx.dx * ctx.dy * ctx.dz);
 
@@ -1094,10 +1006,10 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
         impl.A_lvl[l] = A;
     }
 
-    // MG cycle config (multiplicative V-cycle, 3 pre/post by default)
+    // MG cycle config (multiplicative V-cycle, 4 pre/post by default)
     PCMGSetType(pc, PC_MG_MULTIPLICATIVE);
     PCMGSetCycleType(pc, PC_MG_CYCLE_V);
-    PCMGSetNumberSmooth(pc, 3);
+    PCMGSetNumberSmooth(pc, 4);
 
     // connect fine DM to outer KSP (for viewers/options), but keep DM-owned by PCMG
     KSPSetDM(impl.ksp, impl.da_fine);
@@ -1128,6 +1040,23 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
             PetscCallAbort(comm, KSPSetNormType(kspl, KSP_NORM_NONE));
             PetscCallAbort(comm,
                            KSPSetTolerances(kspl, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT, 3));
+        }
+    }
+
+    // ---- Coarse level: force a direct solve by default (preonly + LU) ----
+    // This pins the L=0 KSP/PC to a direct factorization unless the user overrides
+    {
+        KSP kspc = NULL;
+        PC  pcc  = NULL;
+        // Get the PCMG-managed coarse solver (level 0)
+        PetscCallAbort(comm, PCMGGetCoarseSolve(pc, &kspc));
+        if (kspc) {
+            // No iterations on coarse grid: just apply the preconditioner once
+            PetscCallAbort(comm, KSPSetType(kspc, KSPPREONLY));
+            PetscCallAbort(comm, KSPGetPC(kspc, &pcc));
+            // Prefer LU to work for both SPD and non-SPD coarse operators
+            PetscCallAbort(comm, PCSetType(pcc, PCLU));
+            if (!impl.all_neumann) PetscCallAbort(comm, PCSetType(pcc, PCCHOLESKY));
         }
     }
 

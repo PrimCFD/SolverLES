@@ -150,18 +150,16 @@ function(add_fluids_case name nx ny nz)
                regression::fluids::${name}::run)
 endfunction()
 
-# Cases: - Keep cavity fast: force sequential launch (no mpiexec) - Force MPI
-# for TG to exercise plumbing (2 ranks)
-add_fluids_case(cavity32 32 32 32 MODE seq)
+# Cases: - Keep cavity fast: force sequential launch (2 ranks) - Force MPI
+# for TG to exercise single rank plumbing (1 rank)
+add_fluids_case(cavity32 32 32 32 MODE mpi NP 2)
 add_fluids_case(
   tgv32
   32
   32
   32
   MODE
-  mpi
-  NP
-  2)
+  seq)
 
 # Assert TG decay at final time (2% rel tol)
 add_tgv_decay_check(

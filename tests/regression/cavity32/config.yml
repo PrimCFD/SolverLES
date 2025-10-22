@@ -12,9 +12,8 @@ time:
     steps: 10
 
 io:
-  backend: xdmf
-  xdmf_version : v3
   path: "@OUT_DIR@"          # <- absolute, injected by CMake
+  backend: cgns
   precision: native
   async: { enabled: false }
   preflight: { enabled: false }
