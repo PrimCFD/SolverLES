@@ -244,8 +244,12 @@ static PetscErrorCode ShellMult(Mat A, Vec x, Vec y)
                 // pre-coarsened boundary T)
                 if (i > 0)
                 {
-                    if (useTx) Tw = ctx->trans->TX(i - 1, j, k);
-                    else Tw = constBeta ? TXc : (hmean(ctx->beta->B(i - 1, j, k), bC) * (ctx->dy * ctx->dz / ctx->dx));
+                    if (useTx)
+                        Tw = ctx->trans->TX(i - 1, j, k);
+                    else
+                        Tw = constBeta ? TXc
+                                       : (hmean(ctx->beta->B(i - 1, j, k), bC) *
+                                          (ctx->dy * ctx->dz / ctx->dx));
                 }
                 else if (ctx->perX)
                 {
@@ -264,8 +268,12 @@ static PetscErrorCode ShellMult(Mat A, Vec x, Vec y)
                 }
                 if (i < ctx->nxi - 1)
                 {
-                    if (useTx) Te = ctx->trans->TX(i, j, k);
-                    else Te = constBeta ? TXc : (hmean(ctx->beta->B(i + 1, j, k), bC) * (ctx->dy * ctx->dz / ctx->dx));
+                    if (useTx)
+                        Te = ctx->trans->TX(i, j, k);
+                    else
+                        Te = constBeta ? TXc
+                                       : (hmean(ctx->beta->B(i + 1, j, k), bC) *
+                                          (ctx->dy * ctx->dz / ctx->dx));
                 }
                 else if (ctx->perX)
                 {
@@ -285,8 +293,12 @@ static PetscErrorCode ShellMult(Mat A, Vec x, Vec y)
                 // Y faces
                 if (j > 0)
                 {
-                    if (useTy) Ts = ctx->trans->TY(i, j - 1, k);
-                    else Ts = constBeta ? TYc : (hmean(ctx->beta->B(i, j - 1, k), bC) * (ctx->dx * ctx->dz / ctx->dy));
+                    if (useTy)
+                        Ts = ctx->trans->TY(i, j - 1, k);
+                    else
+                        Ts = constBeta ? TYc
+                                       : (hmean(ctx->beta->B(i, j - 1, k), bC) *
+                                          (ctx->dx * ctx->dz / ctx->dy));
                 }
                 else if (ctx->perY)
                 {
@@ -305,8 +317,12 @@ static PetscErrorCode ShellMult(Mat A, Vec x, Vec y)
                 }
                 if (j < ctx->nyi - 1)
                 {
-                    if (useTy) Tn = ctx->trans->TY(i, j, k);
-                    else Tn = constBeta ? TYc : (hmean(ctx->beta->B(i, j + 1, k), bC) * (ctx->dx * ctx->dz / ctx->dy));
+                    if (useTy)
+                        Tn = ctx->trans->TY(i, j, k);
+                    else
+                        Tn = constBeta ? TYc
+                                       : (hmean(ctx->beta->B(i, j + 1, k), bC) *
+                                          (ctx->dx * ctx->dz / ctx->dy));
                 }
                 else if (ctx->perY)
                 {
@@ -326,8 +342,12 @@ static PetscErrorCode ShellMult(Mat A, Vec x, Vec y)
                 // Z faces
                 if (k > 0)
                 {
-                    if (useTz) Tb = ctx->trans->TZ(i, j, k - 1);
-                    else Tb = constBeta ? TZc : (hmean(ctx->beta->B(i, j, k - 1), bC) * (ctx->dx * ctx->dy / ctx->dz));
+                    if (useTz)
+                        Tb = ctx->trans->TZ(i, j, k - 1);
+                    else
+                        Tb = constBeta ? TZc
+                                       : (hmean(ctx->beta->B(i, j, k - 1), bC) *
+                                          (ctx->dx * ctx->dy / ctx->dz));
                 }
                 else if (ctx->perZ)
                 {
@@ -346,8 +366,12 @@ static PetscErrorCode ShellMult(Mat A, Vec x, Vec y)
                 }
                 if (k < ctx->nzi - 1)
                 {
-                    if (useTz) Tt = ctx->trans->TZ(i, j, k);
-                    else Tt = constBeta ? TZc : (hmean(ctx->beta->B(i, j, k + 1), bC) * (ctx->dx * ctx->dy / ctx->dz));
+                    if (useTz)
+                        Tt = ctx->trans->TZ(i, j, k);
+                    else
+                        Tt = constBeta ? TZc
+                                       : (hmean(ctx->beta->B(i, j, k + 1), bC) *
+                                          (ctx->dx * ctx->dy / ctx->dz));
                 }
                 else if (ctx->perZ)
                 {
@@ -791,7 +815,7 @@ struct PPImpl
     // PETSc objects
     DM da_fine{};           // finest DM (interior)
     std::vector<DM> da_lvl; // 0=coarsest ... L-1=finest
-    Mat A_shell = nullptr; // finest-level operator (MatShell)
+    Mat A_shell = nullptr;  // finest-level operator (MatShell)
     std::vector<std::unique_ptr<ShellCtx>> ctx_lvl;
     KSP ksp{};       // outer CG (MG preconditioner inside)
     Vec x{}, b{};    // fine-level unknown/RHS
@@ -828,7 +852,11 @@ struct PPImpl
             b = nullptr;
         }
         // PCMG retains borrowed refs; destroy our ref
-        if (A_shell) { MatDestroy(&A_shell); A_shell = nullptr; }
+        if (A_shell)
+        {
+            MatDestroy(&A_shell);
+            A_shell = nullptr;
+        }
         // cached diagonal on finest ctx if present
         for (auto& c : ctx_lvl)
         {
@@ -1116,7 +1144,7 @@ static void coarsen_trans(const LevelTrans& Tf, LevelTrans& Tc, int rx, int ry, 
 // meshPerX/Y/Z override acts as a single source of truth when the mesh is periodic
 // Pass the desired process grid (m,n,p). If any are 0, we'll auto-compute from MPI size
 static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc, bool meshPerX,
-                            bool meshPerY, bool meshPerZ, std::array<int,3> proc_grid)
+                            bool meshPerY, bool meshPerZ, std::array<int, 3> proc_grid)
 {
 
     // Use the application's communicator as-is (borrowed; not owned here).
@@ -1163,28 +1191,37 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     int dims3[3] = {proc_grid[0], proc_grid[1], proc_grid[2]};
     // Any non-zero entries are kept; zeros are chosen so the product equals size_world.
     MPI_Dims_create(size_world, 3, dims3);
-    auto fits_finest = [&](int px, int py, int pz) -> bool {
-        return (px <= (int)nxi) && (py <= (int)nyi) && (pz <= (int)nzi) &&
+    auto fits_finest = [&](int px, int py, int pz) -> bool
+    {
+        return (px <= (int) nxi) && (py <= (int) nyi) && (pz <= (int) nzi) &&
                (px > 0 && py > 0 && pz > 0) && (px * py * pz == size_world);
     };
     bool ok3d = fits_finest(dims3[0], dims3[1], dims3[2]);
 
-    if (!ok3d) {
+    if (!ok3d)
+    {
         // Fall back: 1D stripe along the largest dimension that can hold all ranks.
-        struct Axis { int len; int id; };
-        Axis axes[3] = { {(int)nxi, 0}, {(int)nyi, 1}, {(int)nzi, 2} };
+        struct Axis
+        {
+            int len;
+            int id;
+        };
+        Axis axes[3] = {{(int) nxi, 0}, {(int) nyi, 1}, {(int) nzi, 2}};
         std::sort(std::begin(axes), std::end(axes),
-                  [](const Axis& a, const Axis& b){ return a.len > b.len; });
+                  [](const Axis& a, const Axis& b) { return a.len > b.len; });
         bool placed = false;
-        for (auto ax : axes) {
-            if (ax.len >= size_world) {
+        for (auto ax : axes)
+        {
+            if (ax.len >= size_world)
+            {
                 dims3[0] = dims3[1] = dims3[2] = 1;
                 dims3[ax.id] = size_world;
                 placed = true;
                 break;
             }
         }
-        if (!placed) {
+        if (!placed)
+        {
             // 2D fallback: split across the two largest axes via MPI_Dims_create(ndims=2)
             int dims2[2] = {0, 0};
             MPI_Dims_create(size_world, 2, dims2);
@@ -1195,7 +1232,8 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
             dims3[axes[1].id] = dims2[1];
             // As a last sanity, if still not fitting (extremely unlikely on typical grids),
             // clamp down to 1D on the single largest axis.
-            if (!fits_finest(dims3[0], dims3[1], dims3[2])) {
+            if (!fits_finest(dims3[0], dims3[1], dims3[2]))
+            {
                 dims3[0] = dims3[1] = dims3[2] = 1;
                 dims3[axes[0].id] = size_world;
             }
@@ -1203,10 +1241,8 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     }
 
     // Create the finest DMDA with an explicit (px,py,pz) that multiplies to size.
-    DMDACreate3d(comm, bx, by, bz, DMDA_STENCIL_STAR,
-                nxi, nyi, nzi,
-                dims3[0], dims3[1], dims3[2],
-                /*dof*/1, /*stencil width*/1, nullptr, nullptr, nullptr, &impl.da_fine);
+    DMDACreate3d(comm, bx, by, bz, DMDA_STENCIL_STAR, nxi, nyi, nzi, dims3[0], dims3[1], dims3[2],
+                 /*dof*/ 1, /*stencil width*/ 1, nullptr, nullptr, nullptr, &impl.da_fine);
     // Allow -da_* options at runtime for debugging/overrides
     DMSetFromOptions(impl.da_fine);
     DMSetUp(impl.da_fine);
@@ -1223,17 +1259,20 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     //
     //   Result: fewer MG levels on odd-sized axes, but robust setup without
     //   "Fine grid points must be multiple of coarse grid points" failures.
-    auto can_coarsen_q0_once = [](PetscInt a)->bool {
+    auto can_coarsen_q0_once = [](PetscInt a) -> bool
+    {
         // Q0 (cell-centered) interpolation needs fine%coarse==0 at each pair
         // AND PETSc requires the *coarse* grid to have at least 2 points.
         // With DMDA coarsening a2 = ceil(a/2):
         //  - disallow odd a (fine%coarse != 0)
         //  - disallow the last step 2 -> 1 (coarse<2)
-        if (a % 2 != 0) return false;            // must be even
-        const PetscInt a2 = (a + 1) >> 1;        // proposed coarse size
-        return a2 >= 2;                          // keep coarse >= 2
+        if (a % 2 != 0)
+            return false;                 // must be even
+        const PetscInt a2 = (a + 1) >> 1; // proposed coarse size
+        return a2 >= 2;                   // keep coarse >= 2
     };
-    auto next_size = [](PetscInt a)->PetscInt {
+    auto next_size = [](PetscInt a) -> PetscInt
+    {
         // PETSc DMDA coarsening halves with ceil
         return (a + 1) >> 1;
     };
@@ -1242,26 +1281,29 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     {
         // Build hierarchy but stop BEFORE a coarse level would violate proc-per-axis counts.
         // If a prospective (M2,N2,P2) would have M2 < px (or Y/Z analogues), stop coarsening.
-        PetscInt M=0,N=0,P=0, px=0, py=0, pz=0;
-        DMDAGetInfo(impl.da_fine, nullptr, &M,&N,&P, &px,&py,&pz, nullptr,nullptr,nullptr,nullptr,nullptr,nullptr);
+        PetscInt M = 0, N = 0, P = 0, px = 0, py = 0, pz = 0;
+        DMDAGetInfo(impl.da_fine, nullptr, &M, &N, &P, &px, &py, &pz, nullptr, nullptr, nullptr,
+                    nullptr, nullptr, nullptr);
 
-        auto can_coarsen_once = [&](PetscInt a, PetscInt pa)->bool{
+        auto can_coarsen_once = [&](PetscInt a, PetscInt pa) -> bool
+        {
             // PETSc DA halves with ceil; require:
             //  - Q0 compatibility AND coarse >= 2 (handled by can_coarsen_q0_once)
             //  - next >= procs on that axis (layout validity)
             const PetscInt a2 = (a + 1) >> 1;
             return can_coarsen_q0_once(a) && (a2 >= pa);
-
         };
 
         DM cur = impl.da_fine;
-        PetscObjectReference((PetscObject)cur);
+        PetscObjectReference((PetscObject) cur);
         std::vector<DM> chain_f2c;
         chain_f2c.push_back(cur);
-        while (true) {
+        while (true)
+        {
             // Check prospective sizes *before* asking PETSc to coarsen
-            PetscInt Mc=0,Nc=0,Pc=0, px_c=0, py_c=0, pz_c=0;
-            DMDAGetInfo(cur, nullptr, &Mc,&Nc,&Pc, &px_c,&py_c,&pz_c, nullptr,nullptr,nullptr,nullptr,nullptr,nullptr);
+            PetscInt Mc = 0, Nc = 0, Pc = 0, px_c = 0, py_c = 0, pz_c = 0;
+            DMDAGetInfo(cur, nullptr, &Mc, &Nc, &Pc, &px_c, &py_c, &pz_c, nullptr, nullptr, nullptr,
+                        nullptr, nullptr, nullptr);
             // Additional DMDA_Q0 + coarse>=2 constraint per axis.
             const bool q0_ok_x = can_coarsen_q0_once(Mc);
             const bool q0_ok_y = can_coarsen_q0_once(Nc);
@@ -1272,13 +1314,14 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
             const bool layout_ok_y = can_coarsen_once(Nc, py_c);
             const bool layout_ok_z = can_coarsen_once(Pc, pz_c);
 
-            if (!(q0_ok_x && q0_ok_y && q0_ok_z &&
-                  layout_ok_x && layout_ok_y && layout_ok_z)) {
+            if (!(q0_ok_x && q0_ok_y && q0_ok_z && layout_ok_x && layout_ok_y && layout_ok_z))
+            {
                 break; // next level would be invalid for current proc layout
             }
             DM next = NULL;
             PetscErrorCode ierr = DMCoarsen(cur, MPI_COMM_NULL, &next);
-            if (ierr || !next) break;
+            if (ierr || !next)
+                break;
             chain_f2c.push_back(next);
             cur = next;
         }
@@ -1308,7 +1351,7 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
 
     // ----- build MatShell operators and KSP/PCMG -----
     impl.ctx_lvl.clear();
-    impl.ctx_lvl.resize(L);        // only [L-1] will be populated
+    impl.ctx_lvl.resize(L); // only [L-1] will be populated
 
     // outer KSP with MG preconditioner
     KSPCreate(comm, &impl.ksp);
@@ -1388,9 +1431,7 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
                        /*m(local rows)*/ mloc,
                        /*n(local cols)*/ mloc,
                        /*M(global rows)*/ M,
-                       /*N(global cols)*/ N,
-                       (void*) ctx.get(),
-                       &A);
+                       /*N(global cols)*/ N, (void*) ctx.get(), &A);
         MatShellSetOperation(A, MATOP_MULT, (void (*)(void)) ShellMult);
         MatShellSetOperation(A, MATOP_GET_DIAGONAL, (void (*)(void)) ShellGetDiagonal);
         MatShellSetOperation(A, MATOP_MULT_TRANSPOSE, (void (*)(void)) ShellMult);
@@ -1610,11 +1651,11 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
         const bool meshPerY = (tile.mesh && tile.mesh->periodic[1]);
         const bool meshPerZ = (tile.mesh && tile.mesh->periodic[2]);
 
-    // Read desired process grid from the mesh (if provided), else auto-compute.
-    std::array<int,3> proc_grid = {1,1,1};
-    if (tile.mesh) proc_grid = tile.mesh->proc_grid;
-    build_hierarchy(*impl_, user_comm, pbc, meshPerX, meshPerY, meshPerZ, proc_grid); 
-
+        // Read desired process grid from the mesh (if provided), else auto-compute.
+        std::array<int, 3> proc_grid = {1, 1, 1};
+        if (tile.mesh)
+            proc_grid = tile.mesh->proc_grid;
+        build_hierarchy(*impl_, user_comm, pbc, meshPerX, meshPerY, meshPerZ, proc_grid);
     }
 
     // ---------------- RHS = - (1/dt) * div(u*) plus BC contributions ----------------

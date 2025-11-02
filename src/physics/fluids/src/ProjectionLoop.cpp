@@ -6,9 +6,9 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <mpi.h>
 #include <stdexcept>
 #include "kernels_fluids.h"
-#include <mpi.h>
 
 #include "memory/MpiBox.hpp"
 

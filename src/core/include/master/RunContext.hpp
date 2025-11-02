@@ -20,7 +20,7 @@
  * .. code-block:: cpp
  *
  *   core::master::RunContext rc{};
- *   rc.mpi_comm     = reinterpret_cast<void*>(&comm);   
+ *   rc.mpi_comm     = reinterpret_cast<void*>(&comm);
  *   rc.device_stream= reinterpret_cast<void*>(cudaStream); // guarded by HAVE_CUDA
  *   rc.mem          = &core::memory::MemoryManager::instance();
  * @endrst

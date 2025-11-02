@@ -122,8 +122,9 @@ inline void exchange_all_fields(FieldCatalog& cat, const core::mesh::Mesh& m,
                     MPI_Comm_rank(comm, &rank);
                     if (rank == 0)
                     {
-                        LOGW("[halo] MPI halo exchange was skipped on a multi-rank run "
-                             "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n");
+                        LOGW(
+                            "[halo] MPI halo exchange was skipped on a multi-rank run "
+                            "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n");
                     }
                 }
             }
@@ -137,8 +138,9 @@ inline void exchange_all_fields(FieldCatalog& cat, const core::mesh::Mesh& m,
                     MPI_Comm_rank(comm, &rank);
                     if (rank == 0)
                     {
-                        LOGW("[halo] MPI halo exchange was skipped on a multi-rank run "
-                             "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n");
+                        LOGW(
+                            "[halo] MPI halo exchange was skipped on a multi-rank run "
+                            "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n");
                     }
                 }
             }
@@ -196,9 +198,10 @@ inline void exchange_named_fields(FieldCatalog& cat, const core::mesh::Mesh& m,
                     MPI_Comm_rank(comm, &rank);
                     if (rank == 0)
                     {
-                        LOGW("[halo] MPI halo exchange was skipped on a multi-rank run for field %s "
-                             "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n",
-                             name);
+                        LOGW(
+                            "[halo] MPI halo exchange was skipped on a multi-rank run for field %s "
+                            "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n",
+                            name);
                     }
                 }
             }
@@ -213,9 +216,10 @@ inline void exchange_named_fields(FieldCatalog& cat, const core::mesh::Mesh& m,
                     MPI_Comm_rank(comm, &rank);
                     if (rank == 0)
                     {
-                        LOGW("[halo] MPI halo exchange was skipped on a multi-rank run for field %s "
-                             "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n",
-                             name);
+                        LOGW(
+                            "[halo] MPI halo exchange was skipped on a multi-rank run for field %s "
+                            "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n",
+                            name);
                     }
                 }
             }

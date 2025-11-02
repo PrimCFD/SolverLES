@@ -7,11 +7,11 @@
 #include <cmath>  // std::sqrt
 #include <cstdlib>
 #include <cstring> // std::memcpy
+#include <mpi.h>
 #include <numeric>
 #include <stdexcept>
 #include <string>
 #include "kernels_fluids.h"
-#include <mpi.h>
 
 #include "memory/MpiBox.hpp"
 

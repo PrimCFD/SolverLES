@@ -1,4 +1,5 @@
 #include "master/FieldCatalog.hpp"
+#include "master/Log.hpp"
 #include "master/Master.hpp"
 #include "master/Views.hpp"
 #include "master/io/AsyncWriter.hpp"
@@ -9,28 +10,27 @@
 #include "master/io/WritePlan.hpp"
 #include "master/io/WriterConfig.hpp"
 #include "master/io/XdmfHdf5Writer.hpp"
-#include "master/Log.hpp"
 #include "memory/MemoryManager.hpp"
 #include "mesh/Mesh.hpp"
 
 #include <array>
 #include <cstddef>
 #include <filesystem>
+#include <iomanip> // setw, left/right formatting
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <sstream> // ostringstream
 #include <string>
 #include <utility>
 #include <vector>
-#include <iomanip>   // setw, left/right formatting
-#include <sstream>   // ostringstream
 
 #include <cstdlib>
 #include <fstream> // for std::ifstream (CPU topology probe)
+#include <mpi.h>
 #include <omp.h>
 #include <set> // if you use std::set in the topology code
 #include <thread>
-#include <mpi.h>
 
 #include <petscsys.h> // PETSc Initialization
 
@@ -59,46 +59,56 @@ namespace fs = std::filesystem;
 // ---- Robust MPI+PETSc once-only lifetime -----------------------------------
 // Initializes MPI (with FUNNELED) and PETSc exactly once; finalizes in reverse order
 // only if we were the owner who initialized them. Safe under mpirun or standalone.
-struct MpiPetscOnce {
+struct MpiPetscOnce
+{
     bool mpi_owner{false};
     bool petsc_owner{false};
 
-    MpiPetscOnce(int& argc, char**& argv) {
+    MpiPetscOnce(int& argc, char**& argv)
+    {
         int inited = 0;
         MPI_Initialized(&inited);
-        if (!inited) {
+        if (!inited)
+        {
             int provided = MPI_THREAD_SINGLE;
             MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
             mpi_owner = true;
         }
         PetscBool pinited = PETSC_FALSE;
         PetscInitialized(&pinited);
-        if (!pinited) {
-            if (PetscInitialize(&argc, &argv, nullptr, nullptr)) {
+        if (!pinited)
+        {
+            if (PetscInitialize(&argc, &argv, nullptr, nullptr))
+            {
                 LOGE("ERROR: PetscInitialize failed\n");
                 std::abort();
             }
             petsc_owner = true;
         }
     }
-    ~MpiPetscOnce() {
+    ~MpiPetscOnce()
+    {
         // Finalize PETSc first
         PetscBool pfin = PETSC_FALSE;
         PetscFinalized(&pfin);
-        if (!pfin) {
+        if (!pfin)
+        {
             PetscBool pinited = PETSC_FALSE;
             PetscInitialized(&pinited);
-            if (pinited && petsc_owner) {
+            if (pinited && petsc_owner)
+            {
                 PetscFinalize();
             }
         }
         // Then MPI
         int mfin = 0;
         MPI_Finalized(&mfin);
-        if (!mfin) {
+        if (!mfin)
+        {
             int minit = 0;
             MPI_Initialized(&minit);
-            if (minit && mpi_owner) {
+            if (minit && mpi_owner)
+            {
                 MPI_Finalize();
             }
         }
@@ -232,15 +242,16 @@ static void print_omp_summary()
     const char* nt = std::getenv("OMP_NUM_THREADS");
     const char* pl = std::getenv("OMP_PLACES");
     const char* pb = std::getenv("OMP_PROC_BIND");
-    LOGI("OpenMP: threads=%s places=%s bind=%s (max_threads=%d)\n",
-         (nt?nt:"?"), (pl?pl:"?"), (pb?pb:"?"), omp_get_max_threads());
+    LOGI("OpenMP: threads=%s places=%s bind=%s (max_threads=%d)\n", (nt ? nt : "?"),
+         (pl ? pl : "?"), (pb ? pb : "?"), omp_get_max_threads());
 }
 
 // --------- Pretty logging helpers (mini/compact/full) ----------
 static const char* log_level()
 {
     const char* s = std::getenv("SOLVER_LOG");
-    if (!s || !*s) return "mini"; // default
+    if (!s || !*s)
+        return "mini"; // default
     return s;
 }
 
@@ -250,41 +261,69 @@ static void print_global_line(MPI_Comm comm, const AppConfig& cfg, const core::m
     MPI_Comm_size(comm, &size);
     MPI_Comm_rank(comm, &rank);
 
-    int topo = MPI_UNDEFINED; MPI_Topo_test(comm, &topo);
-    int cd[3] = {1,1,1}, cp[3] = {0,0,0}, dummy[3] = {0,0,0};
-    if (topo == MPI_CART) MPI_Cart_get(comm, 3, cd, cp, dummy);
-    else                  MPI_Dims_create(size, 3, cd);
+    int topo = MPI_UNDEFINED;
+    MPI_Topo_test(comm, &topo);
+    int cd[3] = {1, 1, 1}, cp[3] = {0, 0, 0}, dummy[3] = {0, 0, 0};
+    if (topo == MPI_CART)
+        MPI_Cart_get(comm, 3, cd, cp, dummy);
+    else
+        MPI_Dims_create(size, 3, cd);
 
-    long long NX=0, NY=0, NZ=0;
-    if (cfg.global.has_value()) { NX=(*cfg.global)[0]; NY=(*cfg.global)[1]; NZ=(*cfg.global)[2]; }
-    else { NX=1LL*m.local[0]*cd[0]; NY=1LL*m.local[1]*cd[1]; NZ=1LL*m.local[2]*cd[2]; }
-    const long long cells = NX*NY*NZ, u = (NX+1)*NY*NZ, v = NX*(NY+1)*NZ, w = NX*NY*(NZ+1);
-    if (rank == 0) {
-        LOGI("[run]   mpi=%d | omp=%d | dims=%dx%dx%d | per=%d,%d,%d | log=%s\n",
-             size, omp_get_max_threads(), cd[0], cd[1], cd[2], cp[0], cp[1], cp[2], log_level());
-        LOGI("[global] %lldx%lldx%lld | cells=%lld u=%lld v=%lld w=%lld\n",
-             NX, NY, NZ, cells, u, v, w);
+    long long NX = 0, NY = 0, NZ = 0;
+    if (cfg.global.has_value())
+    {
+        NX = (*cfg.global)[0];
+        NY = (*cfg.global)[1];
+        NZ = (*cfg.global)[2];
+    }
+    else
+    {
+        NX = 1LL * m.local[0] * cd[0];
+        NY = 1LL * m.local[1] * cd[1];
+        NZ = 1LL * m.local[2] * cd[2];
+    }
+    const long long cells = NX * NY * NZ, u = (NX + 1) * NY * NZ, v = NX * (NY + 1) * NZ,
+                    w = NX * NY * (NZ + 1);
+    if (rank == 0)
+    {
+        LOGI("[run]   mpi=%d | omp=%d | dims=%dx%dx%d | per=%d,%d,%d | log=%s\n", size,
+             omp_get_max_threads(), cd[0], cd[1], cd[2], cp[0], cp[1], cp[2], log_level());
+        LOGI("[global] %lldx%lldx%lld | cells=%lld u=%lld v=%lld w=%lld\n", NX, NY, NZ, cells, u, v,
+             w);
     }
 }
 
 // Gather per-rank lines to rank 0 and print as one block (prevents interleaving under CTest).
 static void gather_and_print_lines(MPI_Comm comm, const std::string& line)
 {
-    int size=1, rank=0; MPI_Comm_size(comm,&size); MPI_Comm_rank(comm,&rank);
+    int size = 1, rank = 0;
+    MPI_Comm_size(comm, &size);
+    MPI_Comm_rank(comm, &rank);
     int len = static_cast<int>(line.size()) + 1;
     std::vector<int> lens, displs;
-    if (rank==0) lens.resize(size), displs.resize(size);
-    MPI_Gather(&len, 1, MPI_INT, rank==0?lens.data():nullptr, 1, MPI_INT, 0, comm);
+    if (rank == 0)
+        lens.resize(size), displs.resize(size);
+    MPI_Gather(&len, 1, MPI_INT, rank == 0 ? lens.data() : nullptr, 1, MPI_INT, 0, comm);
     int total = 0;
-    if (rank==0) { displs.resize(size); for (int i=0;i<size;++i){ displs[i]=total; total+=lens[i]; } }
-    std::vector<char> recvbuf(rank==0 ? total : 0);
-    MPI_Gatherv(line.c_str(), len, MPI_CHAR,
-                rank==0 ? recvbuf.data() : nullptr,
-                rank==0 ? lens.data() : nullptr,
-                rank==0 ? displs.data() : nullptr,
-                MPI_CHAR, 0, comm);
-    if (rank==0) {
-        for (int i=0;i<size;++i) { LOGD("%s\n", recvbuf.data()+displs[i]); }
+    if (rank == 0)
+    {
+        displs.resize(size);
+        for (int i = 0; i < size; ++i)
+        {
+            displs[i] = total;
+            total += lens[i];
+        }
+    }
+    std::vector<char> recvbuf(rank == 0 ? total : 0);
+    MPI_Gatherv(line.c_str(), len, MPI_CHAR, rank == 0 ? recvbuf.data() : nullptr,
+                rank == 0 ? lens.data() : nullptr, rank == 0 ? displs.data() : nullptr, MPI_CHAR, 0,
+                comm);
+    if (rank == 0)
+    {
+        for (int i = 0; i < size; ++i)
+        {
+            LOGD("%s\n", recvbuf.data() + displs[i]);
+        }
     }
 }
 
@@ -302,7 +341,8 @@ int main(int argc, char** argv)
     MpiPetscOnce runtime(argc, argv);
 
     // ---------- Logging (rank0-gated INFO/DEBUG by default; SOLVER_LOG controls level) ----------
-    core::master::logx::init({core::master::logx::Level::Info, /*color*/true, /*rank0_only*/true});
+    core::master::logx::init(
+        {core::master::logx::Level::Info, /*color*/ true, /*rank0_only*/ true});
     // Users can override with: SOLVER_LOG=quiet|error|warn|info|debug
 
     setup_openmp_defaults();
@@ -310,8 +350,10 @@ int main(int argc, char** argv)
     {
         int r0 = 1, rk = 0;
         MPI_Initialized(&r0);
-        if (r0) MPI_Comm_rank(MPI_COMM_WORLD, &rk);
-        if (!r0 || rk == 0) {
+        if (r0)
+            MPI_Comm_rank(MPI_COMM_WORLD, &rk);
+        if (!r0 || rk == 0)
+        {
             print_omp_summary();
         }
     }
@@ -334,17 +376,25 @@ int main(int argc, char** argv)
         int dims[3] = {0, 0, 0};
 
         // Seed any pinned axes from YAML (e.g., [0,0,1] → dims=[0,0,1]).
-        if (cfg.proc_grid[0] > 0) dims[0] = cfg.proc_grid[0];
-        if (cfg.proc_grid[1] > 0) dims[1] = cfg.proc_grid[1];
-        if (cfg.proc_grid[2] > 0) dims[2] = cfg.proc_grid[2];
+        if (cfg.proc_grid[0] > 0)
+            dims[0] = cfg.proc_grid[0];
+        if (cfg.proc_grid[1] > 0)
+            dims[1] = cfg.proc_grid[1];
+        if (cfg.proc_grid[2] > 0)
+            dims[2] = cfg.proc_grid[2];
 
         // If user fixed all 3 but product != size, warn and fall back to auto (keep zeros).
-        if (dims[0] > 0 && dims[1] > 0 && dims[2] > 0) {
+        if (dims[0] > 0 && dims[1] > 0 && dims[2] > 0)
+        {
             const int prod = dims[0] * dims[1] * dims[2];
-            if (prod != size) {
-                int wrank = -1; MPI_Comm_rank(world, &wrank);
-                if (wrank == 0) {
-                    LOGW("[mpi] WARNING: proc_grid=%dx%dx%d (product=%d) != world size %d — falling back to MPI_Dims_create().\n",
+            if (prod != size)
+            {
+                int wrank = -1;
+                MPI_Comm_rank(world, &wrank);
+                if (wrank == 0)
+                {
+                    LOGW("[mpi] WARNING: proc_grid=%dx%dx%d (product=%d) != world size %d — "
+                         "falling back to MPI_Dims_create().\n",
                          dims[0], dims[1], dims[2], prod, size);
                 }
                 dims[0] = dims[1] = dims[2] = 0;
@@ -410,76 +460,95 @@ int main(int argc, char** argv)
     mesh.proc_grid = cfg.proc_grid;
 
     // If user supplied a GLOBAL size in YAML, derive rank-local extents via the communicator dims.
-    // This keeps solver semantics (mesh.local is per-rank interior) while allowing human-friendly input.
+    // This keeps solver semantics (mesh.local is per-rank interior) while allowing human-friendly
+    // input.
     if (cfg.global.has_value())
     {
         MPI_Comm comm = mpi_unbox(rc.mpi_comm);
-        int cd[3] = {0,0,0}, cp[3] = {0,0,0}, dummy_coords[3] = {0,0,0};
+        int cd[3] = {0, 0, 0}, cp[3] = {0, 0, 0}, dummy_coords[3] = {0, 0, 0};
         int topo = MPI_UNDEFINED;
         MPI_Topo_test(comm, &topo);
-        if (topo == MPI_CART) {
+        if (topo == MPI_CART)
+        {
             MPI_Cart_get(comm, 3, cd, cp, dummy_coords);
-        } else {
+        }
+        else
+        {
             // Fall back to factorization (shouldn't happen here)
             MPI_Dims_create(rc.world_size, 3, cd);
         }
 
         const auto G = *cfg.global; // nx_g, ny_g, nz_g
-        const int factors[3] = {std::max(cd[0],1), std::max(cd[1],1), std::max(cd[2],1)};
+        const int factors[3] = {std::max(cd[0], 1), std::max(cd[1], 1), std::max(cd[2], 1)};
 
         bool ok_div =
-            (G[0] % factors[0] == 0) &&
-            (G[1] % factors[1] == 0) &&
-            (G[2] % factors[2] == 0);
-        if (!ok_div) {
-            int r = -1; MPI_Comm_rank(comm, &r);
-            if (r == 0) {
+            (G[0] % factors[0] == 0) && (G[1] % factors[1] == 0) && (G[2] % factors[2] == 0);
+        if (!ok_div)
+        {
+            int r = -1;
+            MPI_Comm_rank(comm, &r);
+            if (r == 0)
+            {
                 LOGE("[mesh] ERROR: mesh.global=%dx%dx%d not divisible by proc dims=%dx%dx%d\n",
                      G[0], G[1], G[2], factors[0], factors[1], factors[2]);
             }
             std::abort();
         }
-        mesh.local = { G[0] / factors[0], G[1] / factors[1], G[2] / factors[2] };
+        mesh.local = {G[0] / factors[0], G[1] / factors[1], G[2] / factors[2]};
     }
 
     {
         // Prefer the actual communicator dims (what halos/neighbors will use),
         // only backfilling non-positive entries so YAML pins remain honored.
-        int cd[3] = {0,0,0}, cp[3] = {0,0,0}, cc[3] = {0,0,0};
+        int cd[3] = {0, 0, 0}, cp[3] = {0, 0, 0}, cc[3] = {0, 0, 0};
         MPI_Comm comm = mpi_unbox(rc.mpi_comm);
         int topo = MPI_UNDEFINED;
         MPI_Topo_test(comm, &topo);
-        if (topo == MPI_CART) {
+        if (topo == MPI_CART)
+        {
             MPI_Cart_get(comm, 3, cd, cp, cc);
-        } else {
-            // Extremely unlikely here, but keep a reasonable fallback
-            int sz = 1; MPI_Comm_size(comm, &sz);
-            int tmp[3] = {0,0,0};
-            MPI_Dims_create(sz, 3, tmp);
-            cd[0] = tmp[0]; cd[1] = tmp[1]; cd[2] = tmp[2];
         }
-        if (mesh.proc_grid[0] <= 0) mesh.proc_grid[0] = std::max(1, cd[0]);
-        if (mesh.proc_grid[1] <= 0) mesh.proc_grid[1] = std::max(1, cd[1]);
-        if (mesh.proc_grid[2] <= 0) mesh.proc_grid[2] = std::max(1, cd[2]);
+        else
+        {
+            // Extremely unlikely here, but keep a reasonable fallback
+            int sz = 1;
+            MPI_Comm_size(comm, &sz);
+            int tmp[3] = {0, 0, 0};
+            MPI_Dims_create(sz, 3, tmp);
+            cd[0] = tmp[0];
+            cd[1] = tmp[1];
+            cd[2] = tmp[2];
+        }
+        if (mesh.proc_grid[0] <= 0)
+            mesh.proc_grid[0] = std::max(1, cd[0]);
+        if (mesh.proc_grid[1] <= 0)
+            mesh.proc_grid[1] = std::max(1, cd[1]);
+        if (mesh.proc_grid[2] <= 0)
+            mesh.proc_grid[2] = std::max(1, cd[2]);
     }
 
     // Sanity check: communicator dims must match mesh.proc_grid for correct halo neighbors.
     {
         MPI_Comm comm = mpi_unbox(rc.mpi_comm ? rc.mpi_comm : nullptr);
-        if (comm != MPI_COMM_NULL) {
+        if (comm != MPI_COMM_NULL)
+        {
             int topo = MPI_UNDEFINED;
             MPI_Topo_test(comm, &topo);
-            if (topo == MPI_CART) {
-                int cd[3] = {0,0,0}, cp[3] = {0,0,0}, cc[3] = {0,0,0};
+            if (topo == MPI_CART)
+            {
+                int cd[3] = {0, 0, 0}, cp[3] = {0, 0, 0}, cc[3] = {0, 0, 0};
                 MPI_Cart_get(comm, 3, cd, cp, cc);
-                if (mesh.proc_grid[0] != cd[0] ||
-                    mesh.proc_grid[1] != cd[1] ||
-                    mesh.proc_grid[2] != cd[2]) {
-                    int r = -1; MPI_Comm_rank(comm, &r);
-                    if (r == 0) {
-                        LOGW("[mpi] WARNING: mesh.proc_grid=%dx%dx%d but communicator dims=%dx%dx%d — ghost exchanges may use wrong neighbors.\n",
-                             mesh.proc_grid[0], mesh.proc_grid[1], mesh.proc_grid[2],
-                             cd[0], cd[1], cd[2]);
+                if (mesh.proc_grid[0] != cd[0] || mesh.proc_grid[1] != cd[1] ||
+                    mesh.proc_grid[2] != cd[2])
+                {
+                    int r = -1;
+                    MPI_Comm_rank(comm, &r);
+                    if (r == 0)
+                    {
+                        LOGW("[mpi] WARNING: mesh.proc_grid=%dx%dx%d but communicator "
+                             "dims=%dx%dx%d — ghost exchanges may use wrong neighbors.\n",
+                             mesh.proc_grid[0], mesh.proc_grid[1], mesh.proc_grid[2], cd[0], cd[1],
+                             cd[2]);
                     }
                 }
             }
@@ -553,7 +622,7 @@ int main(int argc, char** argv)
         std::vector<std::string> want = cfg.fields_output;
         if (want.empty())
         {
-            want = {"p", "u", "v", "w"};  // sensible default
+            want = {"p", "u", "v", "w"}; // sensible default
             LOGW("No output fields selected, picked sensible defaults: p, u, v, w\n");
         };
 
@@ -584,45 +653,52 @@ int main(int argc, char** argv)
             print_global_line(comm, cfg, mesh);
 
             // Build one short line per rank, gather on rank 0, then print the block.
-            int topo = MPI_UNDEFINED; MPI_Topo_test(comm, &topo);
-            int cd[3]={1,1,1}, cp[3]={0,0,0}, cc[3]={0,0,0};
-            if (topo == MPI_CART) { MPI_Cart_get(comm,3,cd,cp,cc); MPI_Cart_coords(comm,rank,3,cc); }
-            else                  { MPI_Dims_create(size,3,cd); }
+            int topo = MPI_UNDEFINED;
+            MPI_Topo_test(comm, &topo);
+            int cd[3] = {1, 1, 1}, cp[3] = {0, 0, 0}, cc[3] = {0, 0, 0};
+            if (topo == MPI_CART)
+            {
+                MPI_Cart_get(comm, 3, cd, cp, cc);
+                MPI_Cart_coords(comm, rank, 3, cc);
+            }
+            else
+            {
+                MPI_Dims_create(size, 3, cd);
+            }
 
-            const int nx=mesh.local[0], ny=mesh.local[1], nz=mesh.local[2], ng=mesh.ng;
-            const long long cells = 1LL*nx*ny*nz;
-            const long long ucnt  = 1LL*(nx+1)*ny*nz;
-            const long long vcnt  = 1LL*nx*(ny+1)*nz;
-            const long long wcnt  = 1LL*nx*ny*(nz+1);
+            const int nx = mesh.local[0], ny = mesh.local[1], nz = mesh.local[2], ng = mesh.ng;
+            const long long cells = 1LL * nx * ny * nz;
+            const long long ucnt = 1LL * (nx + 1) * ny * nz;
+            const long long vcnt = 1LL * nx * (ny + 1) * nz;
+            const long long wcnt = 1LL * nx * ny * (nz + 1);
 
             std::ostringstream os;
             const std::string level = log_level();
-            if (level == "full") {
-                const int cx = nx + 2*ng, cy = ny + 2*ng, cz = nz + 2*ng;
-                const int ux = nx + 1 + 2*ng, uy = cy, uz = cz;
-                const int vx = cx, vy = ny + 1 + 2*ng, vz = cz;
-                const int wx = cx, wy = cy, wz = nz + 1 + 2*ng;
-                os << "[r" << rank << "/" << size << "] c(" << cc[0]<<","<<cc[1]<<","<<cc[2]
-                   << ") d(" << cd[0]<<","<<cd[1]<<","<<cd[2] << ") "
-                   << "L " << nx << "x" << ny << "x" << nz
-                   << " | N=" << cells << " U=" << ucnt << " V=" << vcnt << " W=" << wcnt
-                   << " | ng=" << ng
-                   << " | Lg " << cx << "x" << cy << "x" << cz
-                   << " Ug " << ux << "x" << uy << "x" << uz
-                   << " Vg " << vx << "x" << vy << "x" << vz
-                   << " Wg " << wx << "x" << wy << "x" << wz;
-            } else if (level == "compact") {
-                os << "[r" << rank << "/" << size << "] c(" << cc[0]<<","<<cc[1]<<","<<cc[2]
-                   << ") d(" << cd[0]<<","<<cd[1]<<","<<cd[2] << ") "
-                   << "L " << nx << "x" << ny << "x" << nz
-                   << " | N=" << cells << " U=" << ucnt << " V=" << vcnt << " W=" << wcnt
-                   << " | ng=" << ng;
-            } else { // mini (default)
-                os << "[r" << rank << "/" << size << "] "
-                   << "c(" << cc[0]<<","<<cc[1]<<","<<cc[2] << ") "
-                   << "d(" << cd[0]<<","<<cd[1]<<","<<cd[2] << ") "
-                   << "L " << nx << "x" << ny << "x" << nz
-                   << " | N=" << cells << " | ng=" << ng;
+            if (level == "full")
+            {
+                const int cx = nx + 2 * ng, cy = ny + 2 * ng, cz = nz + 2 * ng;
+                const int ux = nx + 1 + 2 * ng, uy = cy, uz = cz;
+                const int vx = cx, vy = ny + 1 + 2 * ng, vz = cz;
+                const int wx = cx, wy = cy, wz = nz + 1 + 2 * ng;
+                os << "[r" << rank << "/" << size << "] c(" << cc[0] << "," << cc[1] << "," << cc[2]
+                   << ") d(" << cd[0] << "," << cd[1] << "," << cd[2] << ") " << "L " << nx << "x"
+                   << ny << "x" << nz << " | N=" << cells << " U=" << ucnt << " V=" << vcnt
+                   << " W=" << wcnt << " | ng=" << ng << " | Lg " << cx << "x" << cy << "x" << cz
+                   << " Ug " << ux << "x" << uy << "x" << uz << " Vg " << vx << "x" << vy << "x"
+                   << vz << " Wg " << wx << "x" << wy << "x" << wz;
+            }
+            else if (level == "compact")
+            {
+                os << "[r" << rank << "/" << size << "] c(" << cc[0] << "," << cc[1] << "," << cc[2]
+                   << ") d(" << cd[0] << "," << cd[1] << "," << cd[2] << ") " << "L " << nx << "x"
+                   << ny << "x" << nz << " | N=" << cells << " U=" << ucnt << " V=" << vcnt
+                   << " W=" << wcnt << " | ng=" << ng;
+            }
+            else
+            { // mini (default)
+                os << "[r" << rank << "/" << size << "] " << "c(" << cc[0] << "," << cc[1] << ","
+                   << cc[2] << ") " << "d(" << cd[0] << "," << cd[1] << "," << cd[2] << ") " << "L "
+                   << nx << "x" << ny << "x" << nz << " | N=" << cells << " | ng=" << ng;
             }
             gather_and_print_lines(comm, os.str());
         }

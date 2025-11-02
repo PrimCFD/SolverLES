@@ -968,10 +968,15 @@ contains
           kp = c+szu; km = c-szu; kpp = c+2*szu; kmm = c-2*szu
 
           uc = u(c)
-     vc = 0.5d0*(v(1_c_size_t+int(ng+i, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)) &
-               +v(1_c_size_t+int(ng+i+1, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)))
-     wc = 0.5d0*(w(1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)) &
-               +w(1_c_size_t+int(ng+i+1, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)))
+
+          integer(c_size_t) :: ivL, ivR, iwB, iwT
+          ivL = 1_c_size_t+int(ng+i, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)
+          ivR = 1_c_size_t+int(ng+i+1, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)
+          vc = 0.5d0*(v(ivL)+v(ivR))
+
+          iwB = 1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)
+          iwT = 1_c_size_t+int(ng+i+1, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)
+          wc = 0.5d0*(w(iwB)+w(iwT))
 
           du_dx = kk_dx_cen4_plus_kkfilter(u(imm), u(im), u(c), u(ip), u(ipp), uc, dx, kkC)
           du_dy = kk_dx_cen4_plus_kkfilter(u(jmm), u(jm), u(c), u(jp), u(jpp), vc, dy, kkC)
@@ -999,10 +1004,15 @@ contains
           kp = c+szv; km = c-szv; kpp = c+2*szv; kmm = c-2*szv
 
           vc = v(c)
-     uc = 0.5d0*(u(1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)) &
-               +u(1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng+1, c_size_t)+szu*int(k+ng, c_size_t)))
-     wc = 0.5d0*(w(1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)) &
-               +w(1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng+1, c_size_t)+szw*int(k+ng, c_size_t)))
+
+          integer(c_size_t) :: iuB, iuT, iwB2, iwT2
+          iuB = 1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
+          iuT = 1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng+1, c_size_t)+szu*int(k+ng, c_size_t)
+          uc = 0.5d0*(u(iuB)+u(iuT))
+
+          iwB2 = 1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)
+          iwT2 = 1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng+1, c_size_t)+szw*int(k+ng, c_size_t)
+          wc = 0.5d0*(w(iwB2)+w(iwT2))
 
           dv_dx = kk_dx_cen4_plus_kkfilter(v(imm), v(im), v(c), v(ip), v(ipp), uc, dx, kkC)
           dv_dy = kk_dx_cen4_plus_kkfilter(v(jmm), v(jm), v(c), v(jp), v(jpp), vc, dy, kkC)
@@ -1030,10 +1040,15 @@ contains
           kp = c+szw; km = c-szw; kpp = c+2*szw; kmm = c-2*szw
 
           wc = w(c)
-     uc = 0.5d0*(u(1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)) &
-               +u(1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng+1, c_size_t)))
-     vc = 0.5d0*(v(1_c_size_t+int(ng+i, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)) &
-               +v(1_c_size_t+int(ng+i, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng+1, c_size_t)))
+
+          integer(c_size_t) :: iuL, iuU, ivL2, ivU2
+          iuL = 1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
+          iuU = 1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng+1, c_size_t)
+          uc = 0.5d0*(u(iuL)+u(iuU))
+
+          ivL2 = 1_c_size_t+int(ng+i, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)
+          ivU2 = 1_c_size_t+int(ng+i, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng+1, c_size_t)
+          vc = 0.5d0*(v(ivL2)+v(ivU2))
 
           dw_dx = kk_dx_cen4_plus_kkfilter(w(imm), w(im), w(c), w(ip), w(ipp), uc, dx, kkC)
           dw_dy = kk_dx_cen4_plus_kkfilter(w(jmm), w(jm), w(c), w(jp), w(jpp), vc, dy, kkC)

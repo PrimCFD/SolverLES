@@ -189,7 +189,7 @@ inline AppConfig load_config_from_yaml(const std::string& path)
         {
             auto v = G.as<std::vector<int>>();
             if (v.size() == 3)
-                cfg.global = std::array<int,3>{v[0], v[1], v[2]};
+                cfg.global = std::array<int, 3>{v[0], v[1], v[2]};
         }
         if (auto L = m["local"])
         {

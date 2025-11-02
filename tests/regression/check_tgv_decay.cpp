@@ -193,7 +193,8 @@ static int parse_step_index(const std::string& sol_name)
 int main(int argc, char** argv)
 {
     // Logger: rank0-only INFO by default (SOLVER_LOG controls level)
-    core::master::logx::init({core::master::logx::Level::Info, /*color*/true, /*rank0_only*/true});
+    core::master::logx::init(
+        {core::master::logx::Level::Info, /*color*/ true, /*rank0_only*/ true});
 
     if (argc < 10)
     {
@@ -256,8 +257,7 @@ int main(int argc, char** argv)
     const std::string& sol1_name = solptrs[1];        // second snapshot
     const std::string& sollast_name = solptrs.back(); // last snapshot
     CGNS_ENUMT(GridLocation_t)
-    loc0 = CGNS_ENUMV(Vertex),
-    loc1 = CGNS_ENUMV(Vertex), locL = CGNS_ENUMV(Vertex);
+    loc0 = CGNS_ENUMV(Vertex), loc1 = CGNS_ENUMV(Vertex), locL = CGNS_ENUMV(Vertex);
     const int S0 = find_solution_index_by_name(f, 1, 1, sol0_name, &loc0);
     const int S1 = find_solution_index_by_name(f, 1, 1, sol1_name, &loc1);
     const int SL = find_solution_index_by_name(f, 1, 1, sollast_name, &locL);
@@ -326,8 +326,8 @@ int main(int argc, char** argv)
         cg_close(f);
         return 0;
     }
-    LOGE("FAIL: amplitude outside tolerance. err_cont=%.6g, err_pred=%.6g (tol=%.6g)\n",
-         err_cont, err_disc, tol);
+    LOGE("FAIL: amplitude outside tolerance. err_cont=%.6g, err_pred=%.6g (tol=%.6g)\n", err_cont,
+         err_disc, tol);
     cg_close(f);
     return 13;
 }

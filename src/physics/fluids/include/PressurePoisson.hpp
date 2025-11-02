@@ -1,10 +1,10 @@
 #pragma once
-#include <mpi.h>
 #include "Program.hpp"
 #include "master/RunContext.hpp"
 #include "master/plugin/Action.hpp"
 #include <cstddef>
 #include <memory>
+#include <mpi.h>
 #include <vector>
 
 namespace fluids

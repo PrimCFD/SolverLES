@@ -4,10 +4,10 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <mpi.h>
 #include <stdexcept>
 #include <vector>
 #include "kernels_fluids.h"
-#include <mpi.h>
 
 using namespace core::master;
 
