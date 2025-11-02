@@ -941,6 +941,9 @@ contains
     integer :: i, j, k, nxu, nyu, nzu, nxv, nyv, nzv, nxw, nyw, nzw
     integer(c_size_t) :: sxu, syu, szu, sxv, syv, szv, sxw, syw, szw
     integer(c_size_t) :: c, c0, ip, im, jp, jm, kp, km, ipp, imm, jpp, jmm, kpp, kmm
+    integer(c_size_t) :: ivL, ivR, iwB, iwT        ! for N_u loop
+    integer(c_size_t) :: iuB, iuT, iwB2, iwT2      ! for N_v loop
+    integer(c_size_t) :: iuL, iuU, ivL2, ivU2      ! for N_w loop
     real(c_double)    :: uc, vc, wc
     real(c_double)    :: du_dx, du_dy, du_dz, dv_dx, dv_dy, dv_dz, dw_dx, dw_dy, dw_dz
 
@@ -956,7 +959,7 @@ contains
     ! (1) N_u on u-faces
     !-------------------------------
     !$omp parallel do collapse(2) schedule(static) private(i,j,k,c0,c,ip,im,ipp,imm,jp,jm,jpp,jmm,kp,km,kpp,kmm, &
-    !$omp& uc,vc,wc, du_dx,du_dy,du_dz)
+    !$omp& uc,vc,wc,du_dx,du_dy,du_dz,ivL,ivR,iwB,iwT)
     do k = 0, nzu-1
       do j = 0, nyu-1
         c0 = 1_c_size_t+int(ng, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
@@ -969,7 +972,6 @@ contains
 
           uc = u(c)
 
-          integer(c_size_t) :: ivL, ivR, iwB, iwT
           ivL = 1_c_size_t+int(ng+i, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)
           ivR = 1_c_size_t+int(ng+i+1, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)
           vc = 0.5d0*(v(ivL)+v(ivR))
@@ -992,7 +994,7 @@ contains
     ! (2) N_v on v-faces
     !-------------------------------
     !$omp parallel do collapse(2) schedule(static) private(i,j,k,c0,c,ip,im,ipp,imm,jp,jm,jpp,jmm,kp,km,kpp,kmm, &
-    !$omp& uc,vc,wc, dv_dx,dv_dy,dv_dz)
+    !$omp& uc,vc,wc,dv_dx,dv_dy,dv_dz,iuB,iuT,iwB2,iwT2)
     do k = 0, nzv-1
       do i = 0, nxv-1
         c0 = 1_c_size_t+int(ng+i, c_size_t)+syv*int(ng, c_size_t)+szv*int(k+ng, c_size_t)
@@ -1005,7 +1007,6 @@ contains
 
           vc = v(c)
 
-          integer(c_size_t) :: iuB, iuT, iwB2, iwT2
           iuB = 1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
           iuT = 1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng+1, c_size_t)+szu*int(k+ng, c_size_t)
           uc = 0.5d0*(u(iuB)+u(iuT))
@@ -1028,7 +1029,7 @@ contains
     ! (3) N_w on w-faces
     !-------------------------------
     !$omp parallel do collapse(2) schedule(static) private(i,j,k,c0,c,ip,im,ipp,imm,jp,jm,jpp,jmm,kp,km,kpp,kmm, &
-    !$omp& uc,vc,wc, dw_dx,dw_dy,dw_dz)
+    !$omp& uc,vc,wc,dw_dx,dw_dy,dw_dz,iuL,iuU,ivL2,ivU2)
     do j = 0, nyw-1
       do i = 0, nxw-1
         c0 = 1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(ng, c_size_t)
@@ -1041,7 +1042,6 @@ contains
 
           wc = w(c)
 
-          integer(c_size_t) :: iuL, iuU, ivL2, ivU2
           iuL = 1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
           iuU = 1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng+1, c_size_t)
           uc = 0.5d0*(u(iuL)+u(iuU))
