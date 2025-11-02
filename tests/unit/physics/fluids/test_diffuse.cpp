@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
@@ -5,28 +6,63 @@
 
 using Catch::Approx;
 
-TEST_CASE("Diffusion step preserves constant velocity field (interior)", "[fluids][diffuse]")
+static inline int center_tot(int n, int ng)
+{
+    return n + 2 * ng;
+}
+static inline int face_tot(int n, int ng)
+{
+    return n + 1 + 2 * ng;
+}
+static inline std::size_t idx(int I, int J, int K, int nx, int ny)
+{
+    return std::size_t(I) + std::size_t(nx) * (std::size_t(J) + std::size_t(ny) * std::size_t(K));
+}
+
+TEST_CASE("Diffusion (FE, MAC) preserves constant velocity field on interior faces",
+          "[fluids][diffuse][mac]")
 {
     const int nx = 12, ny = 7, nz = 5, ng = 2;
-    const int nx_tot = nx + 2 * ng, ny_tot = ny + 2 * ng, nz_tot = nz + 2 * ng;
     const double dx = 1.0, dy = 1.0, dz = 1.0, dt = 0.3;
 
-    std::vector<double> u(nx_tot * ny_tot * nz_tot, 3.14), v(nx_tot * ny_tot * nz_tot, 3.14),
-        w(nx_tot * ny_tot * nz_tot, 3.14), nu_eff(nx_tot * ny_tot * nz_tot, 1.0e-3),
-        us(u.size(), 0.0), vs(v.size(), 0.0), ws(w.size(), 0.0);
+    // MAC totals
+    const int nxc_tot = center_tot(nx, ng), nyc_tot = center_tot(ny, ng),
+              nzc_tot = center_tot(nz, ng);
+    const int nxu_tot = face_tot(nx, ng), nyu_tot = center_tot(ny, ng),
+              nzu_tot = center_tot(nz, ng);
+    const int nxv_tot = center_tot(nx, ng), nyv_tot = face_tot(ny, ng),
+              nzv_tot = center_tot(nz, ng);
+    const int nxw_tot = center_tot(nx, ng), nyw_tot = center_tot(ny, ng),
+              nzw_tot = face_tot(nz, ng);
 
-    diffuse_velocity_fe_c(u.data(), v.data(), w.data(), nu_eff.data(), nx_tot, ny_tot, nz_tot, ng,
-                          dx, dy, dz, dt, us.data(), vs.data(), ws.data());
+    // Allocate faces and centers
+    std::vector<double> u((size_t) nxu_tot * nyu_tot * nzu_tot, 3.14);
+    std::vector<double> v((size_t) nxv_tot * nyv_tot * nzv_tot, 3.14);
+    std::vector<double> w((size_t) nxw_tot * nyw_tot * nzw_tot, 3.14);
+    std::vector<double> nu_eff((size_t) nxc_tot * nyc_tot * nzc_tot, 1.0e-3);
+    std::vector<double> us(u.size(), 0.0), vs(v.size(), 0.0), ws(w.size(), 0.0);
 
-    auto idx = [=](int I, int J, int K) { return I + nx_tot * (J + ny_tot * K); };
+    diffuse_velocity_fe_mac_c(
+        /*u in*/ u.data(), nxu_tot, nyu_tot, nzu_tot,
+        /*v in*/ v.data(), nxv_tot, nyv_tot, nzv_tot,
+        /*w in*/ w.data(), nxw_tot, nyw_tot, nzw_tot,
+        /*nu  */ nu_eff.data(), nxc_tot, nyc_tot, nzc_tot,
+        /*geo */ ng, dx, dy, dz, dt,
+        /*out */ us.data(), vs.data(), ws.data());
 
-    // Check interior only; ghosts are owned by BC/exchange elsewhere.
+    // Check interior faces only (ghosts belong to BC/exchange)
     for (int K = ng; K < nz + ng; ++K)
         for (int J = ng; J < ny + ng; ++J)
+            for (int I = ng; I < nx + 1 + ng; ++I) // u is x-face ⇒ +1 in x
+                REQUIRE(us[idx(I, J, K, nxu_tot, nyu_tot)] == Approx(3.14));
+
+    for (int K = ng; K < nz + ng; ++K)
+        for (int J = ng; J < ny + 1 + ng; ++J) // v is y-face ⇒ +1 in y
             for (int I = ng; I < nx + ng; ++I)
-            {
-                REQUIRE(us[idx(I, J, K)] == Approx(3.14));
-                REQUIRE(vs[idx(I, J, K)] == Approx(3.14));
-                REQUIRE(ws[idx(I, J, K)] == Approx(3.14));
-            }
+                REQUIRE(vs[idx(I, J, K, nxv_tot, nyv_tot)] == Approx(3.14));
+
+    for (int K = ng; K < nz + 1 + ng; ++K) // w is z-face ⇒ +1 in z
+        for (int J = ng; J < ny + ng; ++J)
+            for (int I = ng; I < nx + ng; ++I)
+                REQUIRE(ws[idx(I, J, K, nxw_tot, nyw_tot)] == Approx(3.14));
 }

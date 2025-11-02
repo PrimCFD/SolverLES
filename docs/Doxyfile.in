@@ -27,7 +27,6 @@ OUTPUT_DIRECTORY       = @CMAKE_BINARY_DIR@/docs/_build/doxygen
 ENABLE_PREPROCESSING   = YES
 MACRO_EXPANSION        = YES
 EXPAND_ONLY_PREDEF     = NO
-PREDEFINED             = HAVE_MPI
 PREDEFINED            += __restrict=
 WARN_IF_UNDOCUMENTED   = YES
 QUIET                  = YES

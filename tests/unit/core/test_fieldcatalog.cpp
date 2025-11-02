@@ -9,7 +9,8 @@ TEST_CASE("FieldCatalog basic registration + selection", "[fieldcatalog]")
     FieldCatalog fc;
     std::vector<double> a(8, 0.0);
 
-    fc.register_scalar("a", a.data(), sizeof(double), {2, 2, 2}, {1, 2, 4});
+    fc.register_scalar("a", a.data(), sizeof(double), {2, 2, 2}, {1, 2, 4},
+                       core::master::Stagger::Cell);
     REQUIRE(fc.contains("a"));
 
     auto v = fc.view("a");

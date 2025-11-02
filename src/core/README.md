@@ -41,14 +41,14 @@ src/core/
 │     ├─ Field.hpp                 # typed, non-owning view with ghosts
 │     ├─ Boundary.hpp              # face-wise ghost filling (Dirichlet/Neumann/Extrapolate/Mirror)
 │     ├─ Mesh.hpp                  # interior sizes + ghost width
-│     └─ HaloExchange.hpp          # 6-face MPI exchanges (HAVE_MPI)
+│     └─ HaloExchange.hpp          # 6-face MPI exchanges
 └─ src/                            # implementations (.cpp only include heavy deps)
 ```
 
 **Notes**
 
 * Public headers avoid `<mpi.h>`, HDF5, CGNS, CUDA, etc. Those are included only in `.cpp` files
-  and guarded by build flags (e.g., `HAVE_MPI`, `HAVE_CUDA`, `USE_CUDA_UM`).
+  and guarded by build flags (e.g., `HAVE_CUDA`, `USE_CUDA_UM`).
 * Everything exposed to plugins/writers uses **trivial/ABI-stable** types.
 
 ---
@@ -171,7 +171,7 @@ src/core/
   * `Dirichlet`, `NeumannZero` (copy), `Extrapolate1` (linear), and `Mirror` for vectors with
     per-component parity (e.g., slip wall `{-1,+1,+1}`).
   * All loops delegate indexing to `Field<T>`; ghosts must be **uniform**.
-* **Halo exchange** (`HaloExchange.hpp`, `HAVE_MPI`): 6-face, nonblocking exchanges.
+* **Halo exchange** (`HaloExchange.hpp`): 6-face, nonblocking exchanges.
 
   * Uses `MPI_Isend/Irecv/Waitall`; communicator comes from `RunContext::mpi_comm`.
   * **CUDA-aware MPI**: if `rc.cuda_aware_mpi` is true and UM/mirrors are used, the exchange layer
@@ -221,8 +221,6 @@ program.
 
 Implementation notes:
 
-* MPI calls compile only under `HAVE_MPI`; non-MPI builds treat exchange as a no-op and do not
-  include `<mpi.h>` in headers.
 * The tile currently spans the local interior box; tiling can be added without ABI changes.
 * Steps are computed as `round(t_end / dt)`; writer receives `{step,time}` tuples.
 
@@ -360,8 +358,6 @@ based on policy.
 
 ## Build modes & feature flags
 
-* **MPI:** `HAVE_MPI` enables halo exchange; communicator is `RunContext::mpi_comm` (opaque in
-  headers, cast in `.cpp`).
 * **CUDA / UM:** `HAVE_CUDA`, `USE_CUDA_UM` control MemoryManager paths (UM vs mirrored), prefetch,
   pinned host staging, and CUDA-aware MPI choices.
 

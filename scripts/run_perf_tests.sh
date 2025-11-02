@@ -11,11 +11,8 @@ if [[ -f "scripts/mpi_env.sh" ]]; then
   source scripts/mpi_env.sh "${MPI_MODE:-auto}"
   # Perf-critical: turn on strict PE by default (ranks × PE must fit cores)
   export MPI_STRICT_PE="${MPI_STRICT_PE:-1}"
-  export OMP_NUM_THREADS=2 # limit thread number/MPI
-  # If a launcher is available, default to building PETSc with MPI.
-  if [[ -n "${MPIEXEC_EXECUTABLE:-}" ]]; then
-    : "${ENABLE_MPI:=On}"
-  fi
+  export OMP_NUM_THREADS=1 # limit thread number/MPI
+  export MPI_TEST_NP=8
 fi
 
 PETSC_OPTIONS="-ksp_converged_reason \
@@ -51,7 +48,6 @@ if [[ "${SKIP_BUILD}" != "1" ]]; then
 
   BUILD_DIR="${BUILD_DIR}" \
   CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" \
-  ENABLE_MPI="${ENABLE_MPI}" \
   ENABLE_CUDA="${ENABLE_CUDA}" \
   USE_CUDA_UM="${USE_CUDA_UM:-OFF}" \
   BUILD_TESTS=ON \

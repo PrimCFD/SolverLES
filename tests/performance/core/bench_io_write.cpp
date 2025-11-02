@@ -28,7 +28,8 @@ int main(int argc, char**)
             v[i] = double(f) + 0.001 * double(i);
         fc.register_scalar("F" + std::to_string(f), v.data(), sizeof(double), {nx, ny, nz},
                            {(std::ptrdiff_t) sizeof(double), (std::ptrdiff_t)(sizeof(double) * nx),
-                            (std::ptrdiff_t)(sizeof(double) * nx * ny)});
+                            (std::ptrdiff_t)(sizeof(double) * nx * ny)},
+                           core::master::Stagger::Cell);
         fc.select_for_output("F" + std::to_string(f));
     }
 

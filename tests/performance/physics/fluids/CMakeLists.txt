@@ -1,5 +1,38 @@
 # Performance benches for fluids kernels
 
+# Helper: add a perf test that runs under MPI if a launcher is available
+function(add_mpi_perf_test name exe)
+  # default np (can override via env: MPI_TEST_NP)
+  if(DEFINED ENV{MPI_TEST_NP})
+    set(_np $ENV{MPI_TEST_NP})
+  else()
+    set(_np 2)
+  endif()
+
+  if(DEFINED ENV{MPIEXEC_EXECUTABLE})
+    # Convert space-separated env strings into proper CMake arg lists
+    set(_mpi_launcher "$ENV{MPIEXEC_EXECUTABLE}")
+    set(_pre "$ENV{MPIEXEC_PREFLAGS}")
+    set(_post "$ENV{MPIEXEC_POSTFLAGS}")
+    if(_pre)
+      separate_arguments(_pre) # -> list
+    endif()
+    if(_post)
+      separate_arguments(_post) # -> list
+    endif()
+
+    # Many mpiexec/mpirun variants accept options in any order, but keep:
+    # launcher, preflags, -np, N, postflags, executable
+    add_test(NAME ${name}
+             COMMAND ${_mpi_launcher} ${_pre} $ENV{MPIEXEC_NUMPROC_FLAG} ${_np}
+                     ${_post} $<TARGET_FILE:${exe}>)
+  else()
+    message(WARNING "No MPI launcher detected; ${name} will run single-rank.")
+    add_test(NAME ${name} COMMAND $<TARGET_FILE:${exe}>)
+  endif()
+  set_tests_properties(${name} PROPERTIES LABELS "perf")
+endfunction()
+
 # Header-only micro-bench helper
 set(SIMPLE_BENCH_HDR ${CMAKE_SOURCE_DIR}/tests/performance/simple_bench.hpp)
 
@@ -54,7 +87,7 @@ set_target_properties(
     INSTALL_RPATH
     "${_origin}/../lib;${_origin}/../lib/plugins;$<TARGET_FILE_DIR:PETSC::petsc_lib>"
 )
-add_perf_test(perf_poisson_petsc_fluids bench_poisson_fluids)
+add_mpi_perf_test(perf_poisson_petsc_fluids bench_poisson_fluids)
 
 # Gradient / Divergence / Corrector
 add_executable(bench_grad_div_correct_fluids bench_grad_div_correct.cpp

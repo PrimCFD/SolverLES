@@ -1,12 +1,13 @@
 #pragma once
 #include "master/FieldCatalog.hpp"
+#include "master/Log.hpp"
 #include "memory/MpiBox.hpp"
 #include "mesh/Field.hpp"
 #include "mesh/Mesh.hpp"
+#include <cstring>
+#include <string>
 
-#ifdef HAVE_MPI
 #include "mesh/HaloExchange.hpp"
-#endif
 
 #include <initializer_list>
 #include <string>
@@ -15,13 +16,49 @@
 namespace core::master
 {
 
+// ---- Deterministic per-field tag base derived from field name (rank-invariant) ----
+static inline int tag_base_for_name(const char* name)
+{
+    // djb2-xor variant; stable across ranks and processes
+    unsigned h = 5381u;
+    const unsigned char* s = reinterpret_cast<const unsigned char*>(name ? name : "");
+    while (*s)
+    {
+        h = ((h << 5) + h) ^ *s++;
+    }
+    // Reserve a 16-tag window per field; keep away from very small tag ids.
+    return 100 + static_cast<int>((h & 0x0FFFu) * 16);
+}
+
 // -------- periodic face wrap for faces only (non-MPI fallback) --------
 template <class T>
 static inline void wrap_periodic_faces(core::mesh::Field<T>& f, const core::mesh::Mesh& m)
 {
-    const int nx = m.local[0], ny = m.local[1], nz = m.local[2], ng = m.ng;
+
+    const auto e = f.extents();
+    const int ng = f.ng();
+    const int nx = e[0] - 2 * ng;
+    const int ny = e[1] - 2 * ng;
+    const int nz = e[2] - 2 * ng;
     if (ng == 0)
         return;
+
+    auto idx_lo = [](int n, int g) -> int
+    {
+        // lower ghost at -g pulls from interior index n-1, n-2, ... modulo n
+        // handle n==1: always 0
+        if (n <= 0)
+            return 0;
+        int r = (g % n);
+        return (r == 0) ? (n - 1) : (n - r);
+    };
+    auto idx_hi = [](int n, int g) -> int
+    {
+        // upper ghost at n-1+g pulls from 0,1,2,... modulo n
+        if (n <= 0)
+            return 0;
+        return (g - 1) % n;
+    };
 
     // X faces
     if (m.periodic[0])
@@ -30,8 +67,8 @@ static inline void wrap_periodic_faces(core::mesh::Field<T>& f, const core::mesh
             for (int j = 0; j < ny; ++j)
                 for (int g = 1; g <= ng; ++g)
                 {
-                    f(-g, j, k) = f(nx - g, j, k);        // west ghosts <- east interior
-                    f(nx - 1 + g, j, k) = f(g - 1, j, k); // east ghosts <- west interior
+                    f(-g, j, k) = f(idx_lo(nx, g), j, k);
+                    f(nx - 1 + g, j, k) = f(idx_hi(nx, g), j, k);
                 }
     }
     // Y faces
@@ -41,8 +78,8 @@ static inline void wrap_periodic_faces(core::mesh::Field<T>& f, const core::mesh
             for (int i = 0; i < nx; ++i)
                 for (int g = 1; g <= ng; ++g)
                 {
-                    f(i, -g, k) = f(i, ny - g, k);
-                    f(i, ny - 1 + g, k) = f(i, g - 1, k);
+                    f(i, -g, k) = f(i, idx_lo(ny, g), k);
+                    f(i, ny - 1 + g, k) = f(i, idx_hi(ny, g), k);
                 }
     }
     // Z faces
@@ -52,8 +89,8 @@ static inline void wrap_periodic_faces(core::mesh::Field<T>& f, const core::mesh
             for (int i = 0; i < nx; ++i)
                 for (int g = 1; g <= ng; ++g)
                 {
-                    f(i, j, -g) = f(i, j, nz - g);
-                    f(i, j, nz - 1 + g) = f(i, j, g - 1);
+                    f(i, j, -g) = f(i, j, idx_lo(nz, g));
+                    f(i, j, nz - 1 + g) = f(i, j, idx_hi(nz, g));
                 }
     }
     // Faces are enough for 7-point Laplacians.
@@ -62,42 +99,53 @@ static inline void wrap_periodic_faces(core::mesh::Field<T>& f, const core::mesh
 inline void exchange_all_fields(FieldCatalog& cat, const core::mesh::Mesh& m,
                                 void* mpi_comm_void /* may be nullptr */)
 {
-#ifdef HAVE_MPI
     if (mpi_comm_void)
     {
         MPI_Comm comm = mpi_unbox(mpi_comm_void);
         int comm_size = 1;
         MPI_Comm_size(comm, &comm_size);
-        int field_idx = 0;
         for (const AnyFieldView& v : cat.all_views())
         {
             const auto e = v.extents;
+            int tag_base = 100; // fallback window
+            if (!v.name.empty())
+            {
+                tag_base = tag_base_for_name(v.name.c_str());
+            }
             if (v.elem_size == sizeof(double))
             {
                 core::mesh::Field<double> f(static_cast<double*>(v.host_ptr), e, m.ng);
-                int tag_base = 100 + 16 * field_idx;  // unique tag range per field
                 bool ok = core::mesh::exchange_ghosts(f, m, comm, tag_base);
-                if (!ok && comm_size > 1) {
-                    int rank = -1; MPI_Comm_rank(comm, &rank);
-                    if (rank == 0) {
-                        std::cerr << "[halo] WARNING: MPI halo exchange was skipped on a multi-rank run (non-Cartesian comm or periodicity mismatch). Halos will be stale.\n";
+                if (!ok && comm_size > 1)
+                {
+                    int rank = -1;
+                    MPI_Comm_rank(comm, &rank);
+                    if (rank == 0)
+                    {
+                        LOGW("[halo] MPI halo exchange was skipped on a multi-rank run "
+                             "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n");
                     }
                 }
-                if (!ok && comm_size == 1 && (m.periodic[0] || m.periodic[1] || m.periodic[2]))
-                    wrap_periodic_faces(f, m);
             }
             else if (v.elem_size == sizeof(float))
             {
                 core::mesh::Field<float> f(static_cast<float*>(v.host_ptr), e, m.ng);
-                int tag_base = 100 + 16 * field_idx;  // unique tag range per field
-                bool ok = core::mesh::exchange_ghosts(f, m, comm, tag_base);                if (!ok && comm_size == 1 && (m.periodic[0] || m.periodic[1] || m.periodic[2]))
-                    wrap_periodic_faces(f, m);
+                bool ok = core::mesh::exchange_ghosts(f, m, comm, tag_base);
+                if (!ok && comm_size > 1)
+                {
+                    int rank = -1;
+                    MPI_Comm_rank(comm, &rank);
+                    if (rank == 0)
+                    {
+                        LOGW("[halo] MPI halo exchange was skipped on a multi-rank run "
+                             "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n");
+                    }
+                }
             }
-            ++field_idx;
         }
         return;
     }
-#endif
+
     // Non-MPI or comm==nullptr → periodic wrap fallback (only if some axis is periodic)
     if (!(m.periodic[0] || m.periodic[1] || m.periodic[2]))
         return;
@@ -123,7 +171,6 @@ inline void exchange_named_fields(FieldCatalog& cat, const core::mesh::Mesh& m,
                                   void* mpi_comm_void /* may be nullptr */,
                                   std::initializer_list<const char*> names)
 {
-#ifdef HAVE_MPI
     if (mpi_comm_void)
     {
         MPI_Comm comm = mpi_unbox(mpi_comm_void);
@@ -132,45 +179,56 @@ inline void exchange_named_fields(FieldCatalog& cat, const core::mesh::Mesh& m,
         int field_idx = 0;
         for (const char* name : names)
         {
-            if (!cat.contains(name)) {
-                ++field_idx;
-                continue; 
+            if (!cat.contains(name))
+            {
+                continue;
             }
             auto v = cat.view(name);
             const auto e = v.extents;
             if (v.elem_size == sizeof(double))
             {
                 core::mesh::Field<double> f(static_cast<double*>(v.host_ptr), e, m.ng);
-                int tag_base = 100 + 16 * field_idx;  // unique tag range per field
+                const int tag_base = tag_base_for_name(name); // rank-invariant tag range
                 bool ok = core::mesh::exchange_ghosts(f, m, comm, tag_base);
-                if (!ok && comm_size > 1) {
-                    int rank = -1; MPI_Comm_rank(comm, &rank);
-                    if (rank == 0) {
-                        std::cerr<< "[halo] WARNING: MPI halo exchange was skipped on a multi-rank run for field" << name << "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n";
+                if (!ok && comm_size > 1)
+                {
+                    int rank = -1;
+                    MPI_Comm_rank(comm, &rank);
+                    if (rank == 0)
+                    {
+                        LOGW("[halo] MPI halo exchange was skipped on a multi-rank run for field %s "
+                             "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n",
+                             name);
                     }
                 }
-                if (!ok && comm_size == 1 && (m.periodic[0] || m.periodic[1] || m.periodic[2]))
-                    wrap_periodic_faces(f, m);
             }
             else if (v.elem_size == sizeof(float))
             {
                 core::mesh::Field<float> f(static_cast<float*>(v.host_ptr), e, m.ng);
-                int tag_base = 100 + 16 * field_idx;  // unique tag range per field
+                const int tag_base = tag_base_for_name(name); // rank-invariant tag range
                 bool ok = core::mesh::exchange_ghosts(f, m, comm, tag_base);
-                if (!ok && comm_size == 1 && (m.periodic[0] || m.periodic[1] || m.periodic[2]))
-                    wrap_periodic_faces(f, m);
+                if (!ok && comm_size > 1)
+                {
+                    int rank = -1;
+                    MPI_Comm_rank(comm, &rank);
+                    if (rank == 0)
+                    {
+                        LOGW("[halo] MPI halo exchange was skipped on a multi-rank run for field %s "
+                             "(non-Cartesian comm or periodicity mismatch). Halos will be stale.\n",
+                             name);
+                    }
+                }
             }
-            ++field_idx;
         }
         return;
     }
-#endif
     if (!(m.periodic[0] || m.periodic[1] || m.periodic[2]))
         return;
 
     for (const char* name : names)
     {
-        if (!cat.contains(name)) continue;
+        if (!cat.contains(name))
+            continue;
         auto v = cat.view(name);
         const auto e = v.extents;
         if (v.elem_size == sizeof(double))

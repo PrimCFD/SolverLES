@@ -157,7 +157,7 @@ target_link_libraries(unit_core PRIVATE core Catch2::Catch2WithMain)
 
 ## How to add an **MPI** test
 
-1. Put your test source under `tests/unit/core/mpi/` (e.g. `test_exchange.cpp`). Use standard Catch2 macros in the file (no explicit `main`), and include MPI headers only under `#ifdef HAVE_MPI` if needed.
+1. Put your test source under `tests/unit/core/mpi/` (e.g. `test_exchange.cpp`). Use standard Catch2 macros in the file (no explicit `main`).
 
 2. Reference the common MPI runner (`mpi_main.cpp`) and create a new test binary in `tests/unit/core/CMakeLists.txt`:
 

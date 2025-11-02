@@ -2,9 +2,9 @@
 #include "master/FieldCatalog.hpp"
 #include "mesh/Boundary.hpp" // Array3DView + apply_* kernels
 #include "mesh/Field.hpp"    // core typed view
+#include <iostream>
 #include <memory>
 #include <string>
-#include <iostream>
 
 using namespace core::master;
 using namespace core::master::plugin;
@@ -77,9 +77,8 @@ void ApplyBCs::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     const bool perZ = tile.mesh && tile.mesh->periodic[2];
     static const BcSpec kPeriodic{BcSpec::Type::periodic, 0.0};
 
-    // Interior x-extent of this tile (used to infer each field's ghost width)
-    const int nx = tile.box.hi[0] - tile.box.lo[0];
-    auto halo_of = [&](const core::master::AnyFieldView& v) { return (v.extents[0] - nx) / 2; };
+    // Single source of truth for halo/ghost width
+    const int ng_mesh = tile.mesh ? tile.mesh->ng : 0;
 
     // Build core Field<T> wrappers (typed, non-owning) + Array3DView<T>
     std::unique_ptr<Field<double>> fu, fv, fw, fp;
@@ -88,7 +87,7 @@ void ApplyBCs::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     if (fields.contains("u"))
     {
         auto vu = fields.view("u");
-        const int ngu = halo_of(vu);
+        const int ngu = ng_mesh;
         fu = std::make_unique<Field<double>>(
             static_cast<double*>(vu.host_ptr),
             std::array<int, 3>{vu.extents[0], vu.extents[1], vu.extents[2]}, ngu);
@@ -97,7 +96,7 @@ void ApplyBCs::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     if (fields.contains("v"))
     {
         auto vv = fields.view("v");
-        const int ngv = halo_of(vv);
+        const int ngv = ng_mesh;
         fv = std::make_unique<Field<double>>(
             static_cast<double*>(vv.host_ptr),
             std::array<int, 3>{vv.extents[0], vv.extents[1], vv.extents[2]}, ngv);
@@ -106,7 +105,7 @@ void ApplyBCs::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     if (fields.contains("w"))
     {
         auto vw = fields.view("w");
-        const int ngw = halo_of(vw);
+        const int ngw = ng_mesh;
         fw = std::make_unique<Field<double>>(
             static_cast<double*>(vw.host_ptr),
             std::array<int, 3>{vw.extents[0], vw.extents[1], vw.extents[2]}, ngw);
@@ -115,7 +114,7 @@ void ApplyBCs::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     if (fields.contains("p"))
     {
         auto vp = fields.view("p");
-        const int ngp = halo_of(vp);
+        const int ngp = ng_mesh;
         fp = std::make_unique<Field<double>>(
             static_cast<double*>(vp.host_ptr),
             std::array<int, 3>{vp.extents[0], vp.extents[1], vp.extents[2]}, ngp);

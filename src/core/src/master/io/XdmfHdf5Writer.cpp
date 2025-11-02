@@ -137,9 +137,21 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
     if (!impl_->planned)
     {
         plan_ = make_plan_from_request(req.fields, cfg_.precision);
-        impl_->nx = plan_.fields.front().shape.nx;
-        impl_->ny = plan_.fields.front().shape.ny;
-        impl_->nz = plan_.fields.front().shape.nz;
+        impl_->nx = std::numeric_limits<int>::max();
+        impl_->ny = std::numeric_limits<int>::max();
+        impl_->nz = std::numeric_limits<int>::max();
+        for (const auto& f : plan_.fields)
+        {
+            impl_->nx = std::min(impl_->nx, f.shape.nx);
+            impl_->ny = std::min(impl_->ny, f.shape.ny);
+            impl_->nz = std::min(impl_->nz, f.shape.nz);
+        }
+        if (impl_->nx == std::numeric_limits<int>::max())
+            impl_->nx = 0;
+        if (impl_->ny == std::numeric_limits<int>::max())
+            impl_->ny = 0;
+        if (impl_->nz == std::numeric_limits<int>::max())
+            impl_->nz = 0;
         impl_->field_names.clear();
         for (auto& f : plan_.fields)
             impl_->field_names.push_back(f.shape.name);
@@ -159,9 +171,6 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
     hid_t g = H5Gcreate2(impl_->file, gname, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     if (g < 0)
         return;
-
-    const hsize_t dims[3] = {(hsize_t) impl_->nz, (hsize_t) impl_->ny, (hsize_t) impl_->nx};
-    hid_t space = H5Screate_simple(3, dims, nullptr);
 
     for (std::size_t i = 0; i < plan_.fields.size(); ++i)
     {
@@ -204,25 +213,29 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
             src = staging;
         }
 
-        hid_t dset = H5Dcreate2(g, fp.shape.name.c_str(), dtype, space, H5P_DEFAULT, H5P_DEFAULT,
+        const hsize_t dsz[3] = {(hsize_t) fp.shape.nz, (hsize_t) fp.shape.ny,
+                                (hsize_t) fp.shape.nx};
+        hid_t space_f = H5Screate_simple(3, dsz, nullptr);
+        hid_t dset = H5Dcreate2(g, fp.shape.name.c_str(), dtype, space_f, H5P_DEFAULT, H5P_DEFAULT,
                                 H5P_DEFAULT);
+
         if (dset < 0)
         {
-            H5Sclose(space);
+            H5Sclose(space_f);
             H5Gclose(g);
             return;
         }
         if (H5Dwrite(dset, dtype, H5S_ALL, H5S_ALL, impl_->xfer_plist, src) < 0)
         {
             H5Dclose(dset);
-            H5Sclose(space);
+            H5Sclose(space_f);
             H5Gclose(g);
             return;
         }
         H5Dclose(dset);
+        H5Sclose(space_f);
     }
 
-    H5Sclose(space);
     H5Gclose(g);
 
     // rewrite XDMF index (v2 or v3)
@@ -255,8 +268,8 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
                                                 impl_->ny, impl_->nz);
             xmf << " <Attribute Name=\"" << fname << "\" AttributeType=\"Scalar\" Center=\""
                 << center << "\">\n"
-                << " <DataItem Dimensions=\"" << impl_->nz << " " << impl_->ny << " " << impl_->nx
-                << "\" NumberType=\"Float\" Precision=\"" << fp.shape.elem_size
+                << " <DataItem Dimensions=\"" << fp.shape.nz << " " << fp.shape.ny << " "
+                << fp.shape.nx << "\" NumberType=\"Float\" Precision=\"" << fp.shape.elem_size
                 << "\" Format=\"HDF\">" << fs::path(impl_->h5_path).filename().string() << ":/"
                 << stepname << "/" << fname << "</DataItem>\n"
                 << " </Attribute>\n";

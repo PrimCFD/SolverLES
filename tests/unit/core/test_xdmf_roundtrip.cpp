@@ -86,10 +86,12 @@ TEST_CASE("XDMF/HDF5 roundtrip: two scalar fields, 1 timestep", "[io][xdmf]")
     FieldCatalog fc;
     fc.register_scalar("A", a.data(), sizeof(double), {nx, ny, nz},
                        {(std::ptrdiff_t) sizeof(double), (std::ptrdiff_t)(sizeof(double) * nx),
-                        (std::ptrdiff_t)(sizeof(double) * nx * ny)});
+                        (std::ptrdiff_t)(sizeof(double) * nx * ny)},
+                       core::master::Stagger::Cell);
     fc.register_scalar("B", b.data(), sizeof(double), {nx, ny, nz},
                        {(std::ptrdiff_t) sizeof(double), (std::ptrdiff_t)(sizeof(double) * nx),
-                        (std::ptrdiff_t)(sizeof(double) * nx * ny)});
+                        (std::ptrdiff_t)(sizeof(double) * nx * ny)},
+                       core::master::Stagger::Cell);
     fc.select_for_output("A");
     fc.select_for_output("B");
 

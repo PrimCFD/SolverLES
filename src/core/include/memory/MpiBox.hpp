@@ -1,6 +1,5 @@
 #pragma once
 
-#ifdef HAVE_MPI
 #include <mpi.h>
 
 inline void* mpi_box(MPI_Comm in)
@@ -29,15 +28,3 @@ inline void mpi_box_free(void* p)
     }
     delete pc;
 }
-#else
-
-inline void* mpi_box(int)
-{
-    return nullptr;
-}
-inline int mpi_unbox(const void*)
-{
-    return 0;
-}
-inline void mpi_box_free(void*) {}
-#endif

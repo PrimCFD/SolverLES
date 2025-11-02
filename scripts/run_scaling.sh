@@ -102,7 +102,6 @@ if [[ "${SCALING_BUILD_FIRST}" == "1" ]]; then
   # Build only perf tests (enables bench_poisson_fluids target)
   BUILD_DIR="${BUILD_DIR}" \
   CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" \
-  ENABLE_MPI="${ENABLE_MPI:-On}" \
   ENABLE_CUDA="${ENABLE_CUDA:-OFF}" \
   USE_CUDA_UM="${USE_CUDA_UM:-OFF}" \
   BUILD_TESTS=ON \

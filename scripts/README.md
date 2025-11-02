@@ -41,7 +41,6 @@
 - `BUILD_DIR` — build directory (default: `build`).  
 - `CMAKE_BUILD_TYPE` — `Debug|Release|RelWithDebInfo|MinSizeRel` (default: `Release`).  
 - `BUILD_TESTS` — `ON|OFF` (default: `ON`).  
-- `ENABLE_MPI` — `ON|OFF` toggle MPI paths (default: `OFF`).  
 - `MPIEXEC_PREFLAGS` — forwarded to CMake/CTest (e.g. `--oversubscribe`).  
 - `CMAKE_GENERATOR` — override generator (e.g. `Ninja`).  
 - `CMAKE_TOOLCHAIN_FILE` — forwarded as‑is.  
@@ -57,8 +56,8 @@
 # Debug build into a custom dir
 BUILD_DIR=build-debug CMAKE_BUILD_TYPE=Debug ./scripts/build.sh
 
-# Turn on MPI paths and pass OpenMPI oversubscribe
-ENABLE_MPI=ON MPIEXEC_PREFLAGS=--oversubscribe ./scripts/build.sh
+# Pass OpenMPI oversubscribe
+MPIEXEC_PREFLAGS=--oversubscribe ./scripts/build.sh
 
 # Extra CMake toggles
 EXTRA_CMAKE_ARGS="-DBUILD_EXAMPLES=ON -DBUILD_GUI=OFF" ./scripts/build.sh
@@ -241,11 +240,10 @@ mpi_exec 4 ./build/bin/your_mpi_program
   ```
 
 ### `run_regression_tests.sh`
-- **What it does:** Sources `mpi_env.sh`, configures with `ENABLE_MPI=ON` and runs cases with the solver. Emits JUnit to `$BUILD_DIR/test-reports/regression/` (with a safe fallback if no launcher is found).  
+- **What it does:** Sources `mpi_env.sh`, configures with MPI and runs cases with the solver. Emits JUnit to `$BUILD_DIR/test-reports/regression/` (with a safe fallback if no launcher is found).  
 - **Examples:**  
   ```bash
   ./scripts/run_regression_tests.sh
-  ENABLE_MPI=False ./scripts/run_regression_tests.sh
   BUILD_DIR=build-regression ./scripts/run_regression_tests.sh
   ```
 

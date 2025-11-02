@@ -45,32 +45,37 @@ void SGS::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     auto vv = fields.view("v"); // face-y
     auto vw = fields.view("w"); // face-z
 
-    // Get ng and center totals from a center field (prefer p, or nu_t if present)
-    int ng = 0, nxc_tot = 0, nyc_tot = 0, nzc_tot = 0;
+    if (!tile.mesh)
+        throw std::runtime_error("[fluids.sgs] tile.mesh is null; Scheduler must set it.");
+    const auto& mesh = *tile.mesh;
+    const int ng = mesh.ng;
+    const int nx_i = mesh.local[0], ny_i = mesh.local[1], nz_i = mesh.local[2];
+    const int nxc_tot = nx_i + 2 * ng;
+    const int nyc_tot = ny_i + 2 * ng;
+    const int nzc_tot = nz_i + 2 * ng;
+    const int nxu_tot = (nx_i + 1) + 2 * ng, nyu_tot = nyc_tot, nzu_tot = nzc_tot;
+    const int nxv_tot = nxc_tot, nyv_tot = (ny_i + 1) + 2 * ng, nzv_tot = nzc_tot;
+    const int nxw_tot = nxc_tot, nyw_tot = nyc_tot, nzw_tot = (nz_i + 1) + 2 * ng;
 
+    // Sanity: views should match mesh totals
+    auto check = [](const char* name, const std::array<int, 3>& e, int ex, int ey, int ez)
+    {
+        if (e[0] != ex || e[1] != ey || e[2] != ez)
+            throw std::runtime_error(std::string("[fluids.sgs] view '") + name +
+                                     "' extents do not match mesh totals.");
+    };
+    check("u", vu.extents, nxu_tot, nyu_tot, nzu_tot);
+    check("v", vv.extents, nxv_tot, nyv_tot, nzv_tot);
+    check("w", vw.extents, nxw_tot, nyw_tot, nzw_tot);
     if (fields.contains("nu_t"))
     {
-        auto vt = fields.view("nu_t"); // center field
-        nxc_tot = vt.extents[0];
-        nyc_tot = vt.extents[1];
-        nzc_tot = vt.extents[2];
-        // infer ng by comparing with tile box like you do elsewhere
-        const int nx_c = tile.box.hi[0] - tile.box.lo[0];
-        ng = (nxc_tot - nx_c) / 2;
+        auto vt = fields.view("nu_t");
+        check("nu_t", vt.extents, nxc_tot, nyc_tot, nzc_tot);
     }
-    else if (fields.contains("p"))
+    if (fields.contains("p"))
     {
-        auto vp = fields.view("p"); // center field
-        nxc_tot = vp.extents[0];
-        nyc_tot = vp.extents[1];
-        nzc_tot = vp.extents[2];
-        const int nx_c = tile.box.hi[0] - tile.box.lo[0];
-        ng = (nxc_tot - nx_c) / 2;
-    }
-    else
-    {
-        throw std::runtime_error(
-            "[fluids.sgs] need a center-located field (p or nu_t) to infer center extents.");
+        auto vp = fields.view("p");
+        check("p", vp.extents, nxc_tot, nyc_tot, nzc_tot);
     }
 
     double* nu_t = nullptr;
@@ -92,9 +97,9 @@ void SGS::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     sgs_smagorinsky_mac_c(static_cast<const double*>(vu.host_ptr),
                           static_cast<const double*>(vv.host_ptr),
                           static_cast<const double*>(vw.host_ptr),
-                          /* u faces */ vu.extents[0], vu.extents[1], vu.extents[2],
-                          /* v faces */ vv.extents[0], vv.extents[1], vv.extents[2],
-                          /* w faces */ vw.extents[0], vw.extents[1], vw.extents[2],
+                          /* u faces */ nxu_tot, nyu_tot, nzu_tot,
+                          /* v faces */ nxv_tot, nyv_tot, nzv_tot,
+                          /* w faces */ nxw_tot, nyw_tot, nzw_tot,
                           /* centers  */ nxc_tot, nyc_tot, nzc_tot, ng, dx_, dy_, dz_, Cs_, nu_t);
 }
 

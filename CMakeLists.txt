@@ -42,11 +42,7 @@ set(FETCHCONTENT_FULLY_DISCONNECTED
     OFF
     CACHE BOOL "Never attempt to reach the network even if URLs are missing")
 
-option(ENABLE_MPI "Build with MPI support" ON)
-if(ENABLE_MPI)
-  find_package(MPI REQUIRED)
-  add_compile_definitions(HAVE_MPI)
-endif()
+find_package(MPI REQUIRED)
 
 # CUDA toggle
 option(ENABLE_CUDA "Enable CUDA features (HAVE_CUDA, link cudart)" OFF)
@@ -148,9 +144,7 @@ else()
 
   # Publish PETSc’s common deps via the INTERFACE target you already use
   set(_petsc_public_deps "")
-  if(ENABLE_MPI)
-    list(APPEND _petsc_public_deps MPI::MPI_C MPI::MPI_CXX)
-  endif()
+  list(APPEND _petsc_public_deps MPI::MPI_C MPI::MPI_CXX)
   list(APPEND _petsc_public_deps BLAS::BLAS LAPACK::LAPACK)
 
   set_target_properties(

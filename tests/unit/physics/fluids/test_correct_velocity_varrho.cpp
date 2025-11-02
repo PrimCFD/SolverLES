@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <catch2/catch_all.hpp>
+#include <cmath>
 #include <vector>
 #include "kernels_fluids.h"
 
@@ -67,11 +68,34 @@ TEST_CASE(
                                   dpz_w.data(), nxu, nyu, nzu, nxv, nyv, nzv, nxw, nyw, nzw, nxc,
                                   nyc, nzc, ng, rho_c.data(), dt);
 
-    // With uniform ρ, both paths must match bitwise (allow tiny FP slack)
-    for (std::size_t i = 0; i < Nu; ++i)
-        REQUIRE(u1[i] == Approx(u2[i]));
-    for (std::size_t i = 0; i < Nv; ++i)
-        REQUIRE(v1[i] == Approx(v2[i]));
-    for (std::size_t i = 0; i < Nw; ++i)
-        REQUIRE(w1[i] == Approx(w2[i]));
+    // With uniform ρ, both paths must match on interior faces (halos unchanged by kernels)
+    auto aidx = [](int I, int J, int K, int nxT, int nyT)
+    {
+        return (std::size_t) I +
+               (std::size_t) nxT * ((std::size_t) J + (std::size_t) nyT * (std::size_t) K);
+    };
+
+    double max_du = 0, max_dv = 0, max_dw = 0;
+    // u: interior faces i = 1..nxc-1
+    for (int K = ng; K < nz + ng; ++K)
+        for (int J = ng; J < ny + ng; ++J)
+            for (int I = ng + 1; I < nx + ng; ++I)
+                max_du = std::max(
+                    max_du, std::abs(u1[aidx(I, J, K, nxu, nyu)] - u2[aidx(I, J, K, nxu, nyu)]));
+    // v: interior faces j = 1..nyc-1
+    for (int K = ng; K < nz + ng; ++K)
+        for (int J = ng + 1; J < ny + ng; ++J)
+            for (int I = ng; I < nx + ng; ++I)
+                max_dv = std::max(
+                    max_dv, std::abs(v1[aidx(I, J, K, nxv, nyv)] - v2[aidx(I, J, K, nxv, nyv)]));
+    // w: interior faces k = 1..nzc-1
+    for (int K = ng + 1; K < nz + ng; ++K)
+        for (int J = ng; J < ny + ng; ++J)
+            for (int I = ng; I < nx + ng; ++I)
+                max_dw = std::max(
+                    max_dw, std::abs(w1[aidx(I, J, K, nxw, nyw)] - w2[aidx(I, J, K, nxw, nyw)]));
+
+    REQUIRE(max_du == Approx(0.0));
+    REQUIRE(max_dv == Approx(0.0));
+    REQUIRE(max_dw == Approx(0.0));
 }

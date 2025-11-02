@@ -14,13 +14,13 @@
  * as the scheduler.
  *
  * The fields are intentionally **opaque** (stored as `void*`) to keep public headers light;
- * feature toggles (`HAVE_MPI`, `HAVE_CUDA`) guard the actual includes and casts inside `.cpp`.
+ * feature toggles (`HAVE_CUDA`) guard the actual includes and casts inside `.cpp`.
  *
  * @rst
  * .. code-block:: cpp
  *
  *   core::master::RunContext rc{};
- *   rc.mpi_comm     = reinterpret_cast<void*>(&comm);      // guarded by HAVE_MPI
+ *   rc.mpi_comm     = reinterpret_cast<void*>(&comm);   
  *   rc.device_stream= reinterpret_cast<void*>(cudaStream); // guarded by HAVE_CUDA
  *   rc.mem          = &core::memory::MemoryManager::instance();
  * @endrst

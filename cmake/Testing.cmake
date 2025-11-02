@@ -2,16 +2,15 @@ include(CTest)
 include(CMakeParseArguments)
 
 # Default mpiexec flags (OpenMPI on CI needs --oversubscribe)
-if(ENABLE_MPI AND NOT DEFINED MPIEXEC_PREFLAGS)
-  set(MPIEXEC_PREFLAGS
-      "--oversubscribe"
-      CACHE STRING "Extra flags passed to mpiexec")
-endif()
+
+set(MPIEXEC_PREFLAGS
+    "--oversubscribe"
+    CACHE STRING "Extra flags passed to mpiexec")
 
 # Robust MPI test helper: becomes a no-op if MPI is disabled. Usage: Usage:
 function(add_mpi_test name target np)
-  if(NOT ENABLE_MPI OR NOT MPIEXEC_EXECUTABLE)
-    message(STATUS "MPI disabled or launcher missing; skipping ${name}")
+  if(NOT MPIEXEC_EXECUTABLE)
+    message(STATUS "Launcher missing; skipping ${name}")
     return()
   endif()
 

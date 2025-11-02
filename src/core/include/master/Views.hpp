@@ -22,16 +22,19 @@
  *
  *   AnyFieldView v{ "rho", rho_ptr, sizeof(double), {nx,ny,nz},
  *                   { 8, nx*8, nx*ny*8 } };
- *   MeshTileView tile{ Box3i{{0,0,0},{nx,ny,nz}}, rc.device_stream };
+ *   MeshTileView tile{ mesh*, rc.device_stream };
  * @endrst
  */
 
 namespace core::master
 {
 
-struct Box3i
+enum class Stagger : uint8_t
 {
-    std::array<int, 3> lo{0, 0, 0}, hi{0, 0, 0};
+    Cell,
+    IFace,
+    JFace,
+    KFace
 };
 
 struct AnyFieldView
@@ -41,19 +44,11 @@ struct AnyFieldView
     std::size_t elem_size{0};
     std::array<int, 3> extents{0, 0, 0};
     std::array<std::ptrdiff_t, 3> strides{0, 0, 0};
-};
-
-template <class T> struct FieldView
-{
-    std::string name;
-    T* data{nullptr};
-    std::array<int, 3> extents{0, 0, 0};
-    std::array<std::ptrdiff_t, 3> strides{0, 0, 0};
+    Stagger stagger{Stagger::Cell};
 };
 
 struct MeshTileView
 {
-    Box3i box; // interior window (no halos)
     void* stream{nullptr};
     const core::mesh::Mesh* mesh = nullptr;
 };

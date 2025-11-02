@@ -64,12 +64,15 @@ At each time step the scheduler executes phases in order (MPI halos overlap with
 ### Minimal POD views across the ABI
 
 ```cpp
-struct FieldView {
-  void* host;     // core‑owned host pointer (UM or host mirror)
-  void* device;   // device mirror or same as host in UM mode
-  int   nx, ny, nz;
-  ptrdiff_t sx, sy, sz; // byte strides
-  void* stream;   // device stream/queue (opaque to the ABI)
+
+struct AnyFieldView
+{
+    std::string name;
+    void* host_ptr{nullptr};
+    std::size_t elem_size{0};
+    std::array<int, 3> extents{0, 0, 0};
+    std::array<std::ptrdiff_t, 3> strides{0, 0, 0};
+    Stagger stagger{Stagger::Cell};
 };
 
 struct MeshTileView { int i0,i1, j0,j1, k0,k1; /* + metadata */ };

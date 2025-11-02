@@ -16,7 +16,7 @@ mesh:
 
 # Time integration and writer cadence
 time:
-  dt: 5.0e-2 # required (seconds)
+  dt: 5.0e-2 # required (seconds) => fixed stepping
   t_end: 1.0 # required (seconds)
   write_every: # choose one; if both set, 'steps' wins
     steps: 1 # write every N steps
@@ -56,14 +56,26 @@ program:
     nu: "1e-3"
     Cs: "0.16"
 
-    time_scheme: "be"         # "fe" (MVP) or "be" (residual-driven)
-    #fe_iters: "1"             # fixed FE sweeps per step (use 2–3 if you want an extra polish)
-    be_rtol: "1e-3"  # (only used if time_scheme=be)
-    be_max_iters: "50"
-    p_iters: "3" # Poisson iterations (0 => writes p=0)
+    scheme: "piso"                 # Projection loop (PISO/IPISO)
 
-    adv_blend: "0.0"
-    cfl: "0.7"
+    # --- Time integration (advection + diffusion) ---
+    time_scheme: "abm3"            # "fe"  = all Forward Euler
+                                  # "be"  = BE diffusion (residual-driven), AB1 advection
+                                  # "abm3"= ABM3 advection (AB1/AB2 startup), diffusion chosen by be_max_iters
+
+    # Advection controls
+    advect: "on"                   # "on" to include -(u·∇)u, "off" to disable advection entirely
+    adv_blend: "0.0"               # 0..1 limiter blend used by KK3 advection (0 = centered, 1 = upwindier)
+
+    # Diffusion controls (used when time_scheme is "be" OR when "abm3" + be_max_iters>0)
+    pred_imp_solver: "rbgs"        # "rbgs" (red-black Gauss–Seidel) or "jacobi"
+    be_rtol: "1e-3"                # Relative residual stop (||r||/||rhs||); tighter => more work
+    be_max_iters: "50"             # >0 => BE diffusion; set to "0" to use FE diffusion (even with time_scheme=abm3)
+    pred_imp_order: "2"           # 1=BE, 2=CN (recommended for pure diffusion), 3=AM3
+
+    # Poisson / pressure projection
+    p_iters: "3"                   # >=1 to run pressure Poisson; "0" writes p=0 (no projection this step)
+    div_tol: "1e-7"                # Target divergence tolerance used by the Poisson solve (projection phase)
 
     bc.u.west:   "dirichlet:0"
     bc.u.east:   "dirichlet:0"

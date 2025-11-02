@@ -8,7 +8,6 @@ set -euo pipefail
 #   BUILD_DIR                build dir (relative to repo root unless absolute) [default: build]
 #   CMAKE_BUILD_TYPE         Debug/Release/RelWithDebInfo/MinSizeRel [default: Release]
 #   BUILD_TESTS              ON/OFF (configure tests) [default: ON]
-#   ENABLE_MPI               ON/OFF (toggle MPI paths) [default: OFF]
 #   MPIEXEC_PREFLAGS         forwarded to CMake (e.g., --oversubscribe for OpenMPI)
 #   CMAKE_GENERATOR          override generator (e.g., "Ninja")
 #   CMAKE_TOOLCHAIN_FILE     forwarded if set
@@ -17,7 +16,7 @@ set -euo pipefail
 #
 # Examples:
 #   CMAKE_BUILD_TYPE=Debug ./build.sh
-#   BUILD_DIR=build-mpi ENABLE_MPI=ON ./build.sh
+#   BUILD_DIR=build-regression ./build.sh
 #   EXTRA_CMAKE_ARGS="-DUSE_SYSTEM_HDF5=OFF" ./build.sh
 
 # --- Locate repo root by walking up to nearest CMakeLists.txt
@@ -64,7 +63,6 @@ export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 # --- Defaults (overridable)
 CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
 BUILD_TESTS="${BUILD_TESTS:-OFF}"
-ENABLE_MPI="${ENABLE_MPI:-OFF}"
 ENABLE_CUDA="${ENABLE_CUDA:-OFF}"
 USE_CUDA_UM="${USE_CUDA_UM:-OFF}" 
 
@@ -95,11 +93,6 @@ cmake_args=(
   -DUSE_CUDA_UM="${USE_CUDA_UM}"
   -DCMAKE_MESSAGE_LOG_LEVEL=WARNING -Wno-dev
 )
-
- # Only forward ENABLE_MPI if user/runner explicitly set it
- if [[ -n "${ENABLE_MPI+x}" ]]; then
-   cmake_args+=( -DENABLE_MPI="${ENABLE_MPI}" )
- fi
 
 # If the user points to a system PETSc, prefer it
 if [[ -n "${PETSC_DIR:-}" ]]; then
@@ -240,8 +233,8 @@ petsc_doctor() {
   echo "   • cxxflags:  ${xflags}"
 
   # Hard failures when the selection contradicts the build mode
-  if [[ "${ENABLE_MPI:-OFF}" =~ ^[Oo][Nn]$ ]] && [[ "${mpiexec}" == *"petsc-mpiexec.uni"* ]]; then
-    echo "❌ You asked for MPI (ENABLE_MPI=ON) but PETSc is serial (mpiuni)."
+  if [[ "${mpiexec}" == *"petsc-mpiexec.uni"* ]]; then
+    echo "❌ PETSc is serial (mpiuni)."
     echo "   Fix by exporting PETSC_DIR (MPI build) or rebuilding vendored PETSc with --with-mpi=1."
     exit 2
   fi

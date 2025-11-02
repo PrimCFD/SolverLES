@@ -1,3 +1,4 @@
+#include "master/Log.hpp"
 #include "memory/MemoryManager.hpp"
 #include "simple_bench.hpp"
 #include <cstdlib>
@@ -9,6 +10,9 @@
 
 int main(int argc, char** argv)
 {
+    // Logger: rank0-only INFO by default (overridable via SOLVER_LOG=...)
+    core::master::logx::init({core::master::logx::Level::Info, /*color*/true, /*rank0_only*/true});
+
     const std::size_t BYTES = (argc > 1)
                                   ? std::strtoull(argv[1], nullptr, 10) // user-supplied bytes
                                   : (1u << 24);                         // default 16 MiB
@@ -19,6 +23,7 @@ int main(int argc, char** argv)
 
 #ifndef HAVE_CUDA
     std::cout << "bench_copy skipped: CUDA not enabled\n";
+    LOGI("bench_copy: CUDA not enabled; test skipped.\n");
     mm.release(host);
     return 0; // test passes (skipped)
 #else

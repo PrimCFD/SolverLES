@@ -17,7 +17,8 @@ struct CountingWriter : master::io::IWriter
 static void setup_one_field(master::Master& m)
 {
     std::vector<double> a(8, 0.0);
-    m.fields().register_scalar("a", a.data(), sizeof(double), {2, 2, 2}, {1, 2, 4});
+    m.fields().register_scalar("a", a.data(), sizeof(double), {2, 2, 2}, {1, 2, 4},
+                               core::master::Stagger::Cell);
     m.fields().select_for_output("a");
 }
 

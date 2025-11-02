@@ -145,38 +145,29 @@ TEST_CASE("MG Poisson reproduces manufactured p* (β=1) using FieldCatalog::regi
 
     // One-tile view for [0,nx)×[0,ny)×[0,nz)
     MeshTileView tile{};
-    tile.box.lo[0] = 0;
-    tile.box.lo[1] = 0;
-    tile.box.lo[2] = 0;
-    tile.box.hi[0] = nx;
-    tile.box.hi[1] = ny;
-    tile.box.hi[2] = nz;
-
     FieldCatalog fields;
 
-    // Register p (centers)
+    // Register
     fields.register_scalar("p", p.data(), sizeof(double), {nxc_tot, nyc_tot, nzc_tot},
-                           strides_bytes(nxc_tot, nyc_tot));
-
-    // Register u, v, w (MAC faces)
+                           strides_bytes(nxc_tot, nyc_tot), core::master::Stagger::Cell);
     fields.register_scalar("u", u.data(), sizeof(double), {nxu_tot, nyu_tot, nzu_tot},
-                           strides_bytes(nxu_tot, nyu_tot));
+                           strides_bytes(nxu_tot, nyu_tot), core::master::Stagger::IFace);
     fields.register_scalar("v", v.data(), sizeof(double), {nxv_tot, nyv_tot, nzv_tot},
-                           strides_bytes(nxv_tot, nyv_tot));
+                           strides_bytes(nxv_tot, nyv_tot), core::master::Stagger::JFace);
     fields.register_scalar("w", w.data(), sizeof(double), {nxw_tot, nyw_tot, nzw_tot},
-                           strides_bytes(nxw_tot, nyw_tot));
-
-    // Register rho (centers)
+                           strides_bytes(nxw_tot, nyw_tot), core::master::Stagger::KFace);
     fields.register_scalar("rho", rho.data(), sizeof(double), {nxc_tot, nyc_tot, nzc_tot},
-                           strides_bytes(nxc_tot, nyc_tot));
+                           strides_bytes(nxc_tot, nyc_tot), core::master::Stagger::Cell);
 
     // Build MG Poisson action
-    KV kv{{"dx", std::to_string(dx)},
-          {"dy", std::to_string(dy)},
-          {"dz", std::to_string(dz)},
-          {"rho", "1.0"},
-          {"iters", "50"},
-          {"div_tol", "1e-10"},};
+    KV kv{
+        {"dx", std::to_string(dx)},
+        {"dy", std::to_string(dy)},
+        {"dz", std::to_string(dz)},
+        {"rho", "1.0"},
+        {"iters", "50"},
+        {"div_tol", "1e-10"},
+    };
 
     core::master::RunContext rc{};
     auto poisson = fluids::make_poisson(kv, rc);

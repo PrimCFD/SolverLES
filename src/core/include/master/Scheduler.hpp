@@ -30,7 +30,6 @@
  *    }
  * @endrst
  *
- * @note MPI calls are compiled only with ``HAVE_MPI``. Non-MPI builds treat exchange as a no-op.
  */
 
 namespace core::master

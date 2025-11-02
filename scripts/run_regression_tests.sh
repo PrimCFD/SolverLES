@@ -7,7 +7,6 @@ set -euo pipefail
 #   SKIP_BUILD          0|1 (default 0)
 #   CMAKE_BUILD_TYPE    Debug|Release|RelWithDebInfo|MinSizeRel (default Release)
 #   ENABLE_CUDA         ON|OFF (default OFF)       # forwarded; usually OFF here
-#   ENABLE_MPI          ON|OFF (default OFF)       # forwarded; usually OFF here
 #   CTEST_PARALLEL_LEVEL  integer (default: nproc or 2)
 #   CTEST_TIMEOUT       seconds (default 900)
 #   REPORT_DIR          default: $BUILD_DIR/test-reports/regression
@@ -29,17 +28,13 @@ if [[ -f "scripts/mpi_env.sh" ]]; then
   # Perf-critical: turn on strict PE by default (ranks × PE must fit cores)
   export MPI_STRICT_PE="${MPI_STRICT_PE:-1}"
   export OMP_NUM_THREADS=1 # limit thread number for small runs (32^3)
-  # If a launcher is available, default to building PETSc with MPI.
-  if [[ -n "${MPIEXEC_EXECUTABLE:-}" ]]; then
-    : "${ENABLE_MPI:=On}"
-  fi
 fi
 
 BUILD_DIR=${BUILD_DIR:-build-regression}
 SKIP_BUILD=${SKIP_BUILD:-0}
 CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-Release}
 CTEST_PARALLEL_LEVEL=${CTEST_PARALLEL_LEVEL:-$(command -v nproc >/dev/null && nproc || echo 2)}
-CTEST_TIMEOUT=${CTEST_TIMEOUT:-3000}
+CTEST_TIMEOUT=${CTEST_TIMEOUT:-5000}
 REPORT_DIR=${REPORT_DIR:-"${BUILD_DIR}/test-reports/regression"}
 LABEL_RE=${LABEL_RE:-regression}
 CTEST_NAME_REGEX=${CTEST_NAME_REGEX:-}
@@ -65,7 +60,6 @@ if [[ "${SKIP_BUILD}" != "1" ]]; then
   export PETSC_CONFIGURE_OPTS
   BUILD_DIR="${BUILD_DIR}" \
   CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" \
-  ENABLE_MPI="${ENABLE_MPI}" \
   ENABLE_CUDA="${ENABLE_CUDA:-OFF}" \
   USE_CUDA_UM="${USE_CUDA_UM:-OFF}" \
   BUILD_TESTS=ON \

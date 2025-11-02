@@ -22,7 +22,7 @@ _have() { command -v "$1" >/dev/null 2>&1; }
 _lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
 MPI_MODE="$(_lower "${1:-${MPI_MODE:-auto}}")"
-MPI_TEST_NP="${MPI_TEST_NP:-2}"      # default np for mpi_exec if omitted
+MPI_TEST_NP="${MPI_TEST_NP:-8}"      # default np for mpi_exec if omitted
 # Laptop-friendly binding (Open MPI) — overridden by scheduler on clusters
 MPI_BIND="${MPI_BIND:-core}"
 MPI_MAP_BY="${MPI_MAP_BY:-core}"

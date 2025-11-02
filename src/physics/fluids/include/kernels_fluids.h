@@ -40,43 +40,46 @@ extern "C"
                                        const double* rho_c, double dt);
 
     // FE (one shot)
-    void diffuse_velocity_fe_c(const double* u, const double* v, const double* w,
-                               const double* nu_eff, int nx_tot, int ny_tot, int nz_tot, int ng,
-                               double dx, double dy, double dz, double dt, double* uo, double* vo,
-                               double* wo);
+    void diffuse_velocity_fe_mac_c(const double* u, int nxu_tot, int nyu_tot, int nzu_tot,
+                                   const double* v, int nxv_tot, int nyv_tot, int nzv_tot,
+                                   const double* w, int nxw_tot, int nyw_tot, int nzw_tot,
+                                   const double* nu_eff, int nxc_tot, int nyc_tot, int nzc_tot,
+                                   int ng, double dx, double dy, double dz, double dt, double* uo,
+                                   double* vo, double* wo);
 
     // BE: one Jacobi sweep (interior only)
-    void diffuse_velocity_be_sweep_c(const double* u_rhs, const double* v_rhs, const double* w_rhs,
-                                     const double* u_iter, const double* v_iter,
-                                     const double* w_iter, const double* nu_eff, int nx_tot,
-                                     int ny_tot, int nz_tot, int ng, double dx, double dy,
-                                     double dz, double dt, double* u_next, double* v_next,
-                                     double* w_next);
+    void diffuse_velocity_be_sweep_mac_c(
+        const double* u_rhs, const double* v_rhs, const double* w_rhs, const double* u_iter,
+        const double* v_iter, const double* w_iter, const double* nu_eff, int nxc_tot, int nyc_tot,
+        int nzc_tot, int nxu_tot, int nyu_tot, int nzu_tot, int nxv_tot, int nyv_tot, int nzv_tot,
+        int nxw_tot, int nyw_tot, int nzw_tot, int ng, double dx, double dy, double dz, double dt,
+        double* u_next, double* v_next, double* w_next);
 
     // BE: one red–black Gauss/Streidel sweep (interior only)
-    void diffuse_velocity_be_gs_color_c(double* u, double* v, double* w, const double* u_rhs,
-                                        const double* v_rhs, const double* w_rhs,
-                                        const double* nu_eff, int nx_tot, int ny_tot, int nz_tot,
-                                        int ng, double dx, double dy, double dz, double dt,
-                                        int color /* 0=red, 1=black */);
+    void diffuse_velocity_be_gs_color_mac_c(double* u, double* v, double* w, const double* u_rhs,
+                                            const double* v_rhs, const double* w_rhs,
+                                            const double* nu_eff, int nxc_tot, int nyc_tot,
+                                            int nzc_tot, int nxu_tot, int nyu_tot, int nzu_tot,
+                                            int nxv_tot, int nyv_tot, int nzv_tot, int nxw_tot,
+                                            int nyw_tot, int nzw_tot, int ng, double dx, double dy,
+                                            double dz, double dt, int color /* 0=red, 1=black */);
 
     // BE: residual (needs valid halos on u_next, v_next, w_next)
-    void diffuse_velocity_be_residual_c(const double* u_rhs, const double* v_rhs,
-                                        const double* w_rhs, const double* u_next,
-                                        const double* v_next, const double* w_next,
-                                        const double* nu_eff, int nx_tot, int ny_tot, int nz_tot,
-                                        int ng, double dx, double dy, double dz, double dt,
-                                        double* res2, double* rhs2);
+    void diffuse_velocity_be_residual_mac_c(const double* u_rhs, const double* v_rhs,
+                                            const double* w_rhs, const double* u_next,
+                                            const double* v_next, const double* w_next,
+                                            const double* nu_eff, int nxc_tot, int nyc_tot,
+                                            int nzc_tot, int nxu_tot, int nyu_tot, int nzu_tot,
+                                            int nxv_tot, int nyv_tot, int nzv_tot, int nxw_tot,
+                                            int nyw_tot, int nzw_tot, int ng, double dx, double dy,
+                                            double dz, double dt, double* res2, double* rhs2);
 
-    void advect_velocity_kk3_c(const double* u, const double* v, const double* w, int nx_tot,
-                               int ny_tot, int nz_tot, int ng, double dx, double dy, double dz,
-                               double blend, double* nu_u, double* nu_v, double* nu_w);
-
+    /* KK MAC advection: central 4th + (C/4)|U| * 4th-diff */
     void advect_velocity_kk3_mac_c(const double* u, int nxu_tot, int nyu_tot, int nzu_tot,
                                    const double* v, int nxv_tot, int nyv_tot, int nzv_tot,
                                    const double* w, int nxw_tot, int nyw_tot, int nzw_tot, int ng,
-                                   double dx, double dy, double dz, double blend, double* nu_u,
-                                   double* nu_v, double* nu_w);
+                                   double dx, double dy, double dz, double kkC, double* Nu,
+                                   double* Nv, double* Nw);
 
 #ifdef __cplusplus
 }

@@ -50,7 +50,7 @@ if(TARGET CGNS::cgns)
   target_link_libraries(core PUBLIC CGNS::cgns)
 endif()
 
-# Propagate global compile definitions (USE_CUDA_UM, HAVE_MPI, HAVE_CUDA) They
+# Propagate global compile definitions (USE_CUDA_UM, HAVE_CUDA) They
 # are already set at directory scope by the root listfile, nothing to do.
 
 # Installation helpers (optional but recommended) ----------------------------

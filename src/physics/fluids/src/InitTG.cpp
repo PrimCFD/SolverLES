@@ -1,6 +1,8 @@
 #include "InitTG.hpp"
 #include "master/FieldCatalog.hpp"
 #include "master/Views.hpp"
+#include "mesh/Mesh.hpp"
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
@@ -42,46 +44,120 @@ void InitTG::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     if (!fields.contains("u") || !fields.contains("v") || !fields.contains("w"))
         throw std::runtime_error("[fluids.init_tg] fields u/v/w must be registered by the app.");
 
+    // Views (u: IFace, v: JFace, w: KFace on a MAC grid)
     auto vu = fields.view("u");
     auto vv = fields.view("v");
     auto vw = fields.view("w");
 
-    auto nx_tot = vu.extents[0], ny_tot = vu.extents[1], nz_tot = vu.extents[2];
-    auto nx = tile.box.hi[0] - tile.box.lo[0];
-    auto ny = tile.box.hi[1] - tile.box.lo[1];
-    auto nz = tile.box.hi[2] - tile.box.lo[2];
-    int ng = (nx_tot - nx) / 2;
+    // ---- Single Source of Truth (mesh) for halos and interior cell counts ----
+    if (!tile.mesh)
+        throw std::runtime_error("[fluids.init_tg] tile.mesh is null; Scheduler must set it.");
+    const auto& mesh = *tile.mesh;
+    const int ng = mesh.ng; // authoritative ghost/halo width
+    const int nx_c = mesh.local[0], ny_c = mesh.local[1],
+              nz_c = mesh.local[2]; // interior cells (centers)
+
+    // Totals implied by MAC staggering (+1 along face-normal)
+    const int nxc_tot = nx_c + 2 * ng, nyc_tot = ny_c + 2 * ng, nzc_tot = nz_c + 2 * ng;
+    const int nxu_tot = (nx_c + 1) + 2 * ng, nyu_tot = nyc_tot, nzu_tot = nzc_tot;
+    const int nxv_tot = nxc_tot, nyv_tot = (ny_c + 1) + 2 * ng, nzv_tot = nzc_tot;
+    const int nxw_tot = nxc_tot, nyw_tot = nyc_tot, nzw_tot = (nz_c + 1) + 2 * ng;
+
+    // Optional sanity: allocated views must match mesh totals
+    auto check = [](const char* name, const std::array<int, 3>& e, int ex, int ey, int ez)
+    {
+        if (e[0] != ex || e[1] != ey || e[2] != ez)
+            throw std::runtime_error(std::string("[fluids.init_tg] view '") + name +
+                                     "' extents do not match mesh totals.");
+    };
+    check("u", vu.extents, nxu_tot, nyu_tot, nzu_tot);
+    check("v", vv.extents, nxv_tot, nyv_tot, nzv_tot);
+    check("w", vw.extents, nxw_tot, nyw_tot, nzw_tot);
+
+    // Linear indexers per field (row-major: x fastest)
+    auto idxU = [nxu_tot, nyu_tot](int i, int j, int k) -> std::size_t
+    {
+        return std::size_t(i) +
+               std::size_t(nxu_tot) * (std::size_t(j) + std::size_t(nyu_tot) * std::size_t(k));
+    };
+    auto idxV = [nxv_tot, nyv_tot](int i, int j, int k) -> std::size_t
+    {
+        return std::size_t(i) +
+               std::size_t(nxv_tot) * (std::size_t(j) + std::size_t(nyv_tot) * std::size_t(k));
+    };
+    auto idxW = [nxw_tot, nyw_tot](int i, int j, int k) -> std::size_t
+    {
+        return std::size_t(i) +
+               std::size_t(nxw_tot) * (std::size_t(j) + std::size_t(nyw_tot) * std::size_t(k));
+    };
 
     double* u = static_cast<double*>(vu.host_ptr);
     double* v = static_cast<double*>(vv.host_ptr);
     double* w = static_cast<double*>(vw.host_ptr);
 
-    auto idx = [nx_tot, ny_tot](int i, int j, int k) -> std::size_t
-    {
-        return std::size_t(i) +
-               std::size_t(nx_tot) * (std::size_t(j) + std::size_t(ny_tot) * std::size_t(k));
-    };
+    // Physical spacings based on cell counts
+    const double dx = Lx_ / nx_c;
+    const double dy = Ly_ / ny_c;
+    const double dz = Lz_ / nz_c;
 
-    // Fill interior with Taylor–Green vortex at t=0
-    for (int k = 0; k < nz; ++k)
+    // ---- U on IFaces: x at faces, y/z at centers ----
+    // Interior face counts along each axis
+    const int nx_u = nx_c + 1; // +1 along normal
+    for (int k = 0; k < nz_c; ++k)
     {
-        const double z = (k + 0.5) * (Lz_ / nz);
-        for (int j = 0; j < ny; ++j)
+        const double zc = (k + 0.5) * dz; // cell-center in z
+        for (int j = 0; j < ny_c; ++j)
         {
-            const double y = (j + 0.5) * (Ly_ / ny);
-            for (int i = 0; i < nx; ++i)
-            {
-                const double x = (i + 0.5) * (Lx_ / nx);
+            const double yc = (j + 0.5) * dy; // cell-center in y
+            for (int i = 0; i < nx_u; ++i)
+            {                             // faces in x
+                const double xf = i * dx; // face in x
                 const int I = i + ng, J = j + ng, K = k + ng;
-                const double s = std::sin(2 * M_PI * x / Lx_);
-                const double c = std::cos(2 * M_PI * x / Lx_);
-                const double sy = std::sin(2 * M_PI * y / Ly_);
-                const double cy = std::cos(2 * M_PI * y / Ly_);
-                const double sz = std::sin(2 * M_PI * z / Lz_);
-                const double cz = std::cos(2 * M_PI * z / Lz_);
-                u[idx(I, J, K)] = U0_ * s * cy * cz;
-                v[idx(I, J, K)] = -U0_ * c * sy * cz;
-                w[idx(I, J, K)] = 0.0;
+                const double sX = std::sin(2 * M_PI * xf / Lx_);
+                const double cY = std::cos(2 * M_PI * yc / Ly_);
+                const double cZ = std::cos(2 * M_PI * zc / Lz_);
+                u[idxU(I, J, K)] = U0_ * sX * cY * cZ;
+            }
+        }
+    }
+
+    // ---- V on JFaces: y at faces, x/z at centers ----
+    const int ny_v = ny_c + 1; // +1 along normal
+    for (int k = 0; k < nz_c; ++k)
+    {
+        const double zc = (k + 0.5) * dz;
+        for (int j = 0; j < ny_v; ++j)
+        { // faces in y
+            const double yf = j * dy;
+            for (int i = 0; i < nx_c; ++i)
+            {
+                const double xc = (i + 0.5) * dx;
+                const int I = i + ng, J = j + ng, K = k + ng;
+                const double cX = std::cos(2 * M_PI * xc / Lx_);
+                const double sY = std::sin(2 * M_PI * yf / Ly_);
+                const double cZ = std::cos(2 * M_PI * zc / Lz_);
+                v[idxV(I, J, K)] = -U0_ * cX * sY * cZ;
+            }
+        }
+    }
+
+    // ---- W on KFaces: z at faces, x/y at centers ----
+    const int nz_w = nz_c + 1; // +1 along normal
+    for (int k = 0; k < nz_w; ++k)
+    { // faces in z
+        const double zf = k * dz;
+        for (int j = 0; j < ny_c; ++j)
+        {
+            const double yc = (j + 0.5) * dy;
+            for (int i = 0; i < nx_c; ++i)
+            {
+                const double xc = (i + 0.5) * dx;
+                const int I = i + ng, J = j + ng, K = k + ng;
+                // Standard 3D TG often has w=0; keep it zero unless you use a symmetric variant.
+                (void) zf;
+                (void) xc;
+                (void) yc;
+                w[idxW(I, J, K)] = 0.0;
             }
         }
     }

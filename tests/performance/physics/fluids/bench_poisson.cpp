@@ -1,10 +1,11 @@
+#include "memory/MpiBox.hpp"
 #include "simple_bench.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <mpi.h>
 #include <string>
 #include <vector>
-#include <cstdlib>
-#include <string>
 
 // PETSc/MPI lifecycle
 #include "test_petsc_guard.hpp"
@@ -15,7 +16,6 @@
 #include "master/FieldCatalog.hpp"
 #include "master/RunContext.hpp"
 #include "master/Views.hpp"
-
 
 // Byte-stride helper
 static inline std::array<std::ptrdiff_t, 3> strides_bytes(int nx, int ny)
@@ -98,10 +98,11 @@ int main(int argc, char** argv)
     // Allow override via PETSc options: -nx/-ny/-nz
     {
         PetscBool setx = PETSC_FALSE, sety = PETSC_FALSE, setz = PETSC_FALSE;
-        (void)PetscOptionsGetInt(NULL, NULL, "-nx", &nx, &setx);
-        (void)PetscOptionsGetInt(NULL, NULL, "-ny", &ny, &sety);
-        (void)PetscOptionsGetInt(NULL, NULL, "-nz", &nz, &setz);
-        (void)PetscPrintf(PETSC_COMM_WORLD, "[bench] grid chosen: nx=%d ny=%d nz=%d\n", nx, ny, nz);
+        (void) PetscOptionsGetInt(NULL, NULL, "-nx", &nx, &setx);
+        (void) PetscOptionsGetInt(NULL, NULL, "-ny", &ny, &sety);
+        (void) PetscOptionsGetInt(NULL, NULL, "-nz", &nz, &setz);
+        (void) PetscPrintf(PETSC_COMM_WORLD, "[bench] grid chosen: nx=%d ny=%d nz=%d\n", nx, ny,
+                           nz);
     }
 
     const int nxc_tot = nx + 2 * ng, nyc_tot = ny + 2 * ng, nzc_tot = nz + 2 * ng;
@@ -133,24 +134,18 @@ int main(int argc, char** argv)
 
     // One-tile view like the tests
     core::master::MeshTileView tile{};
-    tile.box.lo[0] = 0;
-    tile.box.lo[1] = 0;
-    tile.box.lo[2] = 0;
-    tile.box.hi[0] = nx;
-    tile.box.hi[1] = ny;
-    tile.box.hi[2] = nz;
 
     core::master::FieldCatalog fields;
     fields.register_scalar("p", p.data(), sizeof(double), {nxc_tot, nyc_tot, nzc_tot},
-                           strides_bytes(nxc_tot, nyc_tot));
+                           strides_bytes(nxc_tot, nyc_tot), core::master::Stagger::Cell);
     fields.register_scalar("u", u.data(), sizeof(double), {nxu_tot, nyu_tot, nzu_tot},
-                           strides_bytes(nxu_tot, nyu_tot));
+                           strides_bytes(nxu_tot, nyu_tot), core::master::Stagger::IFace);
     fields.register_scalar("v", v.data(), sizeof(double), {nxv_tot, nyv_tot, nzv_tot},
-                           strides_bytes(nxv_tot, nyv_tot));
+                           strides_bytes(nxv_tot, nyv_tot), core::master::Stagger::JFace);
     fields.register_scalar("w", w.data(), sizeof(double), {nxw_tot, nyw_tot, nzw_tot},
-                           strides_bytes(nxw_tot, nyw_tot));
+                           strides_bytes(nxw_tot, nyw_tot), core::master::Stagger::KFace);
     fields.register_scalar("rho", rho.data(), sizeof(double), {nxc_tot, nyc_tot, nzc_tot},
-                           strides_bytes(nxc_tot, nyc_tot));
+                           strides_bytes(nxc_tot, nyc_tot), core::master::Stagger::Cell);
 
     // Build the MG Poisson action
     core::master::plugin::KV kv{{"dx", std::to_string(dx)},
@@ -160,7 +155,28 @@ int main(int argc, char** argv)
                                 {"iters", "50"},
                                 {"div_tol", "1e-10"}};
 
+    // --- Build an MPI Cartesian communicator just like the app does ---
     core::master::RunContext rc{};
+    {
+        int world_size = 1, world_rank = 0;
+        MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+        MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
+        // Heuristic: try to form a near-cube 3D grid of ranks
+        int dims[3] = {0, 0, 0};
+        MPI_Dims_create(world_size, 3, dims); // fills dims in-place
+        int periods[3] = {0, 0, 0};           // non-periodic for this bench
+
+        MPI_Comm cart_comm = MPI_COMM_NULL;
+        MPI_Cart_create(MPI_COMM_WORLD, 3, dims, periods, /*reorder*/ 1, &cart_comm);
+        if (cart_comm == MPI_COMM_NULL)
+            cart_comm = MPI_COMM_WORLD; // fallback
+
+        // Stash the MPI topology/comm into the runtime context so the solver uses it
+        rc.mpi_comm = mpi_box(cart_comm);
+        rc.world_size = world_size;
+        rc.world_rank = world_rank;
+    }
 
     // Time a full action execute (this runs MG inside PressurePoisson)
     // >>> Build the solver ONCE <<<
@@ -171,15 +187,25 @@ int main(int argc, char** argv)
 
     // Allow quick override of iterations: BENCH_ITERS (default 5 for heavy tests)
     int iters = 5;
-    if (const char* s = std::getenv("BENCH_ITERS")) {
-        try { iters = std::max(1, std::stoi(std::string{s})); } catch (...) {}
+    if (const char* s = std::getenv("BENCH_ITERS"))
+    {
+        try
+        {
+            iters = std::max(1, std::stoi(std::string{s}));
+        }
+        catch (...)
+        {
+        }
     }
 
-    auto [mean_us, stddev_us] = bench::run([&]{
-        // Just solve; no reconstruction of objects
-        poisson->execute(tile, fields, dt);
-    }, iters);
-
-    bench::report("fluids_poisson_petsc_mg_64^3", mean_us, stddev_us, 0.0);
+    // MPI-correct timing: global max across ranks per iteration, then stats
+    auto [mean_us, stddev_us] = bench::run_mpi_max(
+        MPI_COMM_WORLD,
+        [&]
+        {
+            poisson->execute(tile, fields, dt); // no reconstruction
+        },
+        iters);
+    bench::report_root(MPI_COMM_WORLD, "fluids_poisson_petsc_mg_64^3", mean_us, stddev_us, 0.0);
     return 0;
 }

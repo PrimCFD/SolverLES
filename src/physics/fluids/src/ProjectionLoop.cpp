@@ -8,9 +8,7 @@
 #include <iostream>
 #include <stdexcept>
 #include "kernels_fluids.h"
-#ifdef HAVE_MPI
 #include <mpi.h>
-#endif
 
 #include "memory/MpiBox.hpp"
 
@@ -59,19 +57,44 @@ double ProjectionLoop::compute_div_linf(const core::master::MeshTileView& tile,
     auto vw = fields.view("w");
     auto vp = fields.view("p");
 
-    // Infer ghosts from centers for this tile
-    const int nx_i = tile.box.hi[0] - tile.box.lo[0];
-    const int ng = (vp.extents[0] - nx_i) / 2;
+    // --- MAC shape invariants with single Source of Truth (mesh) ---
+    if (!tile.mesh)
+        throw std::runtime_error("[fluids.predictor] tile.mesh is null; Scheduler must set it.");
+    const auto& mesh = *tile.mesh;
+    const int ng = mesh.ng;
+    const int nxc = vp.extents[0] - 2 * ng;
+    const int nyc = vp.extents[1] - 2 * ng;
+    const int nzc = vp.extents[2] - 2 * ng;
+    auto check = [](const char* nm, int got, int exp)
+    {
+        if (got != exp)
+        {
+            throw std::runtime_error(std::string("[MAC layout] Field '") + nm +
+                                     "' interior count is " + std::to_string(got) +
+                                     " but expected " + std::to_string(exp) +
+                                     " (face-centered must be +1 along its normal).");
+        }
+    };
+    const int nxu = vu.extents[0] - 2 * ng, nyu = vu.extents[1] - 2 * ng,
+              nzu = vu.extents[2] - 2 * ng;
+    const int nxv = vv.extents[0] - 2 * ng, nyv = vv.extents[1] - 2 * ng,
+              nzv = vv.extents[2] - 2 * ng;
+    const int nxw = vw.extents[0] - 2 * ng, nyw = vw.extents[1] - 2 * ng,
+              nzw = vw.extents[2] - 2 * ng;
+    check("u(x-face).nx", nxu, nxc + 1);
+    check("u.ny", nyu, nyc);
+    check("u.nz", nzu, nzc);
+    check("v.nx", nxv, nxc);
+    check("v(y-face).ny", nyv, nyc + 1);
+    check("v.nz", nzv, nzc);
+    check("w.nx", nxw, nxc);
+    check("w.ny", nyw, nyc);
+    check("w(z-face).nz", nzw, nzc + 1);
 
     // Center totals (divergence is center-located)
     const int nxc_tot = vp.extents[0];
     const int nyc_tot = vp.extents[1];
     const int nzc_tot = vp.extents[2];
-
-    // Mesh-like for centers (only if you later exchange; harmless to set)
-    core::mesh::Mesh mesh_like = *tile.mesh;
-    mesh_like.local = std::array<int, 3>{nxc_tot - 2 * ng, nyc_tot - 2 * ng, nzc_tot - 2 * ng};
-    mesh_like.ng = ng;
 
     // Build divergence (center-sized) and compute via MAC operator
     std::vector<double> divergence((std::size_t) nxc_tot * nyc_tot * nzc_tot, 0.0);
@@ -100,10 +123,6 @@ double ProjectionLoop::compute_div_linf(const core::master::MeshTileView& tile,
         }
     }
 
-    // linf div u logging
-    // std::cerr << std::setprecision(12) << "div_linf=" << linf << '\n' << std::flush;
-
-#ifdef HAVE_MPI
     if (mpi_comm_)
     {
         MPI_Comm comm = mpi_unbox(mpi_comm_);
@@ -111,7 +130,6 @@ double ProjectionLoop::compute_div_linf(const core::master::MeshTileView& tile,
         MPI_Allreduce(&linf, &linf_global, 1, MPI_DOUBLE, MPI_MAX, comm);
         linf = linf_global;
     }
-#endif
 
     return linf;
 }
@@ -119,26 +137,23 @@ double ProjectionLoop::compute_div_linf(const core::master::MeshTileView& tile,
 void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, double dt)
 {
 
-    auto vu = fields.view("u");
-    const int nx_tot = vu.extents[0], ny_tot = vu.extents[1], nz_tot = vu.extents[2];
-    const int nx = tile.box.hi[0] - tile.box.lo[0];
-    const int ng = (nx_tot - nx) / 2;
-
-    core::mesh::Mesh mesh_like = *tile.mesh;
-    mesh_like.local = {nx_tot - 2 * ng, ny_tot - 2 * ng, nz_tot - 2 * ng};
-    mesh_like.ng = ng;
+    // Single source of truth for halos/topology
+    if (!tile.mesh)
+        throw std::runtime_error("[fluids.predictor] tile.mesh is null; Scheduler must set it.");
+    const auto& mesh = *tile.mesh;
+    const int ng = mesh.ng;
 
     // Helper: one pressure-correction sweep (no new predictor)
     auto pressure_correction = [&]()
     {
         psolve_->execute(tile, fields, dt);
-        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"p"});
+        core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"p"});
         corr_->execute(tile, fields, dt);
-        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
+        core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"u", "v", "w"});
 
         if (bc_)
             bc_->execute(tile, fields, 0.0);
-        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"p", "u", "v", "w"});
+        core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"p", "u", "v", "w"});
     };
 
     // --------- IPISO mode (predictor once, then fixed # pressure corrections) ---------
@@ -149,12 +164,12 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
         if (sgs_)
             sgs_->execute(tile, fields, 0.0);
         if (fields.contains("nu_t"))
-            core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"nu_t"});
+            core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"nu_t"});
         pred_->execute(tile, fields, dt); // momentum predictor once per step
         if (bc_)
             bc_->execute(tile, fields, 0.0);
 
-        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
+        core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"u", "v", "w"});
 
         // Baseline divergence for relative drop criterion
         double r0 = compute_div_linf(tile, fields);
@@ -182,12 +197,12 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
         if (sgs_)
             sgs_->execute(tile, fields, 0.0);
         if (fields.contains("nu_t"))
-            core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"nu_t"});
+            core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"nu_t"});
         pred_->execute(tile, fields, dt); // diffusion/advection once per time step
         if (bc_)
             bc_->execute(tile, fields, 0.0);
 
-        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
+        core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"u", "v", "w"});
 
         const int n = std::max(1, opt_.fe_iters);
         for (int it = 0; it < n; ++it)
@@ -202,12 +217,12 @@ void ProjectionLoop::execute(const MeshTileView& tile, FieldCatalog& fields, dou
     if (sgs_)
         sgs_->execute(tile, fields, 0.0);
     if (fields.contains("nu_t"))
-        core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"nu_t"});
+        core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"nu_t"});
     pred_->execute(tile, fields, dt);
     if (bc_)
         bc_->execute(tile, fields, 0.0);
 
-    core::master::exchange_named_fields(fields, mesh_like, mpi_comm_, {"u", "v", "w"});
+    core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"u", "v", "w"});
 
     double r0 = compute_div_linf(tile, fields);
     if (r0 == 0.0)
@@ -237,7 +252,7 @@ std::shared_ptr<plugin::IAction> make_projection_loop(
         return dflt;
     };
     ProjectionLoop::Options o;
-    const std::string scheme = lower(get("time_scheme", "fe")); // "fe", "be", or "ipiso"
+    const std::string scheme = lower(get("scheme", "fe")); // "fe", "be", or "ipiso"
     if (scheme == "be" || scheme == "backward_euler")
         o.mode = ProjectionLoop::Mode::BE;
     else if (scheme == "ipiso" || scheme == "piso")

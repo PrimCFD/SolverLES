@@ -161,4 +161,4 @@ build/_deps/
 * `BUILD_DIR` — custom build directory (default: `build`).
 * `CMAKE_BUILD_TYPE` — `Debug`/`Release`/`RelWithDebInfo`/`MinSizeRel` (default: `Release`).
 * `EXTRA_CMAKE_ARGS` — extra flags forwarded to CMake (space‑separated).
-* MPI & CUDA toggles (`ENABLE_MPI`, `MPIEXEC_*`, `ENABLE_CUDA`, `USE_CUDA_UM`) are honored if relevant to the build.
+* MPI & CUDA toggles (`MPIEXEC_*`, `ENABLE_CUDA`, `USE_CUDA_UM`) are honored if relevant to the build.

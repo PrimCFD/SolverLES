@@ -28,9 +28,13 @@
  *    case: <string>                 # case name (used for writer artifacts)
  *
  *    mesh:
+ *      # Either specify per-rank 'local' (current behavior)...
  *      local: [nx, ny, nz]          # interior sizes (ints), per-rank
+ *      # ...or specify a human-friendly global size and let the app divide by the proc grid:
+ *      # global: [NX, NY, NZ]       # optional — total logical size (no ghosts), across all ranks
  *      ng: 2                        # uniform ghost width
  *      periodic: [false,false,false]# reserved
+ *      proc_grid: [4, 2, 1]         # (optional) MPI process grid px,py,pz; 0 or omit = auto
  *
  *    time:
  *      dt: 1.0e-3                   # seconds
@@ -90,8 +94,10 @@ struct AppConfig
 {
     // mesh
     std::array<int, 3> local{32, 32, 32};
+    std::optional<std::array<int, 3>> global; // optional global (no ghosts)
     int ng = 2;
     std::array<bool, 3> periodic{false, false, false};
+    std::array<int, 3> proc_grid{0, 0, 0}; // 0 => auto via MPI_Dims_create
 
     // time
     double dt = 1e-3;
@@ -179,6 +185,12 @@ inline AppConfig load_config_from_yaml(const std::string& path)
 
     if (auto m = root["mesh"])
     {
+        if (auto G = m["global"])
+        {
+            auto v = G.as<std::vector<int>>();
+            if (v.size() == 3)
+                cfg.global = std::array<int,3>{v[0], v[1], v[2]};
+        }
         if (auto L = m["local"])
         {
             auto v = L.as<std::vector<int>>();
@@ -192,6 +204,12 @@ inline AppConfig load_config_from_yaml(const std::string& path)
             auto v = P.as<std::vector<bool>>();
             if (v.size() == 3)
                 cfg.periodic = {v[0], v[1], v[2]};
+        }
+        if (auto Gr = m["proc_grid"])
+        {
+            auto v = Gr.as<std::vector<int>>();
+            if (v.size() == 3)
+                cfg.proc_grid = {v[0], v[1], v[2]}; // 0 or negative entries mean "auto" per dim
         }
     }
 

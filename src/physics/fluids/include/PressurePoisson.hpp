@@ -1,7 +1,5 @@
 #pragma once
-#ifdef HAVE_MPI
 #include <mpi.h>
-#endif
 #include "Program.hpp"
 #include "master/RunContext.hpp"
 #include "master/plugin/Action.hpp"

@@ -4,6 +4,8 @@
 #include "master/RunContext.hpp"
 #include "master/io/IWriter.hpp"
 #include "master/plugin/Program.hpp"
+#include "master/Log.hpp"
+#include "master/Progress.hpp"
 
 #include "master/Views.hpp" // AnyFieldView, MeshTileView, make_interior_copy
 #include "mesh/Field.hpp"   // typed Field<T> view (no MPI)
@@ -41,10 +43,24 @@ void Scheduler::run(const TimeControls& tc)
 
     // One coarse tile covering the whole interior domain for now.
     MeshTileView tile;
-    tile.box.lo = {0, 0, 0};
-    tile.box.hi = {mesh_.local[0], mesh_.local[1], mesh_.local[2]};
     tile.stream = rc_.device_stream;
     tile.mesh = &mesh_;
+
+    // Rank-0 progress bar (TTY-only, no ctest spam).
+    // IMPORTANT: only query MPI rank if MPI is initialized and the comm is valid.
+    int rank = 0;
+    {
+        int inited = 0;
+        MPI_Initialized(&inited);
+        if (inited && rc_.mpi_comm) {
+            MPI_Comm comm = mpi_unbox(rc_.mpi_comm);
+            if (comm != MPI_COMM_NULL) {
+                MPI_Comm_rank(comm, &rank);
+            }
+        }
+    }
+    core::master::prog::Bar pbar;
+    if (rank == 0) pbar.start(steps);
 
     for (int s = 0; s < steps; ++s, t += tc.dt)
     {
@@ -92,6 +108,7 @@ void Scheduler::run(const TimeControls& tc)
         const double out_time = (s + 1) * tc.dt; // state *after* this step
         if (tc.write_every > 0 && (out_step % tc.write_every == 0))
         {
+            LOGD("[io] write step=%d t=%.6g\n", out_step, out_time);
             io::WriteRequest req;
             req.step = out_step;
             req.time = out_time;
@@ -99,9 +116,12 @@ void Scheduler::run(const TimeControls& tc)
                 req.fields.push_back(make_interior_copy(v, mesh_.ng));
             writer_.write(req);
         }
+        // Progress last to capture whole-step work
+        if (rank == 0) pbar.update(s+1);
     }
 
     writer_.close();
+    if (rank == 0) pbar.finish();
 }
 
 } // namespace core::master

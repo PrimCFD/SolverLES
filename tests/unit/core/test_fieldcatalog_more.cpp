@@ -11,7 +11,7 @@ TEST_CASE("FieldCatalog view properties and bad lookups", "[fieldcatalog]")
     std::vector<float> a(16, 0.f);
 
     fc.register_scalar("T", a.data(), sizeof(float), std::array<int, 3>{2, 2, 4},
-                       std::array<std::ptrdiff_t, 3>{1, 2, 8});
+                       std::array<std::ptrdiff_t, 3>{1, 2, 8}, core::master::Stagger::Cell);
     REQUIRE(fc.contains("T"));
 
     auto v = fc.view("T");

@@ -1,14 +1,14 @@
 case: tgv_32
 
 mesh:
-  local: [32, 32, 32]
+  global: [32, 32, 32]
   ng: 2
   periodic: [true, true, true] 
 
 time:
-  dt: 5.0e-2
+  dt: 2.5e-2
   t_end: 5.0
-  write_every: { steps: 1 }
+  write_every: { steps: 2 }
 
 io:
   backend: cgns
@@ -38,13 +38,14 @@ program:
     nu:  "1.0e-1"
     Cs:  "0.0"
 
-    time_scheme: "piso"
+    scheme: "piso"
+    time_scheme: "abm3"
+    pred_imp_order: "2" #CN
     div_tol: "1.0e-7"
 
     advect: "off"
     p_iters: "0"                 # keep Poisson off for a diffusion test
-    num_corrections: "0"
     init: "taylor_green"
 
 fields:
-  output: [u, v, w, p, nu_t]
+  output: [u, v, w, p]

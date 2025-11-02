@@ -36,12 +36,21 @@ class FieldCatalog
 {
   public:
     void register_scalar(std::string name, void* host_ptr, std::size_t elem_size,
-                         std::array<int, 3> extents, std::array<std::ptrdiff_t, 3> strides);
+                         std::array<int, 3> extents, std::array<std::ptrdiff_t, 3> strides,
+                         Stagger stag);
 
     bool contains(std::string_view name) const noexcept;
     AnyFieldView view(std::string_view name) const;
 
     void select_for_output(std::string_view name);
+
+    // These allocate storage with MemoryManager and register the field with correct extents and
+    // staggering.
+    // * Cell-centered scalar (double)
+    void create_center_scalar(std::string name, const core::mesh::Mesh& mesh);
+    // * Face-centered scalar (double) along axis a=0(x),1(y),2(z)  => interior size is N+1 on 'a'
+    void create_face_scalar(std::string name, int axis, const core::mesh::Mesh& mesh);
+
     std::span<const AnyFieldView> all_views() const noexcept { return views_; }
     std::span<const AnyFieldView> selected_for_output() const noexcept { return selected_views_; }
 
@@ -49,6 +58,12 @@ class FieldCatalog
     std::vector<AnyFieldView> views_;
     std::unordered_map<std::string, std::size_t> idx_;
     std::vector<AnyFieldView> selected_views_;
+    struct OwnedBlock
+    {
+        void* ptr{};
+        std::size_t bytes{};
+    };
+    std::unordered_map<std::string, OwnedBlock> owned_; // core-owned allocations
 };
 
 } // namespace core::master

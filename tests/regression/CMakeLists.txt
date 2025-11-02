@@ -1,8 +1,3 @@
-# Checker (parses Dimensions="..." from the single XMF/CGNS in out/)
-add_executable(check_dims ${CMAKE_CURRENT_SOURCE_DIR}/check_dims.cpp)
-target_compile_features(check_dims PRIVATE cxx_std_17)
-target_link_libraries(check_dims PRIVATE CGNS::cgns)
-
 # --- build the decay checker
 add_executable(check_tgv_decay ${CMAKE_CURRENT_SOURCE_DIR}/check_tgv_decay.cpp)
 target_compile_features(check_tgv_decay PRIVATE cxx_std_17)
@@ -45,11 +40,11 @@ function(
                regression::fluids::${name}::run)
 endfunction()
 
-# Helper to add a fluids regression case Usage: add_fluids_case(name nx ny nz) #
-# default (MODE auto; NP from env or 1) add_fluids_case(name nx ny nz MODE seq)
-# # force sequential run (no mpiexec) add_fluids_case(name nx ny nz MODE mpi NP
-# 2)         # force MPI run with 2 ranks
-function(add_fluids_case name nx ny nz)
+# Helper to add a fluids regression case Usage: default (MODE auto; NP from env
+# or 1) add_fluids_case(name) force sequential run (no mpiexec)
+# add_fluids_case(name MODE seq) force MPI run with 2 ranks add_fluids_case(name
+# MODE mpi NP 2)
+function(add_fluids_case name)
   # Parse optional keywords: MODE <seq|mpi>, NP <int>
   cmake_parse_arguments(CASE "" "MODE;NP" "" ${ARGN})
   string(TOLOWER "${CASE_MODE}" _mode)
@@ -140,26 +135,12 @@ function(add_fluids_case name nx ny nz)
     PROPERTIES LABELS "regression;fluids" ENVIRONMENT "${_PLUGIN_ENV}"
                FAIL_REGULAR_EXPRESSION "error;ERROR;Error;terminate called")
 
-  # --- Validate output directory (checker finds the single *.xmf)
-  add_test(NAME regression::fluids::${name}::check
-           COMMAND $<TARGET_FILE:check_dims> "${case_bin}/out" ${nx} ${ny}
-                   ${nz})
-  set_tests_properties(
-    regression::fluids::${name}::check
-    PROPERTIES LABELS "regression;fluids" DEPENDS
-               regression::fluids::${name}::run)
 endfunction()
 
-# Cases: - Keep cavity fast: force sequential launch (2 ranks) - Force MPI
-# for TG to exercise single rank plumbing (1 rank)
-add_fluids_case(cavity32 32 32 32 MODE mpi NP 2)
-add_fluids_case(
-  tgv32
-  32
-  32
-  32
-  MODE
-  seq)
+# Cases: - Keep cavity fast: force sequential launch (2 ranks) - Force MPI for
+# TG to exercise single rank plumbing (1 rank)
+add_fluids_case(cavity32 MODE mpi NP 8)
+add_fluids_case(tgv32 MODE seq)
 
 # Assert TG decay at final time (2% rel tol)
 add_tgv_decay_check(

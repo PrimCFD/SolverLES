@@ -245,7 +245,8 @@ TEST_CASE("CGNS roundtrip: one scalar field, 2 timesteps", "[io][cgns]")
     FieldCatalog fc;
     fc.register_scalar("rho", rho.data(), sizeof(double), {nx, ny, nz},
                        {(std::ptrdiff_t) sizeof(double), (std::ptrdiff_t)(sizeof(double) * nx),
-                        (std::ptrdiff_t)(sizeof(double) * nx * ny)});
+                        (std::ptrdiff_t)(sizeof(double) * nx * ny)},
+                       core::master::Stagger::Cell);
     fc.select_for_output("rho");
 
     WriterConfig cfg;

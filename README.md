@@ -94,9 +94,6 @@ This project ships convenience scripts in `scripts/` for reliable, repeatable de
 # Debug build into a custom directory
 BUILD_DIR=build-debug CMAKE_BUILD_TYPE=Debug ./scripts/build.sh
 
-# Toggle MPI paths and pass Open MPI oversubscribe to CTest/launchers
-ENABLE_MPI=ON MPIEXEC_PREFLAGS=--oversubscribe ./scripts/build.sh
-
 # Extra CMake options (examples)
 EXTRA_CMAKE_ARGS="-DBUILD_EXAMPLES=ON -DBUILD_GUI=OFF" ./scripts/build.sh
 ```

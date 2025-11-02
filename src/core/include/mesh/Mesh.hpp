@@ -33,6 +33,26 @@ struct Mesh
         return static_cast<std::size_t>(e[0]) * static_cast<std::size_t>(e[1]) *
                static_cast<std::size_t>(e[2]);
     }
+
+    // Ghost-inclusive totals for cell-centered arrays
+    inline std::array<int, 3> totals_cell() const noexcept { return extents(); }
+
+    // Ghost-inclusive totals for a face-aligned array along axis a=0(x),1(y),2(z).
+    // MAC per-tile rule: interior count is (N + 1) along the normal axis.
+    inline std::array<int, 3> totals_face_axis(int a) const noexcept
+    {
+        std::array<int, 3> t = {local[0], local[1], local[2]};
+        t[a] += 1; // +1 interior along face normal
+        t[0] += 2 * ng;
+        t[1] += 2 * ng;
+        t[2] += 2 * ng;
+        return t;
+    }
+
+    // Desired MPI process grid (m,n,p) for DMDA.
+    // If any entry is 0, the solver will call MPI_Dims_create() to fill it.
+    // If all are >0, they are used verbatim.
+    std::array<int,3> proc_grid{0,0,0};
 };
 
 } // namespace core::mesh

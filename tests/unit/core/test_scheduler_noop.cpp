@@ -27,7 +27,8 @@ TEST_CASE("Scheduler runs builtin noop program and triggers I/O cadence", "[sche
 
     // one tiny field selected for output (totals == interior when ng==0)
     std::vector<double> a(8, 0.0);
-    m.fields().register_scalar("a", a.data(), sizeof(double), {2, 2, 2}, {1, 2, 4});
+    m.fields().register_scalar("a", a.data(), sizeof(double), {2, 2, 2}, {1, 2, 4},
+                               core::master::Stagger::Cell);
     m.fields().select_for_output("a");
 
     auto writer = std::make_unique<CountingWriter>();

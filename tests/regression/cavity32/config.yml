@@ -1,18 +1,17 @@
 case: cavity_32
-
 mesh:
-  local: [32, 32, 32]
+  global: [128, 128, 1]        # thin slab in z
   ng: 2
-  periodic: [false, false, false]
+  periodic: [false, false, true]   # periodic in z ⇒ spanwise-invariant “2-D”
+  proc_grid: [0, 0, 1]   # px, py, pz
 
 time:
-  dt: 5.0e-3
-  t_end: 5.0 
-  write_every:
-    steps: 10
+  dt: 1.0e-3
+  t_end: 1.0             # run to steady; increase if needed
+  write_every: { steps: 100 }
 
 io:
-  path: "@OUT_DIR@"          # <- absolute, injected by CMake
+  path: "@OUT_DIR@"
   backend: cgns
   precision: native
   async: { enabled: false }
@@ -24,29 +23,39 @@ plugins:
 program:
   key: les
   params:
-    dx: "0.03125"
-    dy: "0.03125"
-    dz: "0.03125"
+    # Unit square in x–y (L=1); use spacings consistent with mesh
+    dx: "0.0078125"
+    dy: "0.0078125"
+    dz: "1.0"
 
     rho: "1"
-    nu: "1.0e-3"
-    Cs: "0.16"
+    # Pick Re by nu = 1/Re (with U0 = 1, L = 1). Example: Re=1000 → nu=0.001
+    nu: "0.0025"             # <- change per target Re (e.g., 0.01 for Re=100, 0.0025 for Re=400)
 
-    time_scheme: "piso"
+    Cs: "0.0"
+
+    scheme: "piso"
     num_corrections: "2"
     div_tol: "1.0e-7"
 
-    adv_blend: "0.25"
+    time_scheme: "abm3"   
 
-    bc.u.west: "dirichlet:0"
-    bc.u.east: "dirichlet:0"
-    bc.u.south: "dirichlet:0"
+    adv_kk_mode: "dynamic"
+    adv_kk_gamma: "5.0e-3"
+    adv_kk_Cmax: "0.35"
+    adv_kk_speed: "rms"     # "linf" or "rms"
+
+    # Lid-driven cavity BCs: moving lid at north; other walls no-slip
+    bc.u.west:   "dirichlet:0"
+    bc.u.east:   "dirichlet:0"
+    bc.u.south:  "dirichlet:0"
+    bc.u.north:  "dirichlet:1"   # lid = 1 m/s
+    bc.u.top:    "dirichlet:0"
     bc.u.bottom: "dirichlet:0"
-    bc.u.top: "dirichlet:0"
-    bc.u.north: "dirichlet:1"
+
     bc.v.*: "dirichlet:0"
-    bc.w.*: "dirichlet:0"
-    bc.p.*: "neumann:0"
+    bc.w.*: "dirichlet:0"        # won’t matter with periodic z, but harmless
+    bc.p.*: "neumann:0"          # pressure Neumann
 
 fields:
-  output: [u, v, w, p, nu_t]
+  output: [u, v, w, p]

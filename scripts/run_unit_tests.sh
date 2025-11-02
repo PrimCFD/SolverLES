@@ -11,7 +11,6 @@ REPORT_DIR=${REPORT_DIR:-"${BUILD_DIR}/test-reports/unit"}
 if [[ "${SKIP_BUILD}" != "1" ]]; then
   BUILD_DIR="${BUILD_DIR}" \
   CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Debug}" \
-  ENABLE_MPI=OFF \
   ENABLE_CUDA="${ENABLE_CUDA:-OFF}" \
   USE_CUDA_UM="${USE_CUDA_UM:-OFF}" \
   BUILD_TESTS=ON \

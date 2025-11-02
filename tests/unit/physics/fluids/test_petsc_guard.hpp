@@ -3,12 +3,7 @@
 
 // Only include/operate on MPI if (a) the project was built with MPI and
 // (b) PETSc itself was compiled with MPI support.
-#if defined(HAVE_MPI) && defined(PETSC_HAVE_MPI)
 #include <mpi.h>
-#define PETSC_TESTS_USE_MPI 1
-#else
-#define PETSC_TESTS_USE_MPI 0
-#endif
 
 struct PetscTestGuard
 {

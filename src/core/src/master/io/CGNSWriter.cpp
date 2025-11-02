@@ -109,6 +109,61 @@ static WritePlan make_plan_from_request(const std::vector<AnyFieldView>& views,
     return build_write_plan(std::span<const AnyFieldView>(views.data(), views.size()), override_b);
 }
 
+// ---------- helpers: average face-centered → cell-centered ----------
+// NOTE: v.extents[] include ghosts; nx,ny,nz are *cell* counts (interior).
+// We must offset the source pointer by the ghost width before averaging.
+template <class SrcT, class DstT>
+static inline void avg_i_to_cell(DstT* dst, const AnyFieldView& v, int nx, int ny, int nz)
+{
+    const auto sx = v.strides[0] / sizeof(SrcT), sy = v.strides[1] / sizeof(SrcT),
+               sz = v.strides[2] / sizeof(SrcT);
+    // IFace has (nx+1) interior in x; ghosts in y,z only
+    const int ngx = (v.extents[0] - (nx + 1)) / 2;
+    const int ngy = (v.extents[1] - ny) / 2;
+    const int ngz = (v.extents[2] - nz) / 2;
+    const SrcT* base = static_cast<const SrcT*>(v.host_ptr);
+    const SrcT* s = base + ngx * sx + ngy * sy + ngz * sz;
+    for (int k = 0; k < nz; ++k)
+        for (int j = 0; j < ny; ++j)
+            for (int i = 0; i < nx; ++i)
+                dst[(k * ny + j) * nx + i] = DstT(
+                    (s[k * sz + j * sy + (i) *sx] + s[k * sz + j * sy + (i + 1) * sx]) * SrcT(0.5));
+}
+template <class SrcT, class DstT>
+static inline void avg_j_to_cell(DstT* dst, const AnyFieldView& v, int nx, int ny, int nz)
+{
+    const auto sx = v.strides[0] / sizeof(SrcT), sy = v.strides[1] / sizeof(SrcT),
+               sz = v.strides[2] / sizeof(SrcT);
+    // JFace has (ny+1) interior in y; ghosts in x,z only
+    const int ngx = (v.extents[0] - nx) / 2;
+    const int ngy = (v.extents[1] - (ny + 1)) / 2;
+    const int ngz = (v.extents[2] - nz) / 2;
+    const SrcT* base = static_cast<const SrcT*>(v.host_ptr);
+    const SrcT* s = base + ngx * sx + ngy * sy + ngz * sz;
+    for (int k = 0; k < nz; ++k)
+        for (int j = 0; j < ny; ++j)
+            for (int i = 0; i < nx; ++i)
+                dst[(k * ny + j) * nx + i] = DstT(
+                    (s[k * sz + j * sy + i * sx] + s[k * sz + (j + 1) * sy + i * sx]) * SrcT(0.5));
+}
+template <class SrcT, class DstT>
+static inline void avg_k_to_cell(DstT* dst, const AnyFieldView& v, int nx, int ny, int nz)
+{
+    const auto sx = v.strides[0] / sizeof(SrcT), sy = v.strides[1] / sizeof(SrcT),
+               sz = v.strides[2] / sizeof(SrcT);
+    // KFace has (nz+1) interior in z; ghosts in x,y only
+    const int ngx = (v.extents[0] - nx) / 2;
+    const int ngy = (v.extents[1] - ny) / 2;
+    const int ngz = (v.extents[2] - (nz + 1)) / 2;
+    const SrcT* base = static_cast<const SrcT*>(v.host_ptr);
+    const SrcT* s = base + ngx * sx + ngy * sy + ngz * sz;
+    for (int k = 0; k < nz; ++k)
+        for (int j = 0; j < ny; ++j)
+            for (int i = 0; i < nx; ++i)
+                dst[(k * ny + j) * nx + i] = DstT(
+                    (s[k * sz + j * sy + i * sx] + s[(k + 1) * sz + j * sy + i * sx]) * SrcT(0.5));
+}
+
 // ---- iterative metadata (finalize at close) ------------------------------------
 
 static void finalize_iter_meta(int fn, int base, int zone, const std::vector<double>& times,
@@ -220,9 +275,23 @@ void CGNSWriter::write(const WriteRequest& req)
     if (!impl_->planned)
     {
         plan_ = make_plan_from_request(req.fields, cfg_.precision);
-        impl_->nx = plan_.fields.front().shape.nx;
-        impl_->ny = plan_.fields.front().shape.ny;
-        impl_->nz = plan_.fields.front().shape.nz;
+        // Use MIN across all selected fields to get the true cell counts.
+        // (Face fields are +1 along their normal; MIN is the cell size.)
+        impl_->nx = std::numeric_limits<int>::max();
+        impl_->ny = std::numeric_limits<int>::max();
+        impl_->nz = std::numeric_limits<int>::max();
+        for (const auto& f : plan_.fields)
+        {
+            impl_->nx = std::min(impl_->nx, f.shape.nx);
+            impl_->ny = std::min(impl_->ny, f.shape.ny);
+            impl_->nz = std::min(impl_->nz, f.shape.nz);
+        }
+        if (impl_->nx == std::numeric_limits<int>::max())
+            impl_->nx = 0;
+        if (impl_->ny == std::numeric_limits<int>::max())
+            impl_->ny = 0;
+        if (impl_->nz == std::numeric_limits<int>::max())
+            impl_->nz = 0;
 
         // Zone (create once)
         cgsize_t size[9] = {(cgsize_t) (impl_->nx + 1),
@@ -367,12 +436,114 @@ void CGNSWriter::write(const WriteRequest& req)
         }
 
         int fld_id{};
+        // Write the raw array under the correct GridLocation
         if (cg_field_write(impl_->file, impl_->base, impl_->zone, sol_id, dtype,
                            fp.shape.name.c_str(), staging, &fld_id) != CG_OK)
         {
             std::fprintf(stderr, "[CGNS] cg_field_write(%s) failed: %s\n", fp.shape.name.c_str(),
                          cg_get_error());
             return;
+        }
+
+        // If this is a face-centered velocity, also emit a CellCenter alias
+        // named u_cell/v_cell/w_cell by averaging onto cells (ParaView-friendly & no collisions).
+        if (loc != CellCenter &&
+            (fp.shape.name == "u" || fp.shape.name == "v" || fp.shape.name == "w"))
+        {
+            // Ensure CellCenter FlowSolution for this step exists.
+            int sol_cell_id = get_or_make_sol(CellCenter);
+            if (!sol_cell_id)
+                return;
+            have_cell_solution = true;
+
+            // Alias name (avoid duplicate "u" etc. inside the same FlowSolution).
+            const std::string alias = (fp.shape.name == "u"   ? "u_cell"
+                                       : fp.shape.name == "v" ? "v_cell"
+                                                              : "w_cell");
+
+            // If alias already exists in the CellCenter solution for this step, skip it.
+            int nfld = 0;
+            bool alias_exists = false;
+            if (cg_nfields(impl_->file, impl_->base, impl_->zone, sol_cell_id, &nfld) == CG_OK)
+            {
+                for (int fi = 1; fi <= nfld; ++fi)
+                {
+                    CGNS_ENUMT(DataType_t) fdtype;
+                    char fname[33] = {0};
+                    if (cg_field_info(impl_->file, impl_->base, impl_->zone, sol_cell_id, fi,
+                                      &fdtype, fname) != CG_OK)
+                        continue;
+                    if (std::strcmp(fname, alias.c_str()) == 0)
+                    {
+                        alias_exists = true;
+                        break;
+                    }
+                }
+            }
+            if (!alias_exists)
+            {
+                // Build averaged buffer into the same staging slot
+                const bool src_f64 = (view.elem_size == 8);
+                const bool dst_f64 = (fp.shape.elem_size == 8); // keep plan dtype for the alias
+                void* tmp = pool_.data(i); // face buffer ≥ cell buffer, safe to reuse
+
+                if (dst_f64)
+                {
+                    auto* d = static_cast<double*>(tmp);
+                    if (loc == IFaceCenter)
+                    {
+                        src_f64 ? avg_i_to_cell<double, double>(d, view, impl_->nx, impl_->ny,
+                                                                impl_->nz)
+                                : avg_i_to_cell<float, double>(d, view, impl_->nx, impl_->ny,
+                                                               impl_->nz);
+                    }
+                    else if (loc == JFaceCenter)
+                    {
+                        src_f64 ? avg_j_to_cell<double, double>(d, view, impl_->nx, impl_->ny,
+                                                                impl_->nz)
+                                : avg_j_to_cell<float, double>(d, view, impl_->nx, impl_->ny,
+                                                               impl_->nz);
+                    }
+                    else
+                    { // KFaceCenter
+                        src_f64 ? avg_k_to_cell<double, double>(d, view, impl_->nx, impl_->ny,
+                                                                impl_->nz)
+                                : avg_k_to_cell<float, double>(d, view, impl_->nx, impl_->ny,
+                                                               impl_->nz);
+                    }
+                }
+                else
+                {
+                    auto* d = static_cast<float*>(tmp);
+                    if (loc == IFaceCenter)
+                    {
+                        src_f64
+                            ? avg_i_to_cell<double, float>(d, view, impl_->nx, impl_->ny, impl_->nz)
+                            : avg_i_to_cell<float, float>(d, view, impl_->nx, impl_->ny, impl_->nz);
+                    }
+                    else if (loc == JFaceCenter)
+                    {
+                        src_f64
+                            ? avg_j_to_cell<double, float>(d, view, impl_->nx, impl_->ny, impl_->nz)
+                            : avg_j_to_cell<float, float>(d, view, impl_->nx, impl_->ny, impl_->nz);
+                    }
+                    else
+                    { // KFaceCenter
+                        src_f64
+                            ? avg_k_to_cell<double, float>(d, view, impl_->nx, impl_->ny, impl_->nz)
+                            : avg_k_to_cell<float, float>(d, view, impl_->nx, impl_->ny, impl_->nz);
+                    }
+                }
+
+                int fld_cc{};
+                if (cg_field_write(impl_->file, impl_->base, impl_->zone, sol_cell_id, dtype,
+                                   alias.c_str(), tmp, &fld_cc) != CG_OK)
+                {
+                    std::fprintf(stderr, "[CGNS] cg_field_write(CellCenter alias %s) failed: %s\n",
+                                 alias.c_str(), cg_get_error());
+                    return;
+                }
+            }
         }
     }
 
