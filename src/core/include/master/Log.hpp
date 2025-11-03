@@ -5,7 +5,6 @@
 #include <cstdlib>
 #include <mpi.h>
 #include <string>
-#include <unistd.h>
 
 namespace core::master::logx
 {
@@ -21,21 +20,13 @@ enum class Level : int
 
 struct Config
 {
-    Level level = Level::Info; // default
-    bool color = true;         // ANSI colors if TTY
-    bool rank0_only = false;   // gate INFO/DEBUG to rank0
+    Level level = Level::Info; // default verbosity (overridden by SOLVER_LOG if level==Info)
+    bool rank0_only = false;   // gate INFO/DEBUG to rank 0
 };
 
 inline int g_rank = 0;
-inline bool g_is_tty = false;
 inline std::atomic<Level> g_level{Level::Info};
-inline std::atomic<bool> g_color{true};
 inline std::atomic<bool> g_rank0_only{false};
-
-inline bool is_tty(FILE* f)
-{
-    return ::isatty(::fileno(f)) == 1;
-}
 
 inline Level level_from_env()
 {
@@ -44,7 +35,7 @@ inline Level level_from_env()
         return Level::Info;
     std::string s(v);
     for (auto& c : s)
-        c = tolower(c);
+        c = static_cast<char>(::tolower(c));
     if (s == "quiet")
         return Level::Quiet;
     if (s == "error")
@@ -64,44 +55,35 @@ inline void init(const Config& cfg = {})
     MPI_Initialized(&inited);
     if (inited)
         MPI_Comm_rank(MPI_COMM_WORLD, &g_rank);
-    g_is_tty = is_tty(stdout);
+
+    // If caller leaves level at Info, allow SOLVER_LOG to override (preserves existing behavior)
     g_level.store(cfg.level == Level::Info ? level_from_env() : cfg.level);
-    g_color.store(cfg.color && g_is_tty);
     g_rank0_only.store(cfg.rank0_only);
 }
 
-inline const char* c(Level L)
+inline const char* level_tag(Level L)
 {
-    static const char* K = "\033[0m";
-    static const char* R = "\033[31m";
-    static const char* Y = "\033[33m";
-    static const char* C = "\033[36m";
-    static const char* G = ""; // default
-    if (!g_color.load())
-        return "";
     switch (L)
     {
     case Level::Error:
-        return R;
+        return "[error] ";
     case Level::Warn:
-        return Y;
+        return "[warn ] ";
     case Level::Info:
-        return C;
+        return "[info ] ";
+    case Level::Debug:
+        return "[debug] ";
     default:
-        return G;
+        return "";
     }
-}
-inline const char* reset()
-{
-    return g_color.load() ? "\033[0m" : "";
 }
 
 inline bool gate(Level L)
 {
     if (L > g_level.load())
-        return true;                                            // filtered by level
-    if (g_rank0_only.load() && g_rank != 0 && L >= Level::Info) // collapse info/debug to rank0
-        return true;
+        return true; // filtered by level
+    if (g_rank0_only.load() && g_rank != 0 && L >= Level::Info)
+        return true; // collapse info/debug to rank0
     return false;
 }
 
@@ -109,20 +91,15 @@ inline void vprint(Level L, const char* fmt, va_list ap)
 {
     if (gate(L))
         return;
-    if (L == Level::Info || L == Level::Debug)
-        std::fprintf(stderr, "%s", c(L));
-    if (L == Level::Error)
-        std::fprintf(stderr, "%s[error]%s ", c(L), reset());
-    else if (L == Level::Warn)
-        std::fprintf(stderr, "%s[warn ]%s ", c(L), reset());
-    // Compact rank tag for non-rank0 or for debug
+    // Level tag
+    std::fputs(level_tag(L), stderr);
+    // Compact rank tag for non-rank0 on info/debug
     if (g_rank != 0 && L >= Level::Info)
         std::fprintf(stderr, "[r%d] ", g_rank);
     std::vfprintf(stderr, fmt, ap);
-    if (L == Level::Info || L == Level::Warn || L == Level::Error)
-        std::fprintf(stderr, "%s", reset());
     std::fflush(stderr);
 }
+
 inline void print(Level L, const char* fmt, ...)
 {
     va_list ap;

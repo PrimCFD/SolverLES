@@ -341,8 +341,7 @@ int main(int argc, char** argv)
     MpiPetscOnce runtime(argc, argv);
 
     // ---------- Logging (rank0-gated INFO/DEBUG by default; SOLVER_LOG controls level) ----------
-    core::master::logx::init(
-        {core::master::logx::Level::Info, /*color*/ true, /*rank0_only*/ true});
+    core::master::logx::init({core::master::logx::Level::Info, /*rank0_only*/ true});
     // Users can override with: SOLVER_LOG=quiet|error|warn|info|debug
 
     setup_openmp_defaults();
@@ -566,6 +565,8 @@ int main(int argc, char** argv)
         WriterConfig wcfg{};
         wcfg.backend = to_writer_backend(cfg.io.backend);
         wcfg.path = cfg.io.path;
+        wcfg.mesh = &mesh;                // gives local/global/global_lo/ng
+        wcfg.mpi_cart_comm = rc.mpi_comm; // boxed MPI_Comm
         // Only set precision override when requested (avoid relying on a “Native” enum)
         if (cfg.io.precision == AppConfig::Precision::F32)
         {

@@ -1,4 +1,5 @@
 #pragma once
+#include "mesh/Mesh.hpp"
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -92,6 +93,12 @@ struct WriterConfig
         Strict
     };
     Preflight preflight = Preflight::Strict;
+
+    // ---- Parallel IO context (POD only; no MPI includes in public headers) ----
+    // If 'mesh' is non-null and 'mpi_cart_comm' is non-null, writers may use parallel IO.
+    // Mesh provides: local, global, global_lo (rank's offset), and ng.
+    const core::mesh::Mesh* mesh = nullptr; // decomposition & ghost width
+    void* mpi_cart_comm = nullptr;          // boxed MPI_Comm (nullptr => serial)
 };
 
 } // namespace core::master::io

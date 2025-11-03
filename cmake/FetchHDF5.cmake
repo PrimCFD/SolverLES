@@ -29,6 +29,7 @@ set(_hdf5_cmake_opts
     -DHDF5_BUILD_EXAMPLES=OFF
     -DHDF5_BUILD_TOOLS=OFF
     -DHDF5_BUILD_CPP_LIB=OFF
+    -DHDF5_ENABLE_PARALLEL=ON
     -DHDF5_ENABLE_Z_LIB_SUPPORT=ON
     -DHDF5_ENABLE_SZIP_SUPPORT=OFF
     -DCMAKE_BUILD_TYPE=Release
@@ -43,7 +44,11 @@ ExternalProject_Add(
   PREFIX "${_hdf5_prefix}"
   UPDATE_COMMAND ""
   CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${_hdf5_install}
-             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} ${_hdf5_cmake_opts}
+             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+             ${_hdf5_cmake_opts}
+             -DMPI_C_COMPILER:FILEPATH=${MPI_C_COMPILER}
+             -DMPI_CXX_COMPILER:FILEPATH=${MPI_CXX_COMPILER}
+             -DMPI_Fortran_COMPILER:FILEPATH=${MPI_Fortran_COMPILER}
   BINARY_DIR "${_hdf5_build}"
   INSTALL_DIR "${_hdf5_install}"
   UPDATE_DISCONNECTED ON

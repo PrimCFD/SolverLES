@@ -11,8 +11,7 @@
 int main(int argc, char** argv)
 {
     // Logger: rank0-only INFO by default (overridable via SOLVER_LOG=...)
-    core::master::logx::init(
-        {core::master::logx::Level::Info, /*color*/ true, /*rank0_only*/ true});
+    core::master::logx::init({core::master::logx::Level::Info, /*rank0_only*/ true});
 
     const std::size_t BYTES = (argc > 1)
                                   ? std::strtoull(argv[1], nullptr, 10) // user-supplied bytes

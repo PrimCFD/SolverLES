@@ -1,7 +1,7 @@
 # --- build the decay checker
 add_executable(check_tgv_decay ${CMAKE_CURRENT_SOURCE_DIR}/check_tgv_decay.cpp)
 target_compile_features(check_tgv_decay PRIVATE cxx_std_17)
-target_link_libraries(check_tgv_decay PRIVATE CGNS::cgns)
+target_link_libraries(check_tgv_decay PRIVATE core CGNS::cgns)
 
 # pick up MPI launcher settings from env
 set(_MPIEXEC_EXECUTABLE "$ENV{MPIEXEC_EXECUTABLE}")

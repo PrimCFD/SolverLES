@@ -193,8 +193,7 @@ static int parse_step_index(const std::string& sol_name)
 int main(int argc, char** argv)
 {
     // Logger: rank0-only INFO by default (SOLVER_LOG controls level)
-    core::master::logx::init(
-        {core::master::logx::Level::Info, /*color*/ true, /*rank0_only*/ true});
+    core::master::logx::init({core::master::logx::Level::Info, /*rank0_only*/ true});
 
     if (argc < 10)
     {
@@ -281,10 +280,10 @@ int main(int argc, char** argv)
     const int k1 = parse_step_index(sol1_name);
     const int steps_between_snaps = (k0 >= 0 && k1 > k0) ? (k1 - k0) : 1;
     const int steps_total = (int) std::llround(tEnd / dt);
-    std::cout << "OK: \"" << file << "\"\n";
-    std::cout << "  using snapshots: S0=\"" << sol0_name << "\"" << ", S1=\"" << sol1_name
-              << "\", SL=\"" << sollast_name << "\"" << " (Δstep=" << steps_between_snaps << ")\n";
-    std::cout << "  fields=(" << uL << "," << vL << ")\n";
+    LOGI("OK: \"%s\"\n", file.c_str());
+    LOGI("  using snapshots: S0=\"%s\", S1=\"%s\", SL=\"%s\" (Δstep=%d)\n", sol0_name.c_str(),
+         sol1_name.c_str(), sollast_name.c_str(), steps_between_snaps);
+    LOGI("  fields=(%s,%s)\n", uL.c_str(), vL.c_str());
 
     // theory (continuous)
     const double kx = 2.0 * M_PI / Lx, ky = 2.0 * M_PI / Ly, kz = 2.0 * M_PI / Lz;
@@ -312,14 +311,14 @@ int main(int argc, char** argv)
     const double err_cont = rel(U_hat, U_cont);
     const double err_disc = rel(U_hat, U_CN_pred);
 
-    std::cout << "OK: " << file << "\n"
-              << "  grid: " << nx << "x" << ny << "x" << nz << ", steps=" << steps_total << "\n"
-              << "  U_hat(final)   = " << U_hat << "\n"
-              << "  U_cont(theory) = " << U_cont << "  (rel err=" << err_cont << ")\n"
-              << "  U_CN(pred|MAC) = " << U_CN_pred << "  (rel err=" << err_disc << ")\n"
-              << "  λ_cont = " << lam_cont << ", λ_mac(measured) = " << lam_mac
-              << ", Δt_snap_steps = " << steps_between_snaps << "\n"
-              << "  using rel tol  = " << tol << "\n";
+    LOGI("OK: %s\n", file.c_str());
+    LOGI("  grid: %dx%dx%d, steps=%d\n", nx, ny, nz, steps_total);
+    LOGI("  U_hat(final)   = %.6g\n", U_hat);
+    LOGI("  U_cont(theory) = %.6g  (rel err=%.6g)\n", U_cont, err_cont);
+    LOGI("  U_CN(pred|MAC) = %.6g  (rel err=%.6g)\n", U_CN_pred, err_disc);
+    LOGI("  λ_cont = %.6g, λ_mac(measured) = %.6g, Δt_snap_steps = %d\n", lam_cont, lam_mac,
+         steps_between_snaps);
+    LOGI("  using rel tol  = %.6g\n", tol);
 
     if (err_cont <= tol || err_disc <= tol)
     {
