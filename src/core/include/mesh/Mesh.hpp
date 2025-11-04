@@ -52,7 +52,7 @@ struct Mesh
     // Desired MPI process grid (m,n,p) for DMDA.
     // If any entry is 0, the solver will call MPI_Dims_create() to fill it.
     // If all are >0, they are used verbatim.
-    std::array<int, 3> proc_grid{0, 0, 0};
+    std::array<int,3> proc_grid{0,0,0};
 };
 
 } // namespace core::mesh

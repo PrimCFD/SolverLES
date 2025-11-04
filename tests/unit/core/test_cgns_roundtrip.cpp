@@ -1,7 +1,9 @@
 #include "master/FieldCatalog.hpp"
 #include "master/Views.hpp"
+#include "mesh/Mesh.hpp" 
 #include "master/io/CGNSWriter.hpp"
 #include "master/io/WriterConfig.hpp"
+#include "memory/MpiBox.hpp"   
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -61,8 +63,19 @@ static struct SegvBT
 
 using namespace core::master;
 using namespace core::master::io;
+namespace cm = core::mesh;
 namespace fs = std::filesystem;
 using Catch::Approx;
+
+static cm::Mesh make_single_tile_mesh(int nx, int ny, int nz) {
+    cm::Mesh m{};
+    m.global    = {nx, ny, nz};
+    m.local     = {nx, ny, nz};
+    m.global_lo = {0,  0,  0 };
+    m.proc_grid = {1,  1,  1 };
+    m.ng = 0;
+    return m;
+}
 
 static std::vector<double> cgns_read_field(const std::string& path, const std::string& solname,
                                            const std::string& fieldname, int& nx, int& ny, int& nz)
@@ -257,6 +270,10 @@ TEST_CASE("CGNS roundtrip: one scalar field, 2 timesteps", "[io][cgns]")
     fs::path outdir = fs::temp_directory_path() / "solverles_cgns_rt";
     fs::create_directories(outdir);
     cfg.path = outdir.string();
+
+    static cm::Mesh mesh = make_single_tile_mesh(nx, ny, nz);
+    cfg.mesh = &mesh;
+    cfg.mpi_cart_comm = mpi_box(MPI_COMM_WORLD);
 
     CGNSWriter W(cfg);
 

@@ -12,7 +12,8 @@ time:
 
 io:
   path: "@OUT_DIR@"
-  backend: cgns
+  backend: xdmf
+  xdmf_version: v3
   precision: native
   async: { enabled: false }
   preflight: { enabled: false }

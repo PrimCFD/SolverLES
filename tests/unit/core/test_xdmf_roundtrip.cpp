@@ -2,6 +2,8 @@
 #include "master/Views.hpp"
 #include "master/io/WriterConfig.hpp"
 #include "master/io/XdmfHdf5Writer.hpp"
+#include "memory/MpiBox.hpp"
+#include "mesh/Mesh.hpp"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -13,6 +15,7 @@
 
 using namespace core::master;
 using namespace core::master::io;
+namespace cm = core::mesh;
 namespace fs = std::filesystem;
 using Catch::Approx;
 
@@ -103,6 +106,15 @@ TEST_CASE("XDMF/HDF5 roundtrip: two scalar fields, 1 timestep", "[io][xdmf]")
     fs::path outdir = fs::temp_directory_path() / "solverles_xdmf_rt";
     fs::create_directories(outdir);
     cfg.path = outdir.string();
+
+    static cm::Mesh mesh{};
+    mesh.global    = {nx, ny, nz};
+    mesh.local     = {nx, ny, nz};
+    mesh.global_lo = {0,  0,  0 };
+    mesh.proc_grid = {1,  1,  1 };
+    mesh.ng = 0;
+    cfg.mesh = &mesh;
+    cfg.mpi_cart_comm = mpi_box(MPI_COMM_WORLD);
 
     XdmfHdf5Writer W(cfg);
     W.open_case("xdmf_rt");

@@ -1,6 +1,7 @@
 # General
 add_executable(
   unit_core
+  test_main_mpi.cpp
   test_alignment.cpp
   test_registry_memory.cpp
   test_field_index.cpp
@@ -20,7 +21,7 @@ add_executable(
   test_writeplan_pack.cpp
   test_config_yaml.cpp)
 
-target_link_libraries(unit_core PRIVATE core Catch2::Catch2WithMain)
+target_link_libraries(unit_core PRIVATE core Catch2::Catch2)
 
 # Auto-register every TEST_CASE as a CTest test, all labeled "unit"
 register_catch_tests(

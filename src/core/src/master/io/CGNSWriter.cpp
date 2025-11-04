@@ -2,6 +2,7 @@
 #include "master/Views.hpp"
 #include "master/io/StagingPool.hpp"
 #include "master/io/WritePlan.hpp"
+#include "memory/MpiBox.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -14,6 +15,8 @@
 #include <vector>
 
 #include <cgnslib.h>
+#include <mpi.h>
+#include <pcgnslib.h>
 
 namespace core::master::io
 {
@@ -33,7 +36,37 @@ struct CGNSWriter::Impl
 
     int nx = 0, ny = 0, nz = 0;
     std::string filepath;
+    int rank = 0, size = 1;
 };
+
+// -- Helper: get communicator dims & this-rank coords with a robust fallback -------------
+static inline void cart_dims_coords(MPI_Comm in_comm, int rank, int dims[3], int coords[3])
+{
+    dims[0] = dims[1] = dims[2] = 0;
+    coords[0] = coords[1] = coords[2] = 0;
+
+    MPI_Comm comm = (in_comm == MPI_COMM_NULL) ? MPI_COMM_WORLD : in_comm;
+    int topo = MPI_UNDEFINED;
+    MPI_Topo_test(comm, &topo);
+    if (topo == MPI_CART)
+    {
+        int periods[3] = {0, 0, 0}, dummy_coords[3] = {0, 0, 0};
+        MPI_Cart_get(comm, 3, dims, periods, dummy_coords);
+        MPI_Cart_coords(comm, rank, 3, coords);
+        return;
+    }
+
+    // Fallback if not a Cartesian communicator: derive dims and flatten rank into coords.
+    int size = 1;
+    MPI_Comm_size(comm, &size);
+    int td[3] = {0, 0, 0};
+    MPI_Dims_create(size, 3, td);
+    dims[0] = td[0]; dims[1] = td[1]; dims[2] = td[2];
+    int r = rank;
+    coords[0] = (dims[0] > 0) ? (r % dims[0]) : 0; r /= (dims[0] > 0 ? dims[0] : 1);
+    coords[1] = (dims[1] > 0) ? (r % dims[1]) : 0; r /= (dims[1] > 0 ? dims[1] : 1);
+    coords[2] = (dims[2] > 0) ? (r % dims[2]) : 0;
+}
 
 static inline bool ok(int code)
 {
@@ -240,25 +273,76 @@ void CGNSWriter::open_case(const std::string& case_name)
     fs::create_directories(cfg_.path);
     impl_->filepath = cfg_.path + "/" + case_name + ".cgns";
 
-    // Fresh file each run
-    if (cg_open(impl_->filepath.c_str(), CG_MODE_WRITE, &impl_->file))
-        return;
-
-    // Base
-    int nbases = 0;
-    if (ok(cg_nbases(impl_->file, &nbases)) && nbases >= 1)
+    // Establish MPI rank/size for rank-0 responsibilities
     {
-        impl_->base = 1;
+        MPI_Comm comm = mpi_unbox(cfg_.mpi_cart_comm); // may be a Cartesian comm
+        if (comm == MPI_COMM_NULL)
+            comm = MPI_COMM_WORLD; // fallback
+        MPI_Comm_rank(comm, &impl_->rank);
+        MPI_Comm_size(comm, &impl_->size);
+        cgp_mpi_comm(comm);
+        cg_set_file_type(CG_FILE_HDF5);
     }
-    else
+
+    
+    // PARALLEL open (all ranks)
     {
-        const int cell_dim = 3, phys_dim = 3;
-        if (cg_base_write(impl_->file, case_name.c_str(), cell_dim, phys_dim, &impl_->base))
+        MPI_Comm comm = mpi_unbox(cfg_.mpi_cart_comm);
+        if (comm == MPI_COMM_NULL) comm = MPI_COMM_WORLD;
+
+        // Open brand-new file collectively in WRITE mode and create metadata in parallel session
+        int ok_local = (cgp_open(impl_->filepath.c_str(), CG_MODE_WRITE, &impl_->file) == CG_OK);
+        int ok_all = 0;
+        MPI_Allreduce(&ok_local, &ok_all, 1, MPI_INT, MPI_MIN, comm);
+        if (!ok_all) {
+            if (!ok_local) {
+                std::fprintf(stderr, "[CGNS] cgp_open(%s, WRITE) failed: %s\n",
+                             impl_->filepath.c_str(), cg_get_error());
+            }
+            // Ensure everyone leaves consistently
+            impl_->opened = false;
             return;
-    }
-    ok(cg_simulation_type_write(impl_->file, impl_->base, TimeAccurate));
+        }
 
-    impl_->zone = 0;
+        // Create Base/Zone COLLECTIVELY (all ranks enter cg_* with identical args)
+        int base_id = 0, zone_id = 0;
+        {
+            const int cell_dim = 3, phys_dim = 3;
+            if (cg_base_write(impl_->file, "Base", cell_dim, phys_dim, &base_id) != CG_OK) {
+                std::fprintf(stderr, "[CGNS] cg_base_write failed: %s\n", cg_get_error());
+                base_id = 0;
+            }
+            const int GX_cells = cfg_.mesh->global[0];
+            const int GY_cells = cfg_.mesh->global[1];
+            const int GZ_cells = cfg_.mesh->global[2];
+            cgsize_t size[9] = {
+                (cgsize_t)(GX_cells + 1), (cgsize_t)(GY_cells + 1), (cgsize_t)(GZ_cells + 1),
+                (cgsize_t) GX_cells,      (cgsize_t) GY_cells,      (cgsize_t) GZ_cells,
+                0, 0, 0};
+            if (base_id != 0 &&
+                cg_zone_write(impl_->file, base_id, "Zone", size, Structured, &zone_id) != CG_OK) {
+                std::fprintf(stderr, "[CGNS] cg_zone_write failed: %s\n", cg_get_error());
+                zone_id = 0;
+            }
+            if (base_id != 0) {
+                ok(cg_simulation_type_write(impl_->file, base_id, TimeAccurate));
+            }
+        }
+        // If root failed to create metadata, all ranks must back out collectively.
+        int meta_ok = (base_id != 0 && zone_id != 0);
+        int meta_all = 0;
+        MPI_Allreduce(&meta_ok, &meta_all, 1, MPI_INT, MPI_MIN, comm);
+        if (!meta_all) {
+            if (impl_->file >= 0) cgp_close(impl_->file);
+            impl_->opened = false;
+            return;
+        }
+        impl_->base = base_id;
+        impl_->zone = zone_id;
+
+        MPI_Barrier(comm);
+    }
+
     impl_->step_index = 0;
     impl_->times.clear();
     impl_->sol_names.clear();
@@ -275,74 +359,134 @@ void CGNSWriter::write(const WriteRequest& req)
     if (!impl_->planned)
     {
         plan_ = make_plan_from_request(req.fields, cfg_.precision);
-        // Use MIN across all selected fields to get the true cell counts.
-        // (Face fields are +1 along their normal; MIN is the cell size.)
-        impl_->nx = std::numeric_limits<int>::max();
-        impl_->ny = std::numeric_limits<int>::max();
-        impl_->nz = std::numeric_limits<int>::max();
-        for (const auto& f : plan_.fields)
-        {
-            impl_->nx = std::min(impl_->nx, f.shape.nx);
-            impl_->ny = std::min(impl_->ny, f.shape.ny);
-            impl_->nz = std::min(impl_->nz, f.shape.nz);
-        }
-        if (impl_->nx == std::numeric_limits<int>::max())
-            impl_->nx = 0;
-        if (impl_->ny == std::numeric_limits<int>::max())
-            impl_->ny = 0;
-        if (impl_->nz == std::numeric_limits<int>::max())
-            impl_->nz = 0;
+        // Cache *global* cell counts for shapes / aliasing
+        const int GX_cells = cfg_.mesh->global[0];
+        const int GY_cells = cfg_.mesh->global[1];
+        const int GZ_cells = cfg_.mesh->global[2];
+        impl_->nx = GX_cells;
+        impl_->ny = GY_cells;
+        impl_->nz = GZ_cells;
 
-        // Zone (create once)
-        cgsize_t size[9] = {(cgsize_t) (impl_->nx + 1),
-                            (cgsize_t) (impl_->ny + 1),
-                            (cgsize_t) (impl_->nz + 1),
-                            (cgsize_t) impl_->nx,
-                            (cgsize_t) impl_->ny,
-                            (cgsize_t) impl_->nz,
-                            0,
-                            0,
-                            0};
+        // Static grid coordinates (unit lattice) -- create node once, then write in parallel
+        const std::size_t vx = (std::size_t) GX_cells + 1;
+        const std::size_t vy = (std::size_t) GY_cells + 1;
+        const std::size_t vz = (std::size_t) GZ_cells + 1;
 
-        int nzones = 0;
-        if (ok(cg_nzones(impl_->file, impl_->base, &nzones)) && nzones >= 1)
+        // Create coord arrays (collective) via cgp_
+        int cx = 0, cy = 0, cz = 0;
         {
-            impl_->zone = 1;
-        }
-        else
-        {
-            if (cg_zone_write(impl_->file, impl_->base, "Zone", size, Structured, &impl_->zone))
+            MPI_Comm comm = mpi_unbox(cfg_.mpi_cart_comm);
+            if (comm == MPI_COMM_NULL)
+                comm = MPI_COMM_WORLD;
+            int ok_local = (cgp_coord_write(impl_->file, impl_->base, impl_->zone, RealDouble,
+                                            "CoordinateX", &cx) == CG_OK);
+            int ok_all = 0;
+            MPI_Allreduce(&ok_local, &ok_all, 1, MPI_INT, MPI_MIN, comm);
+            if (!ok_all)
+            {
+                if (!ok_local)
+                    std::fprintf(stderr, "[CGNS] cgp_coord_write(CoordinateX) failed: %s\n",
+                                 cg_get_error());
                 return;
+            }
+            ok_local = (cgp_coord_write(impl_->file, impl_->base, impl_->zone, RealDouble,
+                                        "CoordinateY", &cy) == CG_OK);
+            MPI_Allreduce(&ok_local, &ok_all, 1, MPI_INT, MPI_MIN, comm);
+            if (!ok_all)
+            {
+                if (!ok_local)
+                    std::fprintf(stderr, "[CGNS] cgp_coord_write(CoordinateY) failed: %s\n",
+                                 cg_get_error());
+                return;
+            }
+            ok_local = (cgp_coord_write(impl_->file, impl_->base, impl_->zone, RealDouble,
+                                        "CoordinateZ", &cz) == CG_OK);
+            MPI_Allreduce(&ok_local, &ok_all, 1, MPI_INT, MPI_MIN, comm);
+            if (!ok_all)
+            {
+                if (!ok_local)
+                    std::fprintf(stderr, "[CGNS] cgp_coord_write(CoordinateZ) failed: %s\n",
+                                 cg_get_error());
+                return;
+            }
         }
+        // All ranks: write their vertex hyperslab. On each axis, only the tile that actually
+        // touches the global high end contributes the extra "+1" vertex. This detection is based
+        // purely on tile extents (ox+lx vs global size), making it robust to any communicator
+        // shape/reordering.
+        {
 
-        // Static grid coordinates (unit lattice)
-        const std::size_t vx = (std::size_t) impl_->nx + 1;
-        const std::size_t vy = (std::size_t) impl_->ny + 1;
-        const std::size_t vz = (std::size_t) impl_->nz + 1;
-        const std::size_t nvert = vx * vy * vz;
-        std::vector<double> X(nvert), Y(nvert), Z(nvert);
-        std::size_t p = 0;
-        for (std::size_t k = 0; k < vz; ++k)
-            for (std::size_t j = 0; j < vy; ++j)
-                for (std::size_t i = 0; i < vx; ++i, ++p)
-                {
-                    X[p] = double(i);
-                    Y[p] = double(j);
-                    Z[p] = double(k);
-                }
-        int gc;
-        if (cg_grid_write(impl_->file, impl_->base, impl_->zone, "GridCoordinates", &gc))
-            return;
-        int cx, cy, cz;
-        if (cg_coord_write(impl_->file, impl_->base, impl_->zone, RealDouble, "CoordinateX",
-                           X.data(), &cx))
-            return;
-        if (cg_coord_write(impl_->file, impl_->base, impl_->zone, RealDouble, "CoordinateY",
-                           Y.data(), &cy))
-            return;
-        if (cg_coord_write(impl_->file, impl_->base, impl_->zone, RealDouble, "CoordinateZ",
-                           Z.data(), &cz))
-            return;
+            const int ox = cfg_.mesh->global_lo[0];
+            const int oy = cfg_.mesh->global_lo[1];
+            const int oz = cfg_.mesh->global_lo[2];
+            const int lx = cfg_.mesh->local[0];
+            const int ly = cfg_.mesh->local[1];
+            const int lz = cfg_.mesh->local[2];
+
+            // Global cell counts (cached earlier)
+            const int GX = impl_->nx;
+            const int GY = impl_->ny;
+            const int GZ = impl_->nz;
+
+            // Decide "+1" strictly from geometric coverage of the global high end.
+            const bool last_x = (ox + lx == GX);
+            const bool last_y = (oy + ly == GY);
+            const bool last_z = (oz + lz == GZ);
+
+            const int vxn = lx + (last_x ? 1 : 0);
+            const int vyn = ly + (last_y ? 1 : 0);
+            const int vzn = lz + (last_z ? 1 : 0);
+
+            std::vector<double> X_local((size_t) vxn * vyn * vzn),
+                Y_local((size_t) vxn * vyn * vzn), Z_local((size_t) vxn * vyn * vzn);
+            size_t p = 0;
+            for (int kz = 0; kz < vzn; ++kz)
+                for (int jy = 0; jy < vyn; ++jy)
+                    for (int ix = 0; ix < vxn; ++ix, ++p)
+                    {
+                        X_local[p] = double(ox + ix);
+                        Y_local[p] = double(oy + jy);
+                        Z_local[p] = double(oz + kz);
+                    }
+            const cgsize_t rminV[3] = {(cgsize_t) (ox + 1), (cgsize_t) (oy + 1),
+                                       (cgsize_t) (oz + 1)};
+            const cgsize_t rmaxV[3] = {(cgsize_t) (ox + vxn), (cgsize_t) (oy + vyn),
+                                       (cgsize_t) (oz + vzn)};
+            // Coordinate slabs must also succeed on all ranks collectively.
+            MPI_Comm comm2 = mpi_unbox(cfg_.mpi_cart_comm);
+            if (comm2 == MPI_COMM_NULL) comm2 = MPI_COMM_WORLD;
+            int ok_local = (cgp_coord_write_data(impl_->file, impl_->base, impl_->zone, cx, rminV,
+                                                 rmaxV, X_local.data()) == CG_OK);
+            int ok_all = 0;
+            MPI_Allreduce(&ok_local, &ok_all, 1, MPI_INT, MPI_MIN, comm2);
+            if (!ok_all)
+            {
+                if (!ok_local)
+                    std::fprintf(stderr, "[CGNS] cgp_coord_write_data(X) failed: %s\n",
+                                 cg_get_error());
+                return;
+            }
+            ok_local = (cgp_coord_write_data(impl_->file, impl_->base, impl_->zone, cy, rminV,
+                                             rmaxV, Y_local.data()) == CG_OK);
+            MPI_Allreduce(&ok_local, &ok_all, 1, MPI_INT, MPI_MIN, comm2);
+            if (!ok_all)
+            {
+                if (!ok_local)
+                    std::fprintf(stderr, "[CGNS] cgp_coord_write_data(Y) failed: %s\n",
+                                 cg_get_error());
+                return;
+            }
+            ok_local = (cgp_coord_write_data(impl_->file, impl_->base, impl_->zone, cz, rminV,
+                                             rmaxV, Z_local.data()) == CG_OK);
+            MPI_Allreduce(&ok_local, &ok_all, 1, MPI_INT, MPI_MIN, comm2);
+            if (!ok_all)
+            {
+                if (!ok_local)
+                    std::fprintf(stderr, "[CGNS] cgp_coord_write_data(Z) failed: %s\n",
+                                 cg_get_error());
+                return;
+            }
+        }
 
         std::size_t maxb = 0;
         for (auto& f : plan_.fields)
@@ -364,6 +508,22 @@ void CGNSWriter::write(const WriteRequest& req)
     // Name them deterministically and lazily create on first use.
     // Keep a canonical solution name for iterative metadata (prefer CellCenter).
     int sol_cell = 0, sol_i = 0, sol_j = 0, sol_k = 0, sol_other = 0;
+
+    // Helper (COLLECTIVE): find FlowSolution id by name (linear scan).
+    auto find_solution_id_root = [&](const char* wanted) -> int
+    {
+        // All ranks must enter these cg_* calls collectively in a pcgns session.
+        int nsol = 0, id = 0;
+        if (cg_nsols(impl_->file, impl_->base, impl_->zone, &nsol) != CG_OK) nsol = 0;
+        for (int si = 1; si <= nsol; ++si) {
+            char nm[256] = {0};
+            GridLocation_t l = Vertex;
+            if (cg_sol_info(impl_->file, impl_->base, impl_->zone, si, nm, &l) != CG_OK) continue;
+            if (std::strcmp(nm, wanted) == 0) { id = si; break; }
+        }
+        return id;
+    };
+
     auto get_or_make_sol = [&](GridLocation_t loc) -> int
     {
         const char* tag = (loc == CellCenter)    ? "Cell"
@@ -378,12 +538,42 @@ void CGNSWriter::write(const WriteRequest& req)
                     : (loc == JFaceCenter) ? &sol_j
                     : (loc == KFaceCenter) ? &sol_k
                                            : &sol_other;
-        if (*slot == 0)
+        if (*slot != 0)
+            return *slot;
+
+        MPI_Comm comm = mpi_unbox(cfg_.mpi_cart_comm);
+        if (comm == MPI_COMM_NULL)
+            comm = MPI_COMM_WORLD;
+
+        // COLLECTIVE creation: first check if it exists (all ranks call the same query),
+        // then if missing, ALL ranks enter cg_sol_write with identical args.
+        int id = 0;
         {
-            if (cg_sol_write(impl_->file, impl_->base, impl_->zone, name, loc, slot))
-                return 0;
+            int nsol = 0;
+            if (cg_nsols(impl_->file, impl_->base, impl_->zone, &nsol) != CG_OK)
+                nsol = 0;
+            for (int si = 1; si <= nsol; ++si)
+            {
+                char nm[256] = {0};
+                GridLocation_t l = Vertex;
+                if (cg_sol_info(impl_->file, impl_->base, impl_->zone, si, nm, &l) != CG_OK)
+                    continue;
+                if (std::strcmp(nm, name) == 0) { id = si; break; }
+            }
+            int need_create = (id == 0);
+            int need_all = 0;
+            MPI_Allreduce(&need_create, &need_all, 1, MPI_INT, MPI_MAX, comm);
+            if (need_all) {
+                if (cg_sol_write(impl_->file, impl_->base, impl_->zone, name, loc, &id) != CG_OK) {
+                    std::fprintf(stderr, "[CGNS] cg_sol_write(%s) failed: %s\n", name, cg_get_error());
+                    id = 0;
+                }
+            }
         }
-        return *slot;
+        if (id == 0)
+            return 0;
+        *slot = id;
+        return id;
     };
 
     // Fields
@@ -392,9 +582,19 @@ void CGNSWriter::write(const WriteRequest& req)
     {
         const auto& fp = plan_.fields[i];
         const auto& view = req.fields[i];
-        // Decide location from extents
-        GridLocation_t loc =
-            infer_location(fp.shape.nx, fp.shape.ny, fp.shape.nz, impl_->nx, impl_->ny, impl_->nz);
+        // Decide GridLocation from LOCAL tile sizes (not globals).
+        const int lx_loc = cfg_.mesh->local[0];
+        const int ly_loc = cfg_.mesh->local[1];
+        const int lz_loc = cfg_.mesh->local[2];
+        GridLocation_t loc = CellCenter;
+        if (fp.shape.nx == lx_loc + 1 && fp.shape.ny == ly_loc && fp.shape.nz == lz_loc)
+            loc = IFaceCenter;
+        else if (fp.shape.nx == lx_loc && fp.shape.ny == ly_loc + 1 && fp.shape.nz == lz_loc)
+            loc = JFaceCenter;
+        else if (fp.shape.nx == lx_loc && fp.shape.ny == ly_loc && fp.shape.nz == lz_loc + 1)
+            loc = KFaceCenter;
+        else if (!(fp.shape.nx == lx_loc && fp.shape.ny == ly_loc && fp.shape.nz == lz_loc))
+            loc = Vertex; // conservative fallback if shapes don't match expectations
         int sol_id = get_or_make_sol(loc);
         if (sol_id == 0)
             return;
@@ -435,18 +635,46 @@ void CGNSWriter::write(const WriteRequest& req)
                           view.strides[2], fp.shape.elem_size);
         }
 
+        // Parallel CGNS does not support IFace/JFace/KFace FlowSolution locations on structured
+        // zones. For face-centered velocities, skip writing the native face field and go straight
+        // to the CellCenter alias (u_cell/v_cell/w_cell) below.
         int fld_id{};
-        // Write the raw array under the correct GridLocation
-        if (cg_field_write(impl_->file, impl_->base, impl_->zone, sol_id, dtype,
-                           fp.shape.name.c_str(), staging, &fld_id) != CG_OK)
+        const bool is_face_loc = (loc == IFaceCenter || loc == JFaceCenter || loc == KFaceCenter);
+        bool wrote_native = false;
+        if (!is_face_loc)
         {
-            std::fprintf(stderr, "[CGNS] cg_field_write(%s) failed: %s\n", fp.shape.name.c_str(),
-                         cg_get_error());
-            return;
+            if (cgp_field_write(impl_->file, impl_->base, impl_->zone, sol_id, dtype,
+                                fp.shape.name.c_str(), &fld_id) != CG_OK)
+            {
+                std::fprintf(stderr, "[CGNS] cgp_field_write(%s) failed: %s\n",
+                             fp.shape.name.c_str(), cg_get_error());
+                // Don't abort the whole write step; continue to any CellCenter alias below.
+            }
+            else
+            {
+                wrote_native = true;
+            }
+        }
+        // Compute rmin/rmax (Fortran 1-based). Use mesh globals and local sizes (+1 on stagger
+        // axis).
+        const int ox = cfg_.mesh->global_lo[0], oy = cfg_.mesh->global_lo[1],
+                  oz = cfg_.mesh->global_lo[2];
+        int lx = fp.shape.nx, ly = fp.shape.ny, lz = fp.shape.nz; // already interior (+1 if face)
+        cgsize_t rmin[3] = {(cgsize_t) (ox + 1), (cgsize_t) (oy + 1), (cgsize_t) (oz + 1)};
+        cgsize_t rmax[3] = {(cgsize_t) (ox + lx), (cgsize_t) (oy + ly), (cgsize_t) (oz + lz)};
+        if (wrote_native)
+        {
+            if (cgp_field_write_data(impl_->file, impl_->base, impl_->zone, sol_id, fld_id, rmin,
+                                     rmax, staging) != CG_OK)
+            {
+                std::fprintf(stderr, "[CGNS] cgp_field_write_data(%s) failed: %s\n",
+                             fp.shape.name.c_str(), cg_get_error());
+                // Keep going; we'll still try to emit the CellCenter alias for velocities.
+            }
         }
 
         // If this is a face-centered velocity, also emit a CellCenter alias
-        // named u_cell/v_cell/w_cell by averaging onto cells (ParaView-friendly & no collisions).
+        // named u_cell/v_cell/w_cell by averaging onto cells (ParaView-friendly).
         if (loc != CellCenter &&
             (fp.shape.name == "u" || fp.shape.name == "v" || fp.shape.name == "w"))
         {
@@ -461,55 +689,34 @@ void CGNSWriter::write(const WriteRequest& req)
                                        : fp.shape.name == "v" ? "v_cell"
                                                               : "w_cell");
 
-            // If alias already exists in the CellCenter solution for this step, skip it.
-            int nfld = 0;
-            bool alias_exists = false;
-            if (cg_nfields(impl_->file, impl_->base, impl_->zone, sol_cell_id, &nfld) == CG_OK)
-            {
-                for (int fi = 1; fi <= nfld; ++fi)
-                {
-                    CGNS_ENUMT(DataType_t) fdtype;
-                    char fname[33] = {0};
-                    if (cg_field_info(impl_->file, impl_->base, impl_->zone, sol_cell_id, fi,
-                                      &fdtype, fname) != CG_OK)
-                        continue;
-                    if (std::strcmp(fname, alias.c_str()) == 0)
-                    {
-                        alias_exists = true;
-                        break;
-                    }
-                }
-            }
-            if (!alias_exists)
             {
                 // Build averaged buffer into the same staging slot
                 const bool src_f64 = (view.elem_size == 8);
                 const bool dst_f64 = (fp.shape.elem_size == 8); // keep plan dtype for the alias
                 void* tmp = pool_.data(i); // face buffer ≥ cell buffer, safe to reuse
 
+                // local interior sizes for this rank's tile
+                const int nx_loc = cfg_.mesh->local[0];
+                const int ny_loc = cfg_.mesh->local[1];
+                const int nz_loc = cfg_.mesh->local[2];
+
                 if (dst_f64)
                 {
                     auto* d = static_cast<double*>(tmp);
                     if (loc == IFaceCenter)
                     {
-                        src_f64 ? avg_i_to_cell<double, double>(d, view, impl_->nx, impl_->ny,
-                                                                impl_->nz)
-                                : avg_i_to_cell<float, double>(d, view, impl_->nx, impl_->ny,
-                                                               impl_->nz);
+                        src_f64 ? avg_i_to_cell<double, double>(d, view, nx_loc, ny_loc, nz_loc)
+                                : avg_i_to_cell<float, double>(d, view, nx_loc, ny_loc, nz_loc);
                     }
                     else if (loc == JFaceCenter)
                     {
-                        src_f64 ? avg_j_to_cell<double, double>(d, view, impl_->nx, impl_->ny,
-                                                                impl_->nz)
-                                : avg_j_to_cell<float, double>(d, view, impl_->nx, impl_->ny,
-                                                               impl_->nz);
+                        src_f64 ? avg_j_to_cell<double, double>(d, view, nx_loc, ny_loc, nz_loc)
+                                : avg_j_to_cell<float, double>(d, view, nx_loc, ny_loc, nz_loc);
                     }
                     else
                     { // KFaceCenter
-                        src_f64 ? avg_k_to_cell<double, double>(d, view, impl_->nx, impl_->ny,
-                                                                impl_->nz)
-                                : avg_k_to_cell<float, double>(d, view, impl_->nx, impl_->ny,
-                                                               impl_->nz);
+                        src_f64 ? avg_k_to_cell<double, double>(d, view, nx_loc, ny_loc, nz_loc)
+                                : avg_k_to_cell<float, double>(d, view, nx_loc, ny_loc, nz_loc);
                     }
                 }
                 else
@@ -517,33 +724,45 @@ void CGNSWriter::write(const WriteRequest& req)
                     auto* d = static_cast<float*>(tmp);
                     if (loc == IFaceCenter)
                     {
-                        src_f64
-                            ? avg_i_to_cell<double, float>(d, view, impl_->nx, impl_->ny, impl_->nz)
-                            : avg_i_to_cell<float, float>(d, view, impl_->nx, impl_->ny, impl_->nz);
+                        src_f64 ? avg_i_to_cell<double, float>(d, view, nx_loc, ny_loc, nz_loc)
+                                : avg_i_to_cell<float, float>(d, view, nx_loc, ny_loc, nz_loc);
                     }
                     else if (loc == JFaceCenter)
                     {
-                        src_f64
-                            ? avg_j_to_cell<double, float>(d, view, impl_->nx, impl_->ny, impl_->nz)
-                            : avg_j_to_cell<float, float>(d, view, impl_->nx, impl_->ny, impl_->nz);
+                        src_f64 ? avg_j_to_cell<double, float>(d, view, nx_loc, ny_loc, nz_loc)
+                                : avg_j_to_cell<float, float>(d, view, nx_loc, ny_loc, nz_loc);
                     }
                     else
                     { // KFaceCenter
-                        src_f64
-                            ? avg_k_to_cell<double, float>(d, view, impl_->nx, impl_->ny, impl_->nz)
-                            : avg_k_to_cell<float, float>(d, view, impl_->nx, impl_->ny, impl_->nz);
+                        src_f64 ? avg_k_to_cell<double, float>(d, view, nx_loc, ny_loc, nz_loc)
+                                : avg_k_to_cell<float, float>(d, view, nx_loc, ny_loc, nz_loc);
                     }
                 }
 
+                // Create alias field and write our cell-centered tile
                 int fld_cc{};
-                if (cg_field_write(impl_->file, impl_->base, impl_->zone, sol_cell_id, dtype,
-                                   alias.c_str(), tmp, &fld_cc) != CG_OK)
+                if (cgp_field_write(impl_->file, impl_->base, impl_->zone, sol_cell_id, dtype,
+                                    alias.c_str(), &fld_cc) != CG_OK)
                 {
-                    std::fprintf(stderr, "[CGNS] cg_field_write(CellCenter alias %s) failed: %s\n",
+                    std::fprintf(stderr, "[CGNS] cgp_field_write(%s) failed: %s\n", alias.c_str(),
+                                 cg_get_error());
+                    return;
+                }
+                // Cell-centered alias write ranges are strictly the local (cell) tile:
+                cgsize_t rmin_cc[3] = {(cgsize_t) (cfg_.mesh->global_lo[0] + 1),
+                                       (cgsize_t) (cfg_.mesh->global_lo[1] + 1),
+                                       (cgsize_t) (cfg_.mesh->global_lo[2] + 1)};
+                cgsize_t rmax_cc[3] = {(cgsize_t) (cfg_.mesh->global_lo[0] + cfg_.mesh->local[0]),
+                                       (cgsize_t) (cfg_.mesh->global_lo[1] + cfg_.mesh->local[1]),
+                                       (cgsize_t) (cfg_.mesh->global_lo[2] + cfg_.mesh->local[2])};
+                if (cgp_field_write_data(impl_->file, impl_->base, impl_->zone, sol_cell_id, fld_cc,
+                                         rmin_cc, rmax_cc, tmp) != CG_OK)
+                {
+                    std::fprintf(stderr, "[CGNS] cgp_field_write_data(CellCenter %s) failed: %s\n",
                                  alias.c_str(), cg_get_error());
                     return;
                 }
-            }
+            } // alias creation & write (collective)
         }
     }
 
@@ -563,13 +782,24 @@ void CGNSWriter::close()
     if (!impl_ || !impl_->opened)
         return;
 
-    // Write final iterative metadata (all steps)
+    // Use the same communicator the writer was initialized with.
+    MPI_Comm comm = mpi_unbox(cfg_.mpi_cart_comm);
+    if (comm == MPI_COMM_NULL)
+        comm = MPI_COMM_WORLD;
+
+    // Everyone arrives before serial metadata update
+    MPI_Barrier(comm);
+
+    // FINAL ITERATIVE METADATA MUST BE COLLECTIVE IN A PARALLEL SESSION
     if (impl_->zone != 0 && !impl_->times.empty())
     {
         finalize_iter_meta(impl_->file, impl_->base, impl_->zone, impl_->times, impl_->sol_names);
     }
 
-    cg_close(impl_->file);
+    // Ensure metadata is visible before collective close
+    MPI_Barrier(comm);
+
+    cgp_close(impl_->file);
     impl_->opened = false;
 }
 

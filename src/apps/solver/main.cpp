@@ -453,7 +453,6 @@ int main(int argc, char** argv)
     // 3) Mesh from config
     core::mesh::Mesh mesh;
 
-    mesh.local = cfg.local;
     mesh.ng = cfg.ng;
     mesh.periodic = cfg.periodic;
     mesh.proc_grid = cfg.proc_grid;
@@ -524,6 +523,37 @@ int main(int argc, char** argv)
             mesh.proc_grid[1] = std::max(1, cd[1]);
         if (mesh.proc_grid[2] <= 0)
             mesh.proc_grid[2] = std::max(1, cd[2]);
+
+        // ---- Populate global and global_lo for writers/IO ----
+        // Global cell counts: from cfg.global when provided, else derived.
+        if (cfg.global.has_value())
+        {
+            mesh.global = *cfg.global;
+        }
+        else
+        {
+            mesh.global = {mesh.local[0] * mesh.proc_grid[0], mesh.local[1] * mesh.proc_grid[1],
+                           mesh.local[2] * mesh.proc_grid[2]};
+        }
+        // Rank coordinates in the Cartesian grid (needed for offsets)
+        int coords[3] = {0, 0, 0};
+        if (topo == MPI_CART)
+        {
+            MPI_Cart_coords(comm, /*rank*/ rc.world_rank, /*maxdims*/ 3, coords);
+        }
+        else
+        {
+            // Best-effort: flatten rank into a 3D grid using cd[]
+            int r = rc.world_rank;
+            coords[0] = (cd[0] > 0) ? (r % cd[0]) : 0;
+            r /= (cd[0] > 0 ? cd[0] : 1);
+            coords[1] = (cd[1] > 0) ? (r % cd[1]) : 0;
+            r /= (cd[1] > 0 ? cd[1] : 1);
+            coords[2] = (cd[2] > 0) ? (r % cd[2]) : 0;
+        }
+        // Global lower-left-back interior index for this tile
+        mesh.global_lo = {coords[0] * mesh.local[0], coords[1] * mesh.local[1],
+                          coords[2] * mesh.local[2]};
     }
 
     // Sanity check: communicator dims must match mesh.proc_grid for correct halo neighbors.

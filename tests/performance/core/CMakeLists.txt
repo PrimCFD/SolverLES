@@ -33,7 +33,10 @@ endif()
 add_perf_test(perf_alloc bench_allocate)
 add_perf_test(perf_index bench_index)
 add_perf_test(perf_overhead bench_overhead)
-add_perf_test(perf_io_write bench_io_write)
+
+# Same grid & reps, two backends
+add_perf_test(perf_io_write_xmf  bench_io_write --backend=xmf  --nx=64 --ny=64 --nz=32 --reps=5)
+add_perf_test(perf_io_write_cgns bench_io_write --backend=cgns --nx=64 --ny=64 --nz=32 --reps=5)
 
 # 16 MiB and 64 MiB roundtrips (H->D + D->H). If CUDA is off, these report
 # "skipped".
