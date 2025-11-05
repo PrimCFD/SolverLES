@@ -80,24 +80,6 @@ std::shared_ptr<plugin::IAction> make_predictor(const plugin::KV& kv,
         std::clamp((int) std::strtol(get("pred_imp_order", "3").c_str(), nullptr, 10), 1, 3);
     P->set_imp_order(imp_order);
     // --- KK advection knobs ---
-    // mode: "fixed" uses adv_kkC (or adv_kk_C); "dynamic" uses gamma/Cmax/speed
-    const std::string kk_mode = to_lower(get("adv_kk_mode", "fixed")); // "fixed"|"dynamic"
-    // Accept both "adv_kkC" and "adv_kk_C" (prefer explicit adv_kkC if present)
-    double adv_kkC_fixed = to_d(get("adv_kkC", "nan"), std::numeric_limits<double>::quiet_NaN());
-    if (std::isnan(adv_kkC_fixed))
-    {
-        adv_kkC_fixed = to_d(get("adv_kk_C", "0.3333333333333333"), 1.0 / 3.0);
-    }
-    const double adv_kk_gamma = to_d(get("adv_kk_gamma", "5e-3"), 5e-3); // target γ*
-    const double adv_kk_Cmax = to_d(get("adv_kk_Cmax", "1.0"), 1.0);
-    const std::string kk_speed = to_lower(get("adv_kk_speed", "linf")); // "linf"|"rms"
-
-    // Apply KK settings
-    P->set_adv_kkC(adv_kkC_fixed);
-    P->set_adv_kk_mode(kk_mode == "dynamic");
-    P->set_adv_kk_gamma(adv_kk_gamma);
-    P->set_adv_kk_Cmax(adv_kk_Cmax);
-    P->set_adv_kk_speed(kk_speed);
     const std::string adv = to_lower(get("advect", "on"));
     const bool adv_on = !(adv == "0" || adv == "false" || adv == "off" || adv == "no");
     P->set_advect_enabled(adv_on);
@@ -217,57 +199,6 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
     core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"u", "v", "w"});
 
     // ---- Advection: KK3 tendency ----
-    // Dynamic KK coefficient: recompute each call from current speeds & dt
-    if (advect_enabled_ && adv_kk_dynamic_)
-    {
-        auto speed_ref = [&](const void* ptr, std::size_t N) -> double
-        {
-            const double* a = static_cast<const double*>(ptr);
-            if (kk_speed_ref_ == KkSpeedRef::Linf)
-            {
-                double m = 0.0;
-                for (std::size_t i = 0; i < N; ++i)
-                    m = std::max(m, std::abs(a[i]));
-                return m;
-            }
-            else
-            {
-                long double s2 = 0.0L;
-                for (std::size_t i = 0; i < N; ++i)
-                {
-                    long double v = a[i];
-                    s2 += v * v;
-                }
-                return std::sqrt(static_cast<double>(s2 / std::max<std::size_t>(1, N)));
-            }
-        };
-
-        const std::size_t Nu_tot = (std::size_t) nxu_tot * nyu_tot * nzu_tot;
-        const std::size_t Nv_tot = (std::size_t) nxv_tot * nyv_tot * nzv_tot;
-        const std::size_t Nw_tot = (std::size_t) nxw_tot * nyw_tot * nzw_tot;
-
-        // Reference speeds on MAC faces (after halo exchange above)
-        const double Urefx = speed_ref(vu.host_ptr, Nu_tot);
-        const double Urefy = speed_ref(vv.host_ptr, Nv_tot);
-        const double Urefz = speed_ref(vw.host_ptr, Nw_tot);
-
-        // Nominal Courant numbers per axis
-        const double eps = 1e-14;
-        const double Cox = Urefx * dt / std::max(dx_, eps);
-        const double Coy = Urefy * dt / std::max(dy_, eps);
-        const double Coz = Urefz * dt / std::max(dz_, eps);
-        const double Co_nom = std::max(Cox, std::max(Coy, Coz));
-
-        if (Co_nom > eps)
-        {
-            // γ_KK ≈ (C/4)*Co  ⇒  C = 4 γ*/Co   (cap to Cmax)
-            adv_kkC_ = std::min(4.0 * adv_kk_gamma_ / Co_nom, adv_kk_Cmax_);
-        }
-        else
-        {
-            adv_kkC_ = 0.0;
-        }
-    }
     // If advection is disabled, clear ONLY advection history;
     // keep diffusion history for AM2/AM3 implicit RHS.
     if (!advect_enabled_)
@@ -286,7 +217,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
         advect_velocity_kk3_mac_c(static_cast<const double*>(vu.host_ptr), nxu_tot, nyu_tot,
                                   nzu_tot, static_cast<const double*>(vv.host_ptr), nxv_tot,
                                   nyv_tot, nzv_tot, static_cast<const double*>(vw.host_ptr),
-                                  nxw_tot, nyw_tot, nzw_tot, ng, dx_, dy_, dz_, adv_kkC_,
+                                  nxw_tot, nyw_tot, nzw_tot, ng, dx_, dy_, dz_,
                                   Nu_t.data(), Nv_t.data(), Nw_t.data());
     }
 

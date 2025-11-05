@@ -1,6 +1,7 @@
 #include "InitTG.hpp"
 #include "master/FieldCatalog.hpp"
 #include "master/Views.hpp"
+#include "master/HaloOps.hpp"
 #include "mesh/Mesh.hpp"
 #include <algorithm>
 #include <cmath>
@@ -11,13 +12,14 @@ using namespace core::master;
 namespace fluids
 {
 
-InitTG::InitTG(double Lx, double Ly, double Lz, double U0) : Lx_(Lx), Ly_(Ly), Lz_(Lz), U0_(U0)
+InitTG::InitTG(double Lx, double Ly, double Lz, double U0, void* mpi_comm)
+    : Lx_(Lx), Ly_(Ly), Lz_(Lz), U0_(U0), mpi_comm_(mpi_comm)
 {
     info_.name = "init_taylor_green";
     info_.phases = plugin::Phase::PreExchange; // run before any halos (initial fill)
 }
 
-std::shared_ptr<plugin::IAction> make_init_tg(const plugin::KV& kv)
+std::shared_ptr<plugin::IAction> make_init_tg(const plugin::KV& kv, const core::master::RunContext& rc)
 {
     // U0 default 1.0; Lx/Ly/Lz default 1.0 if not provided
     auto get = [&](const char* k, const char* dflt) -> std::string
@@ -36,7 +38,7 @@ std::shared_ptr<plugin::IAction> make_init_tg(const plugin::KV& kv)
     const double Ly = to_d(get("Ly", "1.0"), 1.0);
     const double Lz = to_d(get("Lz", "1.0"), 1.0);
     const double U0 = to_d(get("U0", "1.0"), 1.0);
-    return std::make_shared<InitTG>(Lx, Ly, Lz, U0);
+    return std::make_shared<InitTG>(Lx, Ly, Lz, U0, rc.mpi_comm);
 }
 
 void InitTG::execute(const MeshTileView& tile, FieldCatalog& fields, double)
@@ -54,8 +56,14 @@ void InitTG::execute(const MeshTileView& tile, FieldCatalog& fields, double)
         throw std::runtime_error("[fluids.init_tg] tile.mesh is null; Scheduler must set it.");
     const auto& mesh = *tile.mesh;
     const int ng = mesh.ng; // authoritative ghost/halo width
-    const int nx_c = mesh.local[0], ny_c = mesh.local[1],
-              nz_c = mesh.local[2]; // interior cells (centers)
+    // Local interior (centers)
+    const int nx_c = mesh.local[0], ny_c = mesh.local[1], nz_c = mesh.local[2];
+    // Global interior (centers)
+    const int NX = mesh.global[0], NY = mesh.global[1], NZ = mesh.global[2];
+    // Global starting cell-index (center-based) of this slab (provided by Mesh)
+    const int i0 = mesh.global_lo[0];
+    const int j0 = mesh.global_lo[1];
+    const int k0 = mesh.global_lo[2];
 
     // Totals implied by MAC staggering (+1 along face-normal)
     const int nxc_tot = nx_c + 2 * ng, nyc_tot = ny_c + 2 * ng, nzc_tot = nz_c + 2 * ng;
@@ -95,23 +103,22 @@ void InitTG::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     double* v = static_cast<double*>(vv.host_ptr);
     double* w = static_cast<double*>(vw.host_ptr);
 
-    // Physical spacings based on cell counts
-    const double dx = Lx_ / nx_c;
-    const double dy = Ly_ / ny_c;
-    const double dz = Lz_ / nz_c;
+    // Physical spacings: use GLOBAL counts so all ranks sample the same function
+    const double dx = Lx_ / static_cast<double>(NX);
+    const double dy = Ly_ / static_cast<double>(NY);
+    const double dz = Lz_ / static_cast<double>(NZ);
 
     // ---- U on IFaces: x at faces, y/z at centers ----
-    // Interior face counts along each axis
     const int nx_u = nx_c + 1; // +1 along normal
     for (int k = 0; k < nz_c; ++k)
     {
-        const double zc = (k + 0.5) * dz; // cell-center in z
+        const double zc = (k0 + k + 0.5) * dz; // GLOBAL z center
         for (int j = 0; j < ny_c; ++j)
         {
-            const double yc = (j + 0.5) * dy; // cell-center in y
+            const double yc = (j0 + j + 0.5) * dy; // GLOBAL y center
             for (int i = 0; i < nx_u; ++i)
             {                             // faces in x
-                const double xf = i * dx; // face in x
+                const double xf = (i0 + i) * dx; // GLOBAL x face
                 const int I = i + ng, J = j + ng, K = k + ng;
                 const double sX = std::sin(2 * M_PI * xf / Lx_);
                 const double cY = std::cos(2 * M_PI * yc / Ly_);
@@ -125,13 +132,13 @@ void InitTG::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     const int ny_v = ny_c + 1; // +1 along normal
     for (int k = 0; k < nz_c; ++k)
     {
-        const double zc = (k + 0.5) * dz;
+        const double zc = (k0 + k + 0.5) * dz;   // GLOBAL z center
         for (int j = 0; j < ny_v; ++j)
         { // faces in y
-            const double yf = j * dy;
+            const double yf = (j0 + j) * dy;     // GLOBAL y face
             for (int i = 0; i < nx_c; ++i)
             {
-                const double xc = (i + 0.5) * dx;
+                const double xc = (i0 + i + 0.5) * dx; // GLOBAL x center
                 const int I = i + ng, J = j + ng, K = k + ng;
                 const double cX = std::cos(2 * M_PI * xc / Lx_);
                 const double sY = std::sin(2 * M_PI * yf / Ly_);
@@ -145,13 +152,13 @@ void InitTG::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     const int nz_w = nz_c + 1; // +1 along normal
     for (int k = 0; k < nz_w; ++k)
     { // faces in z
-        const double zf = k * dz;
+        const double zf = (k0 + k) * dz;         // GLOBAL z face
         for (int j = 0; j < ny_c; ++j)
         {
-            const double yc = (j + 0.5) * dy;
+            const double yc = (j0 + j + 0.5) * dy;   // GLOBAL y center
             for (int i = 0; i < nx_c; ++i)
             {
-                const double xc = (i + 0.5) * dx;
+                const double xc = (i0 + i + 0.5) * dx; // GLOBAL x center
                 const int I = i + ng, J = j + ng, K = k + ng;
                 // Standard 3D TG often has w=0; keep it zero unless you use a symmetric variant.
                 (void) zf;
@@ -163,6 +170,11 @@ void InitTG::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     }
 
     // Pressure = 0 by default (app initializes arrays to zero).
+
+    // One-time halo fill so ghosts are valid at t=0 on multi-rank runs.
+    if (tile.mesh) {
+        core::master::exchange_named_fields(fields, *tile.mesh, mpi_comm_, {"u","v","w"});
+    }
 }
 
 } // namespace fluids

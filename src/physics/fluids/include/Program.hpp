@@ -47,7 +47,8 @@ struct Params
 Params parse_params(const core::master::plugin::KV& kv);
 
 std::shared_ptr<core::master::plugin::IAction> make_apply_bcs(const core::master::plugin::KV& kv);
-std::shared_ptr<core::master::plugin::IAction> make_init_tg(const core::master::plugin::KV&);
+std::shared_ptr<core::master::plugin::IAction> make_init_tg(
+    const core::master::plugin::KV&, const core::master::RunContext&);
 std::shared_ptr<core::master::plugin::IAction> make_sgs(const core::master::plugin::KV&);
 std::shared_ptr<core::master::plugin::IAction> make_predictor(const core::master::plugin::KV&,
                                                               const core::master::RunContext&);

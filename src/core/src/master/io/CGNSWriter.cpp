@@ -1,7 +1,8 @@
-#include "master/io/CGNSWriter.hpp"
 #include "master/Views.hpp"
+#include "master/Log.hpp"
 #include "master/io/StagingPool.hpp"
 #include "master/io/WritePlan.hpp"
+#include "master/io/CGNSWriter.hpp"
 #include "memory/MpiBox.hpp"
 
 #include <algorithm>
@@ -296,7 +297,7 @@ void CGNSWriter::open_case(const std::string& case_name)
         MPI_Allreduce(&ok_local, &ok_all, 1, MPI_INT, MPI_MIN, comm);
         if (!ok_all) {
             if (!ok_local) {
-                std::fprintf(stderr, "[CGNS] cgp_open(%s, WRITE) failed: %s\n",
+                LOGE("[cgns] cgp_open(%s, WRITE) failed: %s\n",
                              impl_->filepath.c_str(), cg_get_error());
             }
             // Ensure everyone leaves consistently
@@ -309,7 +310,7 @@ void CGNSWriter::open_case(const std::string& case_name)
         {
             const int cell_dim = 3, phys_dim = 3;
             if (cg_base_write(impl_->file, "Base", cell_dim, phys_dim, &base_id) != CG_OK) {
-                std::fprintf(stderr, "[CGNS] cg_base_write failed: %s\n", cg_get_error());
+                LOGE("[cgns] cg_base_write failed: %s\n", cg_get_error());
                 base_id = 0;
             }
             const int GX_cells = cfg_.mesh->global[0];
@@ -321,7 +322,7 @@ void CGNSWriter::open_case(const std::string& case_name)
                 0, 0, 0};
             if (base_id != 0 &&
                 cg_zone_write(impl_->file, base_id, "Zone", size, Structured, &zone_id) != CG_OK) {
-                std::fprintf(stderr, "[CGNS] cg_zone_write failed: %s\n", cg_get_error());
+                LOGE("[cgns] cg_zone_write failed: %s\n", cg_get_error());
                 zone_id = 0;
             }
             if (base_id != 0) {
@@ -385,7 +386,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (!ok_all)
             {
                 if (!ok_local)
-                    std::fprintf(stderr, "[CGNS] cgp_coord_write(CoordinateX) failed: %s\n",
+                    LOGE("[cgns] cgp_coord_write(CoordinateX) failed: %s\n",
                                  cg_get_error());
                 return;
             }
@@ -395,7 +396,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (!ok_all)
             {
                 if (!ok_local)
-                    std::fprintf(stderr, "[CGNS] cgp_coord_write(CoordinateY) failed: %s\n",
+                    LOGE("[cgns] cgp_coord_write(CoordinateY) failed: %s\n",
                                  cg_get_error());
                 return;
             }
@@ -405,7 +406,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (!ok_all)
             {
                 if (!ok_local)
-                    std::fprintf(stderr, "[CGNS] cgp_coord_write(CoordinateZ) failed: %s\n",
+                    LOGE("[cgns] cgp_coord_write(CoordinateZ) failed: %s\n",
                                  cg_get_error());
                 return;
             }
@@ -462,7 +463,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (!ok_all)
             {
                 if (!ok_local)
-                    std::fprintf(stderr, "[CGNS] cgp_coord_write_data(X) failed: %s\n",
+                    LOGE("[cgns] cgp_coord_write_data(X) failed: %s\n",
                                  cg_get_error());
                 return;
             }
@@ -472,7 +473,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (!ok_all)
             {
                 if (!ok_local)
-                    std::fprintf(stderr, "[CGNS] cgp_coord_write_data(Y) failed: %s\n",
+                    LOGE("[cgns] cgp_coord_write_data(Y) failed: %s\n",
                                  cg_get_error());
                 return;
             }
@@ -482,7 +483,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (!ok_all)
             {
                 if (!ok_local)
-                    std::fprintf(stderr, "[CGNS] cgp_coord_write_data(Z) failed: %s\n",
+                    LOGE("[cgns] cgp_coord_write_data(Z) failed: %s\n",
                                  cg_get_error());
                 return;
             }
@@ -565,7 +566,7 @@ void CGNSWriter::write(const WriteRequest& req)
             MPI_Allreduce(&need_create, &need_all, 1, MPI_INT, MPI_MAX, comm);
             if (need_all) {
                 if (cg_sol_write(impl_->file, impl_->base, impl_->zone, name, loc, &id) != CG_OK) {
-                    std::fprintf(stderr, "[CGNS] cg_sol_write(%s) failed: %s\n", name, cg_get_error());
+                    LOGE("[cgns] cg_sol_write(%s) failed: %s\n", name, cg_get_error());
                     id = 0;
                 }
             }
@@ -646,7 +647,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (cgp_field_write(impl_->file, impl_->base, impl_->zone, sol_id, dtype,
                                 fp.shape.name.c_str(), &fld_id) != CG_OK)
             {
-                std::fprintf(stderr, "[CGNS] cgp_field_write(%s) failed: %s\n",
+                LOGE("[cgns] cgp_field_write(%s) failed: %s\n",
                              fp.shape.name.c_str(), cg_get_error());
                 // Don't abort the whole write step; continue to any CellCenter alias below.
             }
@@ -667,7 +668,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (cgp_field_write_data(impl_->file, impl_->base, impl_->zone, sol_id, fld_id, rmin,
                                      rmax, staging) != CG_OK)
             {
-                std::fprintf(stderr, "[CGNS] cgp_field_write_data(%s) failed: %s\n",
+                LOGE("[cgns] cgp_field_write_data(%s) failed: %s\n",
                              fp.shape.name.c_str(), cg_get_error());
                 // Keep going; we'll still try to emit the CellCenter alias for velocities.
             }
@@ -744,7 +745,7 @@ void CGNSWriter::write(const WriteRequest& req)
                 if (cgp_field_write(impl_->file, impl_->base, impl_->zone, sol_cell_id, dtype,
                                     alias.c_str(), &fld_cc) != CG_OK)
                 {
-                    std::fprintf(stderr, "[CGNS] cgp_field_write(%s) failed: %s\n", alias.c_str(),
+                    LOGE("[cgns] cgp_field_write(%s) failed: %s\n", alias.c_str(),
                                  cg_get_error());
                     return;
                 }
@@ -758,7 +759,7 @@ void CGNSWriter::write(const WriteRequest& req)
                 if (cgp_field_write_data(impl_->file, impl_->base, impl_->zone, sol_cell_id, fld_cc,
                                          rmin_cc, rmax_cc, tmp) != CG_OK)
                 {
-                    std::fprintf(stderr, "[CGNS] cgp_field_write_data(CellCenter %s) failed: %s\n",
+                    LOGE("[cgns] cgp_field_write_data(CellCenter %s) failed: %s\n",
                                  alias.c_str(), cg_get_error());
                     return;
                 }

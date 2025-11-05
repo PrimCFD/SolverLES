@@ -20,7 +20,7 @@ extern "C" bool physics_register_v1(Registry* R)
     // (Optional) Also expose individual actions for experimentation/debug.
     // Users typically won’t instantiate them directly.
     R->add_action("fluids.init_tg",
-                  [](const KV& kv, const RunContext&) { return fluids::make_init_tg(kv); });
+                  [](const KV& kv, const RunContext& rc) { return fluids::make_init_tg(kv, rc); });
     R->add_action("fluids.sgs",
                   [](const KV& kv, const RunContext&) { return fluids::make_sgs(kv); });
     R->add_action("fluids.momentum_predictor", [](const KV& kv, const RunContext& rc)

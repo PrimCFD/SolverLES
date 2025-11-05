@@ -115,7 +115,7 @@ Params parse_params(const KV& kv)
 }
 
 extern std::shared_ptr<IAction> make_apply_bcs(const KV&);
-extern std::shared_ptr<IAction> make_init_tg(const KV&);
+extern std::shared_ptr<IAction> make_init_tg(const KV&, const RunContext&);
 extern std::shared_ptr<IAction> make_sgs(const KV&);
 extern std::shared_ptr<IAction> make_predictor(const KV&, const RunContext&);
 extern std::shared_ptr<IAction> make_poisson(const KV&, const RunContext&);
@@ -129,7 +129,7 @@ LESProgram::LESProgram(const KV& kv, const RunContext& rc) : p_(parse_params(kv)
 
     if (init == "taylor_green" || init == "taylor-green" || init == "tg" || init == "tgv")
     {
-        init_ = make_init_tg(kv);
+        init_ = make_init_tg(kv, rc);
     }
     else
     {

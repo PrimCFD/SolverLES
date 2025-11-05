@@ -147,29 +147,35 @@ void ApplyBCs::execute(const MeshTileView& tile, FieldCatalog& fields, double)
             su = sv = sw = sp = &kPeriodic;
         }
 
-        // Vector mirror if requested on all 3 velocity components and present
-        if (have("u") && have("v") && have("w") && is_mirror(su) && is_mirror(sv) && is_mirror(sw))
+        // Repeat BC application ng times to fill all ghost layers.
+        // (Periodic remains a no-op and halos will handle periodic exchange.)
+        const int reps = std::max(1, ng_mesh);
+        for (int r = 0; r < reps; ++r)
         {
-            apply_mirror_vector(U, V, W, f.ax, f.sgn, mask_for(f.ax));
-        }
-        else
-        {
-            // Component-wise scalar ops
-            if (have("u") && su)
-                apply_scalar_bc(U, f.ax, f.sgn, to_op(su->type), su->value);
-            if (have("v") && sv)
-                apply_scalar_bc(V, f.ax, f.sgn, to_op(sv->type), sv->value);
-            if (have("w") && sw)
-                apply_scalar_bc(W, f.ax, f.sgn, to_op(sw->type), sw->value);
-        }
+            // Vector mirror if requested on all 3 velocity components and present
+            if (have("u") && have("v") && have("w") && is_mirror(su) && is_mirror(sv) && is_mirror(sw))
+            {
+                apply_mirror_vector(U, V, W, f.ax, f.sgn, mask_for(f.ax));
+            }
+            else
+            {
+                // Component-wise scalar ops (skip if nullptr / periodic)
+                if (have("u") && su)
+                    apply_scalar_bc(U, f.ax, f.sgn, to_op(su->type), su->value);
+                if (have("v") && sv)
+                    apply_scalar_bc(V, f.ax, f.sgn, to_op(sv->type), sv->value);
+                if (have("w") && sw)
+                    apply_scalar_bc(W, f.ax, f.sgn, to_op(sw->type), sw->value);
+            }
 
-        // Pressure: treat mirror as NeumannZero (scalar mirror is ignored)
-        if (have("p") && sp)
-        {
-            BCOp op = to_op(sp->type);
-            if (op == BCOp::Mirror)
-                op = BCOp::NeumannZero;
-            apply_scalar_bc(P, f.ax, f.sgn, op, sp->value);
+            // Pressure: treat mirror as NeumannZero (scalar mirror is ignored)
+            if (have("p") && sp)
+            {
+                BCOp op = to_op(sp->type);
+                if (op == BCOp::Mirror)
+                    op = BCOp::NeumannZero;
+                apply_scalar_bc(P, f.ax, f.sgn, op, sp->value);
+            }
         }
     }
 }

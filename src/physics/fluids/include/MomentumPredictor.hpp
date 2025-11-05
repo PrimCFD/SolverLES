@@ -22,13 +22,6 @@ struct Predictor final : core::master::plugin::IAction
         RBGS
     };
 
-    // Reference-speed reduction for dynamic KK tuning
-    enum class KkSpeedRef
-    {
-        Linf,
-        Rms
-    };
-
     Predictor(double rho, double nu, double dx, double dy, double dz, Mode mode);
 
     // --- BE inner-solver controls
@@ -45,15 +38,8 @@ struct Predictor final : core::master::plugin::IAction
                  double dt) override;
 
     // --- KK advection controls ---
-    void set_adv_kkC(double c) { adv_kkC_ = c; }
-    void set_adv_kk_mode(bool dyn) { adv_kk_dynamic_ = dyn; }
-    void set_adv_kk_gamma(double g) { adv_kk_gamma_ = g; }
-    void set_adv_kk_Cmax(double cmax) { adv_kk_Cmax_ = cmax; }
-    void set_adv_kk_speed(const std::string& s)
-    {
-        kk_speed_ref_ = (s == "rms" || s == "RMS") ? KkSpeedRef::Rms : KkSpeedRef::Linf;
-    }
     void set_advect_enabled(bool b) { advect_enabled_ = b; }
+
     void set_imp_order(int k) { imp_order_ = k; }
 
     // Full reset (both adv & diff histories) — use sparingly
@@ -98,11 +84,6 @@ struct Predictor final : core::master::plugin::IAction
     int imp_order_ = 3;                           // 1=BE, 2=CN/AM2, 3=AM3
 
     // KK scheme parameters
-    double adv_kkC_ = 1.0 / 3.0;                 // used directly when fixed-mode
-    bool adv_kk_dynamic_ = false;                // enable dynamic compute
-    double adv_kk_gamma_ = 5e-3;                 // target effective filter level γ*
-    double adv_kk_Cmax_ = 1.0;                   // safety cap
-    KkSpeedRef kk_speed_ref_ = KkSpeedRef::Linf; // reference-speed type
     bool advect_enabled_ = true;
 
     // -------- ABM3 advection/diffusion history (face-centered, MAC layout) --------

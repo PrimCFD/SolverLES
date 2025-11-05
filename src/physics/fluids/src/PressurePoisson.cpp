@@ -19,6 +19,7 @@
 #include "master/FieldCatalog.hpp"
 #include "master/HaloOps.hpp"
 #include "master/Views.hpp"
+#include "master/Log.hpp"
 #include "kernels_fluids.h"
 
 #include <algorithm>
@@ -1156,8 +1157,8 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
         int sz = -1, rk = -1;
         if (MPI_Comm_size(comm, &sz) != MPI_SUCCESS || sz < 1)
         {
-            fprintf(stderr,
-                    "FATAL: invalid MPI_Comm passed into PressurePoisson (size=%d). "
+            LOGE(
+                    "[poisson] FATAL: invalid MPI_Comm passed into PressurePoisson (size=%d). "
                     "Falling back to PETSC_COMM_WORLD.\n",
                     sz);
             comm = PETSC_COMM_WORLD;
@@ -1542,6 +1543,24 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     }
 
     KSPSetFromOptions(impl.ksp); // allow CLI/options to refine everything
+
+    // ---- Lightweight KSP monitor into our logger (DEBUG only) ----
+    // Logs: [poisson] it=… ||r||=…   only when SOLVER_LOG>=debug.
+    {
+        auto monitor = [](KSP ksp, PetscInt it, PetscReal rnorm, void*) -> PetscErrorCode {
+            using core::master::logx::Level;
+            if (core::master::logx::g_level.load() >= Level::Debug) {
+                LOGD("[poisson] it=%d  ||r||=%.6e\n", (int)it, (double)rnorm);
+            }
+            return 0;
+        };
+        // Attach after KSP is configured so options may still add PETSc's own monitors.
+        // (Multiple monitors can coexist.)
+        PetscErrorCode ierr = KSPMonitorSet(impl.ksp, monitor, nullptr, nullptr);
+        if (ierr) {
+            LOGW("[poisson] unable to attach KSP monitor (ierr=%d)\n", (int)ierr);
+        }
+    }
 }
 
 // --------------------------- IAction impl -----------------------------------
@@ -1983,6 +2002,20 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
     MPI_Comm pcomm;
     PetscObjectGetComm((PetscObject) impl_->ksp, &pcomm);
     PetscCallAbort(pcomm, KSPSolve(impl_->ksp, impl_->b, impl_->x));
+
+    // ---- One-shot status line after solve ----
+    {
+        KSPConvergedReason reason = KSP_CONVERGED_ITERATING;
+        PetscInt its = 0; PetscReal rnorm = 0.0;
+        KSPGetConvergedReason(impl_->ksp, &reason);
+        KSPGetIterationNumber(impl_->ksp, &its);
+        KSPGetResidualNorm(impl_->ksp, &rnorm);
+        if (reason < 0) {
+            LOGE("[poisson] solve failed: reason=%d  iters=%d  ||r||=%.6e\n", (int)reason, (int)its, (double)rnorm);
+        } else {
+            LOGD("[poisson] converged: reason=%d  iters=%d  ||r||=%.6e\n", (int)reason, (int)its, (double)rnorm);
+        }
+    }
 
     // Gauge fix for pure Neumann (zero-mean)
     if (impl_->all_neumann)

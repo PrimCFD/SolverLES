@@ -373,6 +373,7 @@ int main(int argc, char** argv)
         int size = 1;
         MPI_Comm_size(world, &size);
         int dims[3] = {0, 0, 0};
+        const int dims_req[3] = {cfg.proc_grid[0], cfg.proc_grid[1], cfg.proc_grid[2]};
 
         // Seed any pinned axes from YAML (e.g., [0,0,1] → dims=[0,0,1]).
         if (cfg.proc_grid[0] > 0)
@@ -392,8 +393,8 @@ int main(int argc, char** argv)
                 MPI_Comm_rank(world, &wrank);
                 if (wrank == 0)
                 {
-                    LOGW("[mpi] WARNING: proc_grid=%dx%dx%d (product=%d) != world size %d — "
-                         "falling back to MPI_Dims_create().\n",
+                    LOGW("[mpi] Invalid proc_grid requested in YAML: %dx%dx%d (product=%d) "
+                         "but world size=%d. Falling back to MPI_Dims_create().\n",
                          dims[0], dims[1], dims[2], prod, size);
                 }
                 dims[0] = dims[1] = dims[2] = 0;
@@ -419,6 +420,28 @@ int main(int argc, char** argv)
         // Fallback: if Cart create failed (e.g., size==0?!), keep using WORLD.
         if (cart == MPI_COMM_NULL)
             cart = world;
+
+        // (Rank 0) log the final dims that will define neighbors/offsets everywhere
+        {
+            int r = -1; MPI_Comm_rank(cart, &r);
+            if (r == 0) {
+                LOGI("[mpi] Using Cartesian dims=%dx%dx%d periods=%d,%d,%d (reorder=%d)\n",
+                     dims[0], dims[1], dims[2], periods[0], periods[1], periods[2], reorder);
+            }
+       }
+
+        // Optional guardrail: verify communicator periodicity equals requested
+        {
+            int topo = MPI_UNDEFINED; MPI_Topo_test(cart, &topo);
+            if (topo == MPI_CART) {
+                int cd[3], cp[3], cc[3]; MPI_Cart_get(cart, 3, cd, cp, cc);
+                if (cp[0] != periods[0] || cp[1] != periods[1] || cp[2] != periods[2]) {
+                    int r = -1; MPI_Comm_rank(cart, &r);
+                    if (r == 0) LOGW("[mpi] WARNING: communicator periodicity (%d,%d,%d) "
+                                     "differs from requested (%d,%d,%d)\n", cp[0],cp[1],cp[2], periods[0],periods[1],periods[2]);
+                }
+            }
+        }
 
         // Store the communicator we actually want to use everywhere.
         rc.mpi_comm = mpi_box(cart);
@@ -496,8 +519,7 @@ int main(int argc, char** argv)
     }
 
     {
-        // Prefer the actual communicator dims (what halos/neighbors will use),
-        // only backfilling non-positive entries so YAML pins remain honored.
+        // Source of truth: communicator dims (what halos/neighbors will use)
         int cd[3] = {0, 0, 0}, cp[3] = {0, 0, 0}, cc[3] = {0, 0, 0};
         MPI_Comm comm = mpi_unbox(rc.mpi_comm);
         int topo = MPI_UNDEFINED;
@@ -517,12 +539,22 @@ int main(int argc, char** argv)
             cd[1] = tmp[1];
             cd[2] = tmp[2];
         }
-        if (mesh.proc_grid[0] <= 0)
-            mesh.proc_grid[0] = std::max(1, cd[0]);
-        if (mesh.proc_grid[1] <= 0)
-            mesh.proc_grid[1] = std::max(1, cd[1]);
-        if (mesh.proc_grid[2] <= 0)
-            mesh.proc_grid[2] = std::max(1, cd[2]);
+        // Normalize mesh.proc_grid to communicator dims; log if we changed it.
+        const std::array<int,3> old_pg = mesh.proc_grid;
+        const std::array<int,3> new_pg = {
+            std::max(1, cd[0]), std::max(1, cd[1]), std::max(1, cd[2])
+        };
+        if (old_pg != new_pg)
+        {
+            int r = -1; MPI_Comm_rank(comm, &r);
+            if (r == 0)
+            {
+                LOGW("[mpi] Normalizing mesh.proc_grid from %dx%dx%d to communicator dims %dx%dx%d.\n",
+                     old_pg[0], old_pg[1], old_pg[2], new_pg[0], new_pg[1], new_pg[2]);
+            }
+            mesh.proc_grid = new_pg;
+        }
+        else { mesh.proc_grid = new_pg; }
 
         // ---- Populate global and global_lo for writers/IO ----
         // Global cell counts: from cfg.global when provided, else derived.

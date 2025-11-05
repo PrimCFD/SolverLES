@@ -907,26 +907,48 @@ contains
     end do
   end subroutine diffuse_velocity_be_residual_mac_c
 
-  pure function kk_dx_cen4_plus_kkfilter(qm2, qm1, q0, qp1, qp2, U, h, Ckk) result(dq)
+  pure function kk_alpha_from_phi(qm2, qm1, q0, qp1, qp2, h) result(alpha)
     use, intrinsic :: iso_c_binding
     implicit none
-    real(c_double), intent(in) :: qm2, qm1, q0, qp1, qp2   ! q_{i-2}..q_{i+2}
-    real(c_double), intent(in) :: U, h, Ckk                ! local adv speed, spacing, KK coefficient C
-    real(c_double) :: dq, cen4, filt4
+    real(c_double), intent(in) :: qm2, qm1, q0, qp1, qp2, h
+    real(c_double) :: alpha            ! <-- add this
+    ! real(c_double) :: d               ! <-- was unused; drop it
+    real(c_double) :: phi_p1, phi_p2, phi_m1, phi_m2, phi0
+    real(c_double) :: dxx_p, dxx_m, lp, lm, num, den
+    real(c_double), parameter :: eps = 1.0d-12
+    phi0  = 0.0d0
+    phi_p1 = (qp1 - q0)/h
+    phi_p2 = phi_p1 + (qp2 - qp1)/h
+    phi_m1 = -(q0 - qm1)/h
+    phi_m2 = phi_m1 - (qm1 - qm2)/h
+    dxx_p = (phi_p2 - 2.0d0*phi_p1 + phi0)/2.0d0
+    dxx_m = (phi0   - 2.0d0*phi_m1 + phi_m2)/2.0d0
+    lp = sqrt(1.0d0 + phi_p1*phi_p1)
+    lm = sqrt(1.0d0 + phi_m1*phi_m1)
+    num = abs(dxx_p + dxx_m)
+    den = 4.0d0*(lp + lm) + eps
+    alpha = min(1.0d0, num/den)
+  end function kk_alpha_from_phi
 
-    ! 4th-order central derivative: (-q_{i+2}+8 q_{i+1} - 8 q_{i-1} + q_{i-2}) / (12 h)
-    cen4 = (-qp2+8.0d0*qp1-8.0d0*qm1+qm2)/(12.0d0*h)
-    ! Discrete 4th-derivative “filter” stencil scaled so units match derivative: (q_{i+2}-4 q_{i+1}+6 q_i-4 q_{i-1}+q_{i-2}) / h
-    filt4 = (qp2-4.0d0*qp1+6.0d0*q0-4.0d0*qm1+qm2)/h
-
-    dq = cen4+0.25d0*Ckk*abs(U)*filt4
-  end function kk_dx_cen4_plus_kkfilter
+  pure function kk_dx_hybrid_kk3(qm2,qm1,q0,qp1,qp2, U, h) result(dqdx)
+    use, intrinsic :: iso_c_binding
+    implicit none
+    real(c_double), intent(in) :: qm2,qm1,q0,qp1,qp2, U, h
+    real(c_double) :: dqdx               ! <-- add this
+    real(c_double) :: cen4, filt4, lap2, alpha, aU
+    cen4  = (-qp2 + 8.0d0*qp1 - 8.0d0*qm1 + qm2)/(12.0d0*h)
+    filt4 = (qp2 - 4.0d0*qp1 + 6.0d0*q0 - 4.0d0*qm1 + qm2)/h
+    lap2  = (qp1 - 2.0d0*q0 + qm1)/h     ! (optional: use /(h*h) if you prefer strict units)
+    alpha = kk_alpha_from_phi(qm2,qm1,q0,qp1,qp2,h)
+    aU = abs(U)
+    dqdx = cen4 + (-0.5d0)*alpha*aU*lap2 + 0.25d0*(1.0d0-alpha)*aU*filt4
+  end function kk_dx_hybrid_kk3
 
   subroutine advect_velocity_kk3_mac_c( &
     u, nxu_tot, nyu_tot, nzu_tot, &
     v, nxv_tot, nyv_tot, nzv_tot, &
     w, nxw_tot, nyw_tot, nzw_tot, &
-    ng, dx, dy, dz, kkC, &
+    ng, dx, dy, dz, &
     Nu, Nv, Nw) bind(C, name="advect_velocity_kk3_mac_c")
     use, intrinsic :: iso_c_binding
     implicit none
@@ -934,7 +956,7 @@ contains
     integer(c_int), value :: nxv_tot, nyv_tot, nzv_tot
     integer(c_int), value :: nxw_tot, nyw_tot, nzw_tot
     integer(c_int), value :: ng
-    real(c_double), value :: dx, dy, dz, kkC
+    real(c_double), value :: dx, dy, dz
     real(c_double), intent(in)  :: u(*), v(*), w(*)
     real(c_double), intent(out) :: Nu(*), Nv(*), Nw(*)
 
@@ -980,9 +1002,9 @@ contains
           iwT = 1_c_size_t+int(ng+i+1, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)
           wc = 0.5d0*(w(iwB)+w(iwT))
 
-          du_dx = kk_dx_cen4_plus_kkfilter(u(imm), u(im), u(c), u(ip), u(ipp), uc, dx, kkC)
-          du_dy = kk_dx_cen4_plus_kkfilter(u(jmm), u(jm), u(c), u(jp), u(jpp), vc, dy, kkC)
-          du_dz = kk_dx_cen4_plus_kkfilter(u(kmm), u(km), u(c), u(kp), u(kpp), wc, dz, kkC)
+          du_dx = kk_dx_hybrid_kk3(u(imm), u(im), u(c), u(ip), u(ipp), uc, dx)
+          du_dy = kk_dx_hybrid_kk3(u(jmm), u(jm), u(c), u(jp), u(jpp), vc, dy)
+          du_dz = kk_dx_hybrid_kk3(u(kmm), u(km), u(c), u(kp), u(kpp), wc, dz)
 
           Nu(c) = -(uc*du_dx+vc*du_dy+wc*du_dz)
           c = c+sxu
@@ -1015,9 +1037,9 @@ contains
           iwT2 = 1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng+1, c_size_t)+szw*int(k+ng, c_size_t)
           wc = 0.5d0*(w(iwB2)+w(iwT2))
 
-          dv_dx = kk_dx_cen4_plus_kkfilter(v(imm), v(im), v(c), v(ip), v(ipp), uc, dx, kkC)
-          dv_dy = kk_dx_cen4_plus_kkfilter(v(jmm), v(jm), v(c), v(jp), v(jpp), vc, dy, kkC)
-          dv_dz = kk_dx_cen4_plus_kkfilter(v(kmm), v(km), v(c), v(kp), v(kpp), wc, dz, kkC)
+          dv_dx = kk_dx_hybrid_kk3(v(imm), v(im), v(c), v(ip), v(ipp), uc, dx)
+          dv_dy = kk_dx_hybrid_kk3(v(jmm), v(jm), v(c), v(jp), v(jpp), vc, dy)
+          dv_dz = kk_dx_hybrid_kk3(v(kmm), v(km), v(c), v(kp), v(kpp), wc, dz)
 
           Nv(c) = -(uc*dv_dx+vc*dv_dy+wc*dv_dz)
           c = c+syv
@@ -1050,9 +1072,9 @@ contains
           ivU2 = 1_c_size_t+int(ng+i, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng+1, c_size_t)
           vc = 0.5d0*(v(ivL2)+v(ivU2))
 
-          dw_dx = kk_dx_cen4_plus_kkfilter(w(imm), w(im), w(c), w(ip), w(ipp), uc, dx, kkC)
-          dw_dy = kk_dx_cen4_plus_kkfilter(w(jmm), w(jm), w(c), w(jp), w(jpp), vc, dy, kkC)
-          dw_dz = kk_dx_cen4_plus_kkfilter(w(kmm), w(km), w(c), w(kp), w(kpp), wc, dz, kkC)
+          dw_dx = kk_dx_hybrid_kk3(w(imm), w(im), w(c), w(ip), w(ipp), uc, dx)
+          dw_dy = kk_dx_hybrid_kk3(w(jmm), w(jm), w(c), w(jp), w(jpp), vc, dy)
+          dw_dz = kk_dx_hybrid_kk3(w(kmm), w(km), w(c), w(kp), w(kpp), wc, dz)
 
           Nw(c) = -(uc*dw_dx+vc*dw_dy+wc*dw_dz)
           c = c+szw

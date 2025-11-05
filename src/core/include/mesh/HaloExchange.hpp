@@ -29,7 +29,8 @@ namespace core::mesh
 // Exchange the 6 axis-aligned faces (no edges/corners). Works for ng >= 1.
 // Uses the caller-provided *Cartesian* communicator as-is.
 // Returns true if halos were exchanged (or nothing was needed but the path is valid),
-// false if no exchange was performed (caller may choose to fall back to local wrap).
+// false if no exchange was performed (caller may choose to fall back). In practice,
+// this implements local fallbacks so it very rarely returns false.
 template <class T>
 bool exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm comm, int tag_base = 100)
 {
@@ -77,6 +78,48 @@ bool exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm comm, int tag_base = 1
             return 0;
         return (g - 1) % n;
     };
+
+    // 0-gradient fallback: replicate nearest interior plane into ghosts on one side
+    auto replicate_x_ghosts_from_interior = [&](bool lower_side) {
+        const int ncopy = ng;
+        const int i_int  = lower_side ? 0      : (nx - 1);
+        const int i_gh0  = lower_side ? -ng    : nx;
+        for (int k = 0; k < nz; ++k)
+            for (int j = 0; j < ny; ++j)
+                for (int g = 0; g < ncopy; ++g)
+                    f(i_gh0 + g, j, k) = f(i_int, j, k);
+    };
+    auto replicate_y_ghosts_from_interior = [&](bool lower_side) {
+        const int ncopy = ng;
+        const int j_int  = lower_side ? 0      : (ny - 1);
+        const int j_gh0  = lower_side ? -ng    : ny;
+        for (int k = 0; k < nz; ++k)
+            for (int i = 0; i < nx; ++i)
+                for (int g = 0; g < ncopy; ++g)
+                    f(i, j_gh0 + g, k) = f(i, j_int, k);
+    };
+    auto replicate_z_ghosts_from_interior = [&](bool lower_side) {
+        const int ncopy = ng;
+        const int k_int  = lower_side ? 0      : (nz - 1);
+        const int k_gh0  = lower_side ? -ng    : nz;
+        for (int j = 0; j < ny; ++j)
+            for (int i = 0; i < nx; ++i)
+                for (int g = 0; g < ncopy; ++g)
+                    f(i, j, k_gh0 + g) = f(i, j, k_int);
+    };
+
+    // Thin-axis helper: if interior is thinner than ng, we’ll duplicate interior values
+    // to fully populate all ng ghost layers. Pack paths already do this via modulo;
+    // these helpers cover the no-neighbor cases below.
+    auto safe_fill_nonperiodic_face = [&](int axis, bool lower_side) {
+        // axis: 0=x,1=y,2=z
+        if (axis == 0) replicate_x_ghosts_from_interior(lower_side);
+        if (axis == 1) replicate_y_ghosts_from_interior(lower_side);
+        if (axis == 2) replicate_z_ghosts_from_interior(lower_side);
+    };
+
+    // Quick sanity: if any interior extent is zero, just return true (no work).
+    if (nx == 0 || ny == 0 || nz == 0) return true;
 
     // Per-axis wrappers
     auto wrap_x_faces_local = [&](Field<T>& ff)
@@ -135,7 +178,10 @@ bool exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm comm, int tag_base = 1
     MPI_Topo_test(comm, &topo);
     if (topo != MPI_CART)
     {
-        // Not a Cartesian communicator: do nothing (explicit contract violation)
+        // Not a Cartesian communicator: do local fallbacks only (keep halos usable)
+        if (m.periodic[0]) wrap_x_faces_local(f); else { safe_fill_nonperiodic_face(0,true); safe_fill_nonperiodic_face(0,false); }
+        if (m.periodic[1]) wrap_y_faces_local(f); else { safe_fill_nonperiodic_face(1,true); safe_fill_nonperiodic_face(1,false); }
+        if (m.periodic[2]) wrap_z_faces_local(f); else { safe_fill_nonperiodic_face(2,true); safe_fill_nonperiodic_face(2,false); }
         return false;
     }
     // Optional consistency check (non-fatal)
@@ -170,7 +216,9 @@ bool exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm comm, int tag_base = 1
             for (int j = 0; j < ny; ++j)
                 for (int g = 0; g < ng; ++g)
                 {
-                    int gi = (n > 0) ? ((i_start + (g % nsend)) % n + n) % n : 0;
+                    int gi = i_start + g;
+                    if (gi < 0) gi = 0;
+                    if (gi >= n) gi = n - 1;
                     buf[p++] = f(gi, j, k);
                 }
     };
@@ -193,7 +241,9 @@ bool exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm comm, int tag_base = 1
             for (int i = 0; i < nx; ++i)
                 for (int g = 0; g < ng; ++g)
                 {
-                    int gj = (n > 0) ? ((j_start + (g % nsend)) % n + n) % n : 0;
+                    int gj = j_start + g;
+                    if (gj < 0) gj = 0;
+                    if (gj >= n) gj = n - 1;
                     buf[p++] = f(i, gj, k);
                 }
     };
@@ -216,7 +266,9 @@ bool exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm comm, int tag_base = 1
             for (int i = 0; i < nx; ++i)
                 for (int g = 0; g < ng; ++g)
                 {
-                    int gk = (n > 0) ? ((k_start + (g % nsend)) % n + n) % n : 0;
+                    int gk = k_start + g;
+                    if (gk < 0) gk = 0;
+                    if (gk >= n) gk = n - 1;
                     buf[p++] = f(i, j, gk);
                 }
     };
@@ -291,7 +343,7 @@ bool exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm comm, int tag_base = 1
     }
     if (xpos != MPI_PROC_NULL && !xpos_self)
     {
-        int nsend = std::min(ng, nx);
+        const int nsend = std::min(ng, nx);
         pack_x(nx - nsend, s_xp);
         MPI_Isend(s_xp.data(), (int) s_xp.size(), Tmpi, xpos, tag_base + 0, comm, &reqs[rcount++]);
     }
@@ -302,7 +354,7 @@ bool exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm comm, int tag_base = 1
     }
     if (ypos != MPI_PROC_NULL && !ypos_self)
     {
-        int nsend = std::min(ng, ny);
+        const int nsend = std::min(ng, ny);
         pack_y(ny - nsend, s_yp);
         MPI_Isend(s_yp.data(), (int) s_yp.size(), Tmpi, ypos, tag_base + 2, comm, &reqs[rcount++]);
     }
@@ -313,7 +365,7 @@ bool exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm comm, int tag_base = 1
     }
     if (zpos != MPI_PROC_NULL && !zpos_self)
     {
-        int nsend = std::min(ng, nz);
+        const int nsend = std::min(ng, nz);
         pack_z(nz - nsend, s_zp);
         MPI_Isend(s_zp.data(), (int) s_zp.size(), Tmpi, zpos, tag_base + 4, comm, &reqs[rcount++]);
     }
@@ -343,6 +395,15 @@ bool exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm comm, int tag_base = 1
         wrap_y_faces_local(f);
     if (zneg_self || zpos_self)
         wrap_z_faces_local(f);
+
+    // For any non-periodic face with no neighbor (PROC_NULL), ensure ghosts are defined.
+    // This covers slab partitions like nz=1 with ng>=2.
+    if (xneg == MPI_PROC_NULL && !m.periodic[0]) safe_fill_nonperiodic_face(0, /*lower*/true);
+    if (xpos == MPI_PROC_NULL && !m.periodic[0]) safe_fill_nonperiodic_face(0, /*lower*/false);
+    if (yneg == MPI_PROC_NULL && !m.periodic[1]) safe_fill_nonperiodic_face(1, /*lower*/true);
+    if (ypos == MPI_PROC_NULL && !m.periodic[1]) safe_fill_nonperiodic_face(1, /*lower*/false);
+    if (zneg == MPI_PROC_NULL && !m.periodic[2]) safe_fill_nonperiodic_face(2, /*lower*/true);
+    if (zpos == MPI_PROC_NULL && !m.periodic[2]) safe_fill_nonperiodic_face(2, /*lower*/false);
 
     return true;
 }
