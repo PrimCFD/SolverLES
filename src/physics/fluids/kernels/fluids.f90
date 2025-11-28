@@ -54,14 +54,14 @@ contains
       do j = 0, nyc-1
         ! base pointers for this (j,k)
         cC0 = 1_c_size_t+int(ng, c_size_t)+syc*int(j+ng, c_size_t)+szc*int(k+ng, c_size_t)
-        cu0 = 1_c_size_t + syu*int(j+ng, c_size_t) + szu*int(k+ng, c_size_t)
+        cu0 = 1_c_size_t+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
 
         cC = cC0
         ! bases for v- and w-faces that only depend on (j,k) **and include x halo**
-        baseV_jk = 1_c_size_t + int(ng, c_size_t)                              &
-                 + syv*int(j+ng, c_size_t) + szv*int(k+ng, c_size_t)
-        baseW_jk = 1_c_size_t + int(ng, c_size_t)                              &
-                 + syw*int(j+ng, c_size_t) + szw*int(k+ng, c_size_t)
+        baseV_jk = 1_c_size_t+int(ng, c_size_t) &
+                   +syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)
+        baseW_jk = 1_c_size_t+int(ng, c_size_t) &
+                   +syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)
         !$omp simd linear(cC:sxc)
         do i = 0, nxc-1
           ! Faces straddling the cell center (west/east, south/north, bottom/top)
@@ -69,11 +69,11 @@ contains
           cu_e = cu_w+sxu   ! u at i+1/2
 
           ! v at j-1/2 and j+1/2 using a consistent base + x offset
-          cv_s = baseV_jk + int(i, c_size_t)
+          cv_s = baseV_jk+int(i, c_size_t)
           cv_n = cv_s+syv   ! v at j+1/2
 
           ! w at k-1/2 and k+1/2 using a consistent base + x offset
-          cw_b = baseW_jk + int(i, c_size_t)
+          cw_b = baseW_jk+int(i, c_size_t)
           cw_t = cw_b+szw    ! w at k+1/2
 
           ! Normal derivatives (centered from face differences)
@@ -145,14 +145,14 @@ contains
       do j = 0, nyc-1
         ! base indices at (i=0) for this j,k
         cC0 = 1_c_size_t+int(ng, c_size_t)+syc*int(j+ng, c_size_t)+szc*int(k+ng, c_size_t)
-        cu0 = 1_c_size_t + syu*int(j+ng, c_size_t) + szu*int(k+ng, c_size_t)
+        cu0 = 1_c_size_t+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
 
         cC = cC0
         ! bases for v- and w-faces; fold x-halo into base and add +i only
-        baseV_jk = 1_c_size_t + int(ng, c_size_t)                              &
-                 + syv*int(j+ng, c_size_t) + szv*int(k+ng, c_size_t)
-        baseW_jk = 1_c_size_t + int(ng, c_size_t)                              &
-                 + syw*int(j+ng, c_size_t) + szw*int(k+ng, c_size_t)
+        baseV_jk = 1_c_size_t+int(ng, c_size_t) &
+                   +syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)
+        baseW_jk = 1_c_size_t+int(ng, c_size_t) &
+                   +syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)
         !$omp simd linear(cC:sxc)
         do i = 0, nxc-1
           ! u-faces: west at i -> (ng+i), east -> +1
@@ -160,11 +160,11 @@ contains
           cu_e = cu_w+sxu
 
           ! v-faces: use base + x offset for south/north
-          cv_s = baseV_jk + int(i, c_size_t)
+          cv_s = baseV_jk+int(i, c_size_t)
           cv_n = cv_s+syv
 
           ! w-faces: use base + x offset for bottom/top
-          cw_b = baseW_jk + int(i, c_size_t)
+          cw_b = baseW_jk+int(i, c_size_t)
           cw_t = cw_b+szw
 
           div(cC) = (u(cu_e)-u(cu_w))*fx+(v(cv_n)-v(cv_s))*fy+(w(cw_t)-w(cw_b))*fz
@@ -200,14 +200,14 @@ contains
     !$omp parallel do collapse(2) schedule(static) private(j,k,i,baseC,baseU,cL,cR,cu)
     do k = 0, nzc-1
       do j = 0, nyc-1
-        baseC = 1_c_size_t + int(ng, c_size_t)                                   &
-              + syc*int(j+ng, c_size_t) + szc*int(k+ng, c_size_t)
-        baseU = 1_c_size_t + int(ng, c_size_t)                                   &
-              + syu*int(j+ng, c_size_t) + szu*int(k+ng, c_size_t)
+        baseC = 1_c_size_t+int(ng, c_size_t) &
+                +syc*int(j+ng, c_size_t)+szc*int(k+ng, c_size_t)
+        baseU = 1_c_size_t+int(ng, c_size_t) &
+                +syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
         do i = 0, nxc
-          cL = baseC + sxc*int(i, c_size_t) - sxc
-          cR = cL + sxc
-          cu = baseU + int(i, c_size_t)
+          cL = baseC+sxc*int(i, c_size_t)-sxc
+          cR = cL+sxc
+          cu = baseU+int(i, c_size_t)
           dpx_u(cu) = (p(cR)-p(cL))/dx
         end do
       end do
@@ -217,14 +217,14 @@ contains
     !$omp parallel do collapse(2) schedule(static) private(j,k,i,baseC,baseV,cL,cR,cv)
     do k = 0, nzc-1
       do i = 0, nxc-1
-        baseC = 1_c_size_t + int(ng+i, c_size_t)                                 &
-              + szc*int(k+ng, c_size_t)
-        baseV = 1_c_size_t + int(ng+i, c_size_t)                                 &
-              + syv*int(ng, c_size_t) + szv*int(k+ng, c_size_t)
+        baseC = 1_c_size_t+int(ng+i, c_size_t) &
+                +szc*int(k+ng, c_size_t)
+        baseV = 1_c_size_t+int(ng+i, c_size_t) &
+                +syv*int(ng, c_size_t)+szv*int(k+ng, c_size_t)
         do j = 0, nyc
-          cL = baseC + syc*int(j+ng, c_size_t) - syc
-          cR = cL + syc
-          cv = baseV + syv*int(j, c_size_t)
+          cL = baseC+syc*int(j+ng, c_size_t)-syc
+          cR = cL+syc
+          cv = baseV+syv*int(j, c_size_t)
           dpy_v(cv) = (p(cR)-p(cL))/dy
         end do
       end do
@@ -234,14 +234,14 @@ contains
     !$omp parallel do collapse(2) schedule(static) private(j,k,i,baseC,baseW,cL,cR,cw)
     do j = 0, nyc-1
       do i = 0, nxc-1
-        baseC = 1_c_size_t + int(ng+i, c_size_t)                                 &
-              + syc*int(j+ng, c_size_t)
-        baseW = 1_c_size_t + int(ng+i, c_size_t)                                 &
-              + syw*int(j+ng, c_size_t) + szw*int(ng, c_size_t)
+        baseC = 1_c_size_t+int(ng+i, c_size_t) &
+                +syc*int(j+ng, c_size_t)
+        baseW = 1_c_size_t+int(ng+i, c_size_t) &
+                +syw*int(j+ng, c_size_t)+szw*int(ng, c_size_t)
         do k = 0, nzc
-          cL = baseC + szc*int(k+ng, c_size_t) - szc
-          cR = cL + szc
-          cw = baseW + szw*int(k, c_size_t)
+          cL = baseC+szc*int(k+ng, c_size_t)-szc
+          cR = cL+szc
+          cw = baseW+szw*int(k, c_size_t)
           dpz_w(cw) = (p(cR)-p(cL))/dz
         end do
       end do
@@ -954,11 +954,11 @@ contains
     real(c_double)             :: cen4, filt4, lap2, alpha, aU
 
     ! 4th-order central derivative (dq/dx)
-    cen4 = (-qp2 + 8.0d0*qp1 - 8.0d0*qm1 + qm2) / (12.0d0*h)
+    cen4 = (-qp2+8.0d0*qp1-8.0d0*qm1+qm2)/(12.0d0*h)
 
     ! second-difference and 4th-order filter in compact form
-    lap2 = (qp1 - 2.0d0*q0 + qm1) / (h*h)     ! -> (q_{k+1}-2q_k+q_{k-1})/h^2
-    filt4 = (qp2 - 4.0d0*qp1 + 6.0d0*q0 - 4.0d0*qm1 + qm2) / h
+    lap2 = (qp1-2.0d0*q0+qm1)/(h*h)     ! -> (q_{k+1}-2q_k+q_{k-1})/h^2
+    filt4 = (qp2-4.0d0*qp1+6.0d0*q0-4.0d0*qm1+qm2)/h
 
     alpha = kk_alpha_from_phi(qm2, qm1, q0, qp1, qp2, h)
     aU = abs(U)
@@ -966,9 +966,9 @@ contains
     ! Adv3 + alpha*Dif1 + (1-alpha)*Dif3 (Eq. 10)
     ! Dif1 = -|U|/(2h) * (q_{k+1}-2q_k+q_{k-1}) = -|U| * 0.5 * (h*lap2)
     ! Dif3 =  |U|/(4h) * (q_{k+2}-4q_{k+1}+6q_k-4q_{k-1}+q_{k-2}) = |U| * 0.25 * filt4
-    flux = U * cen4                                  &   ! Adv3
-        + aU * ( -0.5d0 * alpha        * (h*lap2)   &   ! alpha * Dif1
-                + 0.25d0 * (1.0d0-alpha) *  filt4 )    ! (1-alpha) * Dif3
+    flux = U*cen4 &   ! Adv3
+           +aU*(-0.5d0*alpha*(h*lap2) &   ! alpha * Dif1
+                +0.25d0*(1.0d0-alpha)*filt4)    ! (1-alpha) * Dif3
   end function kk_flux_hybrid_kk3
 
   subroutine advect_velocity_kk3_mac_c( &
@@ -984,7 +984,7 @@ contains
     integer(c_int), value :: nxv_tot, nyv_tot, nzv_tot
     integer(c_int), value :: nxw_tot, nyw_tot, nzw_tot
     integer(c_int), value :: ng
-    real(c_double),  value :: dx, dy, dz
+    real(c_double), value :: dx, dy, dz
     ! fields
     real(c_double), intent(in)  :: u(*), v(*), w(*)
     real(c_double), intent(out) :: Nu(*), Nv(*), Nw(*)
@@ -1029,25 +1029,25 @@ contains
     !$omp   Fx, Fy, Fz)
     do k = 0, nzu-1
       do j = 0, nyu-1
-        c0 = 1_c_size_t + int(ng, c_size_t) + syu*int(j+ng, c_size_t) + szu*int(k+ng, c_size_t)
+        c0 = 1_c_size_t+int(ng, c_size_t)+syu*int(j+ng, c_size_t)+szu*int(k+ng, c_size_t)
 
         ! bases that depend only on (j,k); fold x-halo
-        baseV_jk_u = 1_c_size_t + int(ng, c_size_t) + syv*int(j+ng, c_size_t) + szv*int(k+ng, c_size_t)
-        baseW_jk_u = 1_c_size_t + int(ng, c_size_t) + syw*int(j+ng, c_size_t) + szw*int(k+ng, c_size_t)
+        baseV_jk_u = 1_c_size_t+int(ng, c_size_t)+syv*int(j+ng, c_size_t)+szv*int(k+ng, c_size_t)
+        baseW_jk_u = 1_c_size_t+int(ng, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(k+ng, c_size_t)
 
         c = c0
         !$omp simd linear(c:sxu)
         do i = 0, nxu-1
-          ip = c+sxu;   im = c-sxu;   ipp = c+2*sxu; imm = c-2*sxu
-          jp = c+syu;   jm = c-syu;   jpp = c+2*syu; jmm = c-2*syu
-          kp = c+szu;   km = c-szu;   kpp = c+2*szu; kmm = c-2*szu
+          ip = c+sxu; im = c-sxu; ipp = c+2*sxu; imm = c-2*sxu
+          jp = c+syu; jm = c-syu; jpp = c+2*syu; jmm = c-2*syu
+          kp = c+szu; km = c-szu; kpp = c+2*szu; kmm = c-2*szu
 
-          uc  = u(c)
+          uc = u(c)
 
-          ivL = baseV_jk_u + int(i,   c_size_t)
-          ivR = baseV_jk_u + int(i+1, c_size_t)
-          iwB = baseW_jk_u + int(i,   c_size_t)
-          iwT = baseW_jk_u + int(i+1, c_size_t)
+          ivL = baseV_jk_u+int(i, c_size_t)
+          ivR = baseV_jk_u+int(i+1, c_size_t)
+          iwB = baseW_jk_u+int(i, c_size_t)
+          iwT = baseW_jk_u+int(i+1, c_size_t)
 
           vc = 0.5d0*(v(ivL)+v(ivR))
           wc = 0.5d0*(w(iwB)+w(iwT))
@@ -1056,8 +1056,8 @@ contains
           Fy = kk_flux_hybrid_kk3(u(jmm), u(jm), u(c), u(jp), u(jpp), vc, dy)
           Fz = kk_flux_hybrid_kk3(u(kmm), u(km), u(c), u(kp), u(kpp), wc, dz)
 
-          Nu(c) = -(Fx + Fy + Fz)
-          c = c + sxu
+          Nu(c) = -(Fx+Fy+Fz)
+          c = c+sxu
         end do
       end do
     end do
@@ -1071,25 +1071,25 @@ contains
     !$omp   Fx, Fy, Fz)
     do k = 0, nzv-1
       do i = 0, nxv-1
-        c0 = 1_c_size_t + int(ng+i, c_size_t) + syv*int(ng, c_size_t) + szv*int(k+ng, c_size_t)
+        c0 = 1_c_size_t+int(ng+i, c_size_t)+syv*int(ng, c_size_t)+szv*int(k+ng, c_size_t)
 
         ! bases that depend only on (i,k); fold y-halo
-        baseU_ik_v = 1_c_size_t + int(ng+i, c_size_t) + szu*int(k+ng, c_size_t)
-        baseW_ik_v = 1_c_size_t + int(ng+i, c_size_t) + szw*int(k+ng, c_size_t)
+        baseU_ik_v = 1_c_size_t+int(ng+i, c_size_t)+szu*int(k+ng, c_size_t)
+        baseW_ik_v = 1_c_size_t+int(ng+i, c_size_t)+szw*int(k+ng, c_size_t)
 
         c = c0
         !$omp simd linear(c:syv)
         do j = 0, nyv-1
-          ip = c+sxv;   im = c-sxv;   ipp = c+2*sxv; imm = c-2*sxv
-          jp = c+syv;   jm = c-syv;   jpp = c+2*syv; jmm = c-2*syv
-          kp = c+szv;   km = c-szv;   kpp = c+2*szv; kmm = c-2*szv
+          ip = c+sxv; im = c-sxv; ipp = c+2*sxv; imm = c-2*sxv
+          jp = c+syv; jm = c-syv; jpp = c+2*syv; jmm = c-2*syv
+          kp = c+szv; km = c-szv; kpp = c+2*szv; kmm = c-2*szv
 
-          vc  = v(c)
+          vc = v(c)
 
-          iuB = baseU_ik_v + syu*int(j+ng,   c_size_t)
-          iuT = baseU_ik_v + syu*int(j+ng+1, c_size_t)
-          iwB2 = baseW_ik_v + syw*int(j+ng,   c_size_t)
-          iwT2 = baseW_ik_v + syw*int(j+ng+1, c_size_t)
+          iuB = baseU_ik_v+syu*int(j+ng, c_size_t)
+          iuT = baseU_ik_v+syu*int(j+ng+1, c_size_t)
+          iwB2 = baseW_ik_v+syw*int(j+ng, c_size_t)
+          iwT2 = baseW_ik_v+syw*int(j+ng+1, c_size_t)
 
           uc = 0.5d0*(u(iuB)+u(iuT))
           wc = 0.5d0*(w(iwB2)+w(iwT2))
@@ -1098,8 +1098,8 @@ contains
           Fy = kk_flux_hybrid_kk3(v(jmm), v(jm), v(c), v(jp), v(jpp), vc, dy)
           Fz = kk_flux_hybrid_kk3(v(kmm), v(km), v(c), v(kp), v(kpp), wc, dz)
 
-          Nv(c) = -(Fx + Fy + Fz)
-          c = c + syv
+          Nv(c) = -(Fx+Fy+Fz)
+          c = c+syv
         end do
       end do
     end do
@@ -1113,25 +1113,25 @@ contains
     !$omp   Fx, Fy, Fz)
     do j = 0, nyw-1
       do i = 0, nxw-1
-        c0 = 1_c_size_t + int(ng+i, c_size_t) + syw*int(j+ng, c_size_t) + szw*int(ng, c_size_t)
+        c0 = 1_c_size_t+int(ng+i, c_size_t)+syw*int(j+ng, c_size_t)+szw*int(ng, c_size_t)
 
         ! bases that depend only on (i,j); fold z-halo
-        baseU_ij_w = 1_c_size_t + int(ng+i, c_size_t) + syu*int(j+ng, c_size_t)
-        baseV_ij_w = 1_c_size_t + int(ng+i, c_size_t) + syv*int(j+ng, c_size_t)
+        baseU_ij_w = 1_c_size_t+int(ng+i, c_size_t)+syu*int(j+ng, c_size_t)
+        baseV_ij_w = 1_c_size_t+int(ng+i, c_size_t)+syv*int(j+ng, c_size_t)
 
         c = c0
         !$omp simd linear(c:szw)
         do k = 0, nzw-1
-          ip = c+sxw;   im = c-sxw;   ipp = c+2*sxw; imm = c-2*sxw
-          jp = c+syw;   jm = c-syw;   jpp = c+2*syw; jmm = c-2*syw
-          kp = c+szw;   km = c-szw;   kpp = c+2*szw; kmm = c-2*szw
+          ip = c+sxw; im = c-sxw; ipp = c+2*sxw; imm = c-2*sxw
+          jp = c+syw; jm = c-syw; jpp = c+2*syw; jmm = c-2*syw
+          kp = c+szw; km = c-szw; kpp = c+2*szw; kmm = c-2*szw
 
-          wc  = w(c)
+          wc = w(c)
 
-          iuL = baseU_ij_w + szu*int(k+ng,   c_size_t)
-          iuU = baseU_ij_w + szu*int(k+ng+1, c_size_t)
-          ivL2 = baseV_ij_w + szv*int(k+ng,   c_size_t)
-          ivU2 = baseV_ij_w + szv*int(k+ng+1, c_size_t)
+          iuL = baseU_ij_w+szu*int(k+ng, c_size_t)
+          iuU = baseU_ij_w+szu*int(k+ng+1, c_size_t)
+          ivL2 = baseV_ij_w+szv*int(k+ng, c_size_t)
+          ivU2 = baseV_ij_w+szv*int(k+ng+1, c_size_t)
 
           uc = 0.5d0*(u(iuL)+u(iuU))
           vc = 0.5d0*(v(ivL2)+v(ivU2))
@@ -1140,12 +1140,11 @@ contains
           Fy = kk_flux_hybrid_kk3(w(jmm), w(jm), w(c), w(jp), w(jpp), vc, dy)
           Fz = kk_flux_hybrid_kk3(w(kmm), w(km), w(c), w(kp), w(kpp), wc, dz)
 
-          Nw(c) = -(Fx + Fy + Fz)
-          c = c + szw
+          Nw(c) = -(Fx+Fy+Fz)
+          c = c+szw
         end do
       end do
     end do
   end subroutine advect_velocity_kk3_mac_c
-
 
 end module fluids_kernels

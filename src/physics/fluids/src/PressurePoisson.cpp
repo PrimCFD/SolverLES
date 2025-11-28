@@ -18,8 +18,8 @@
 #include "Program.hpp"
 #include "master/FieldCatalog.hpp"
 #include "master/HaloOps.hpp"
-#include "master/Views.hpp"
 #include "master/Log.hpp"
+#include "master/Views.hpp"
 #include "kernels_fluids.h"
 
 #include <algorithm>
@@ -605,28 +605,31 @@ static PetscErrorCode ShellGetDiagonal(Mat A, Vec d)
 static void retune_chebyshev_on_levels(KSP outerKSP)
 {
     MPI_Comm comm = PETSC_COMM_SELF;
-    if (outerKSP) PetscObjectGetComm((PetscObject) outerKSP, &comm);
+    if (outerKSP)
+        PetscObjectGetComm((PetscObject) outerKSP, &comm);
     PC pc = NULL;
     PetscCallAbort(comm, KSPGetPC(outerKSP, &pc));
     PetscInt nlev = 0;
     PetscCallAbort(comm, PCMGGetLevels(pc, &nlev));
-    for (PetscInt l = 1; l < nlev; ++l) {
+    for (PetscInt l = 1; l < nlev; ++l)
+    {
         KSP kspl = NULL;
         PetscCallAbort(comm, PCMGGetSmoother(pc, l, &kspl));
-        if (!kspl) continue;
+        if (!kspl)
+            continue;
         // Keep Jacobi PC as set elsewhere; just (re)enable Chebyshev + auto eig est.
         PetscCallAbort(comm, KSPSetType(kspl, KSPCHEBYSHEV));
-        PetscCallAbort(comm, KSPChebyshevEstEigSet(kspl,
-                                                   PETSC_DEFAULT, PETSC_DEFAULT,
+        PetscCallAbort(comm, KSPChebyshevEstEigSet(kspl, PETSC_DEFAULT, PETSC_DEFAULT,
                                                    PETSC_DEFAULT, PETSC_DEFAULT));
-        PetscCallAbort(comm, KSPSetTolerances(kspl, PETSC_DEFAULT, PETSC_DEFAULT,
-                                              PETSC_DEFAULT, 2));
+        PetscCallAbort(comm,
+                       KSPSetTolerances(kspl, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT, 2));
         PetscCallAbort(comm, KSPSetConvergenceTest(kspl, KSPConvergedSkip, NULL, NULL));
         PetscCallAbort(comm, KSPSetNormType(kspl, KSP_NORM_NONE));
     }
 }
 
-// If *Aio is nullptr, create & preallocate. Otherwise, reuse the existing pattern and just overwrite values.
+// If *Aio is nullptr, create & preallocate. Otherwise, reuse the existing pattern and just
+// overwrite values.
 static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aio)
 {
     const bool useTx = (ctx.trans && !ctx.trans->Tx.empty());
@@ -638,16 +641,19 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aio)
     const PetscInt nxi = ctx.nxi, nyi = ctx.nyi, nzi = ctx.nzi;
 
     // Create on first use; otherwise reuse the existing sparsity pattern
-    if (!*Aio) {
+    if (!*Aio)
+    {
         // Create a properly preallocated AIJ using the DMDA stencil (STAR, width=1)
         PetscCall(DMSetMatType(da, MATAIJ));
         PetscCall(DMCreateMatrix(da, Aio)); // *Aio gets AIJ with 7-pt prealloc
         PetscCall(MatSetOption(*Aio, MAT_IGNORE_ZERO_ENTRIES, PETSC_TRUE));
-    } else {
+    }
+    else
+    {
         // Zero existing entries; keep structure
         PetscCall(MatZeroEntries(*Aio));
     }
- 
+
     // From this point on, always insert into *Aio (created or reused)
     Mat Afill = *Aio;
 
@@ -814,13 +820,17 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aio)
                 PetscScalar vals[7];
                 PetscInt nset = 0;
                 // Use global logical stencil indices (DMDA handles periodic wraps).
-                row.k = k; row.j = j; row.i = i; row.c = 0;
+                row.k = k;
+                row.j = j;
+                row.i = i;
+                row.c = 0;
 
                 if (hasW)
                 {
-                    cols[nset] = MatStencil{ .k = k, .j = j, .i = iw, .c = 0 };
+                    cols[nset] = MatStencil{.k = k, .j = j, .i = iw, .c = 0};
                     vals[nset] = -invV * tw;
-                    diag += tw; ++nset;
+                    diag += tw;
+                    ++nset;
                 }
                 else if (!ctx.perX && ctx.pbc.W &&
                          norm_p_type(ctx.pbc.W->type) == BcSpec::Type::dirichlet)
@@ -828,9 +838,10 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aio)
 
                 if (hasE)
                 {
-                    cols[nset] = MatStencil{ .k = k, .j = j, .i = ie, .c = 0 };
+                    cols[nset] = MatStencil{.k = k, .j = j, .i = ie, .c = 0};
                     vals[nset] = -invV * te;
-                    diag += te; ++nset;
+                    diag += te;
+                    ++nset;
                 }
                 else if (!ctx.perX && ctx.pbc.E &&
                          norm_p_type(ctx.pbc.E->type) == BcSpec::Type::dirichlet)
@@ -838,9 +849,10 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aio)
 
                 if (hasS)
                 {
-                    cols[nset] = MatStencil{ .k = k, .j = js, .i = i, .c = 0 };
+                    cols[nset] = MatStencil{.k = k, .j = js, .i = i, .c = 0};
                     vals[nset] = -invV * ts;
-                    diag += ts; ++nset;
+                    diag += ts;
+                    ++nset;
                 }
                 else if (!ctx.perY && ctx.pbc.S &&
                          norm_p_type(ctx.pbc.S->type) == BcSpec::Type::dirichlet)
@@ -848,9 +860,10 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aio)
 
                 if (hasN)
                 {
-                    cols[nset] = MatStencil{ .k = k, .j = jn, .i = i, .c = 0 };
+                    cols[nset] = MatStencil{.k = k, .j = jn, .i = i, .c = 0};
                     vals[nset] = -invV * tn;
-                    diag += tn; ++nset;
+                    diag += tn;
+                    ++nset;
                 }
                 else if (!ctx.perY && ctx.pbc.N &&
                          norm_p_type(ctx.pbc.N->type) == BcSpec::Type::dirichlet)
@@ -858,9 +871,10 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aio)
 
                 if (hasB)
                 {
-                    cols[nset] = MatStencil{ .k = kb, .j = j, .i = i, .c = 0 };
+                    cols[nset] = MatStencil{.k = kb, .j = j, .i = i, .c = 0};
                     vals[nset] = -invV * tb;
-                    diag += tb; ++nset;
+                    diag += tb;
+                    ++nset;
                 }
                 else if (!ctx.perZ && ctx.pbc.B &&
                          norm_p_type(ctx.pbc.B->type) == BcSpec::Type::dirichlet)
@@ -868,9 +882,10 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aio)
 
                 if (hasT)
                 {
-                    cols[nset] = MatStencil{ .k = kt, .j = j, .i = i, .c = 0 };
+                    cols[nset] = MatStencil{.k = kt, .j = j, .i = i, .c = 0};
                     vals[nset] = -invV * tt;
-                    diag += tt; ++nset;
+                    diag += tt;
+                    ++nset;
                 }
                 else if (!ctx.perZ && ctx.pbc.T &&
                          norm_p_type(ctx.pbc.T->type) == BcSpec::Type::dirichlet)
@@ -985,7 +1000,8 @@ struct PPImpl
             ns_const = nullptr;
         }
         // Only free if we created a child communicator; never free the caller's.
-        if (comm_owned && comm != MPI_COMM_NULL) {
+        if (comm_owned && comm != MPI_COMM_NULL)
+        {
             MPI_Comm_free(&comm);
         }
         comm_owned = false;
@@ -1246,14 +1262,18 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
 {
 
     // Start from the application's communicator (borrowed).
-    if (impl.comm == MPI_COMM_NULL) impl.comm = user_comm_in;
+    if (impl.comm == MPI_COMM_NULL)
+        impl.comm = user_comm_in;
     MPI_Comm comm = impl.comm;
 
     {
         int sz = -1, rk = -1;
-        if (MPI_Comm_size(comm, &sz) != MPI_SUCCESS || sz < 1) {
+        if (MPI_Comm_size(comm, &sz) != MPI_SUCCESS || sz < 1)
+        {
             SETERRABORT(comm, PETSC_ERR_ARG_INCOMP,
-                        "invalid MPI_Comm passed into PressurePoisson (size=%d) — must be a live communicator", sz);
+                        "invalid MPI_Comm passed into PressurePoisson (size=%d) — must be a live "
+                        "communicator",
+                        sz);
         }
         MPI_Comm_rank(comm, &rk); // warm up the comm
     }
@@ -1264,19 +1284,24 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     {
         int topo_type = MPI_UNDEFINED;
         MPI_Topo_test(comm, &topo_type);
-        if (topo_type == MPI_CART) {
-            int ndims = 0; MPI_Cartdim_get(comm, &ndims);
-            if (ndims == 3) {
-                int dims[3]={0,0,0}, periods[3]={0,0,0}, coords[3]={0,0,0};
+        if (topo_type == MPI_CART)
+        {
+            int ndims = 0;
+            MPI_Cartdim_get(comm, &ndims);
+            if (ndims == 3)
+            {
+                int dims[3] = {0, 0, 0}, periods[3] = {0, 0, 0}, coords[3] = {0, 0, 0};
                 MPI_Cart_get(comm, 3, dims, periods, coords);
                 // Lexicographic key: z-major over (x,y,z) -> (k * Ny * Nx) + j * Nx + i
-                const int key = coords[2] * (dims[0]*dims[1]) + coords[1] * dims[0] + coords[0];
+                const int key = coords[2] * (dims[0] * dims[1]) + coords[1] * dims[0] + coords[0];
                 MPI_Comm child = MPI_COMM_NULL;
                 // color=0 keeps the same group; key sets rank order inside it.
-                MPI_Comm_split(comm, /*color*/0, /*key*/key, &child);
-                if (child != MPI_COMM_NULL) {
+                MPI_Comm_split(comm, /*color*/ 0, /*key*/ key, &child);
+                if (child != MPI_COMM_NULL)
+                {
                     // If we previously owned a child, free it before replacing.
-                    if (impl.comm_owned && impl.comm != MPI_COMM_NULL && impl.comm != user_comm_in) {
+                    if (impl.comm_owned && impl.comm != MPI_COMM_NULL && impl.comm != user_comm_in)
+                    {
                         MPI_Comm_free(&impl.comm);
                     }
                     impl.comm = child;
@@ -1288,7 +1313,7 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     }
 
     // ----- finest DMDA over interior cells -----
-    const PetscInt nxi = impl.nxi_glob;  // use mesh global interior sizes
+    const PetscInt nxi = impl.nxi_glob; // use mesh global interior sizes
     const PetscInt nyi = impl.nyi_glob;
     const PetscInt nzi = impl.nzi_glob;
 
@@ -1309,52 +1334,71 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     {
         int topo_type = MPI_UNDEFINED;
         MPI_Topo_test(comm, &topo_type);
-        if (topo_type == MPI_CART) {
-            int cdims[3] = {0,0,0};
-            int cper[3] = {0,0,0};
-            int coords_dummy[3] = {0,0,0};
+        if (topo_type == MPI_CART)
+        {
+            int cdims[3] = {0, 0, 0};
+            int cper[3] = {0, 0, 0};
+            int coords_dummy[3] = {0, 0, 0};
             int ndims = 0;
             MPI_Cartdim_get(comm, &ndims);
-            if (ndims == 3) {
+            if (ndims == 3)
+            {
                 MPI_Cart_get(comm, 3, cdims, cper, coords_dummy);
                 // Keep (x,y,z) order consistent with MPI_Cart dims and PETSc DMDA:
-                dims3[0] = cdims[0];  // x
-                dims3[1] = cdims[1];  // y
-                dims3[2] = cdims[2];  // z
+                dims3[0] = cdims[0]; // x
+                dims3[1] = cdims[1]; // y
+                dims3[2] = cdims[2]; // z
             }
-        } else {
-            int size_world = 1; MPI_Comm_size(comm, &size_world);
+        }
+        else
+        {
+            int size_world = 1;
+            MPI_Comm_size(comm, &size_world);
             bool user_fixed = (dims3[0] > 0 && dims3[1] > 0 && dims3[2] > 0);
-            if (user_fixed) {
+            if (user_fixed)
+            {
                 const long long prod = 1LL * dims3[0] * dims3[1] * dims3[2];
-                if (prod != size_world) {
+                if (prod != size_world)
+                {
                     SETERRABORT(comm, PETSC_ERR_ARG_INCOMP,
                                 "mesh.proc_grid=%dx%dx%d must multiply to communicator size %d",
                                 dims3[0], dims3[1], dims3[2], size_world);
                 }
-            } else {
+            }
+            else
+            {
                 int tmp[3] = {dims3[0], dims3[1], dims3[2]};
-                int sz; MPI_Comm_size(comm, &sz);
+                int sz;
+                MPI_Comm_size(comm, &sz);
                 int prod = 1;
-                for (int a=0;a<3;++a) if (tmp[a]>0) prod *= tmp[a];
-                if (sz % prod != 0) {
+                for (int a = 0; a < 3; ++a)
+                    if (tmp[a] > 0)
+                        prod *= tmp[a];
+                if (sz % prod != 0)
+                {
                     SETERRABORT(comm, PETSC_ERR_ARG_INCOMP,
                                 "mesh.proc_grid contains fixed axes that do not divide MPI size");
                 }
                 int need = sz / prod;
-                int fill[3] = {0,0,0};
+                int fill[3] = {0, 0, 0};
                 MPI_Dims_create(need, 3, fill);
-                for (int a=0, t=0; a<3; ++a) if (tmp[a]==0) tmp[a] = (fill[t++] ? fill[t-1] : 1);
-                dims3[0]=tmp[0]; dims3[1]=tmp[1]; dims3[2]=tmp[2];
+                for (int a = 0, t = 0; a < 3; ++a)
+                    if (tmp[a] == 0)
+                        tmp[a] = (fill[t++] ? fill[t - 1] : 1);
+                dims3[0] = tmp[0];
+                dims3[1] = tmp[1];
+                dims3[2] = tmp[2];
             }
         }
     }
 
     // Compute explicit ownership ranges so DMDA matches our mesh partition exactly.
-    auto make_ownership = [](PetscInt n, int p) {
-        std::vector<PetscInt> l(std::max(1,p),0);
+    auto make_ownership = [](PetscInt n, int p)
+    {
+        std::vector<PetscInt> l(std::max(1, p), 0);
         PetscInt q = n / p, r = n % p;
-        for (int i = 0; i < p; ++i) l[i] = q + (i < r ? 1 : 0);
+        for (int i = 0; i < p; ++i)
+            l[i] = q + (i < r ? 1 : 0);
         return l;
     };
     const int px = dims3[0], py = dims3[1], pz = dims3[2];
@@ -1363,21 +1407,19 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     std::vector<PetscInt> lz = make_ownership(nzi, pz);
 
     // Create the finest DMDA with an explicit (px,py,pz) that multiplies to size.
-    DMDACreate3d(comm, bx, by, bz, DMDA_STENCIL_STAR, nxi, nyi, nzi,
-                 px, py, pz,
+    DMDACreate3d(comm, bx, by, bz, DMDA_STENCIL_STAR, nxi, nyi, nzi, px, py, pz,
                  /*dof*/ 1, /*stencil width*/ 1,
-                 /*lx*/ lx.data(), /*ly*/ ly.data(), /*lz*/ lz.data(),
-                 &impl.da_fine);
+                 /*lx*/ lx.data(), /*ly*/ ly.data(), /*lz*/ lz.data(), &impl.da_fine);
     // Allow -da_* options at runtime for debugging/overrides
     DMSetFromOptions(impl.da_fine);
     DMSetUp(impl.da_fine);
 
     // Sanity: the process grid must not exceed the per-axis cell counts.
     // (Catches impossible user hints early and avoids hard-to-trace segfaults later.)
-    if (!(dims3[0] <= (int)nxi && dims3[1] <= (int)nyi && dims3[2] <= (int)nzi)) {
-        SETERRABORT(comm, PETSC_ERR_ARG_OUTOFRANGE,
-                "proc grid %dx%dx%d exceeds cell grid %dx%dx%d",
-                dims3[0], dims3[1], dims3[2], (int)nxi, (int)nyi, (int)nzi);
+    if (!(dims3[0] <= (int) nxi && dims3[1] <= (int) nyi && dims3[2] <= (int) nzi))
+    {
+        SETERRABORT(comm, PETSC_ERR_ARG_OUTOFRANGE, "proc grid %dx%dx%d exceeds cell grid %dx%dx%d",
+                    dims3[0], dims3[1], dims3[2], (int) nxi, (int) nyi, (int) nzi);
     }
 
     DMDASetInterpolationType(impl.da_fine, DMDA_Q0);
@@ -1578,11 +1620,14 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     }
 
     // MG cycle config
-    // For all-Neumann (singular) prefer additive MG to keep the preconditioner benign/symmetric for MINRES;
-    // otherwise multiplicative V is fine.
-    if (impl.all_neumann) {
+    // For all-Neumann (singular) prefer additive MG to keep the preconditioner benign/symmetric for
+    // MINRES; otherwise multiplicative V is fine.
+    if (impl.all_neumann)
+    {
         PCMGSetType(pc, PC_MG_ADDITIVE);
-    } else {
+    }
+    else
+    {
         PCMGSetType(pc, PC_MG_MULTIPLICATIVE);
     }
     PCMGSetNumberSmooth(pc, 2);
@@ -1605,19 +1650,18 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
             if (!kspl)
                 continue;
 
-        // Use Chebyshev + Jacobi smoothing on all levels.
-        PetscCallAbort(comm, KSPSetType(kspl, KSPCHEBYSHEV));
-        PetscCallAbort(comm, KSPGetPC(kspl, &pcl));
-        PetscCallAbort(comm, PCSetType(pcl, PCJACOBI));
-        PCJacobiSetType(pcl, PC_JACOBI_DIAGONAL);
-        // Auto-estimate spectral bounds (cheap power iterations), robust across levels.
-        PetscCallAbort(comm, KSPChebyshevEstEigSet(kspl,
-                                                   PETSC_DEFAULT, PETSC_DEFAULT,
-                                                   PETSC_DEFAULT, PETSC_DEFAULT));
-        PetscCallAbort(comm, KSPSetConvergenceTest(kspl, KSPConvergedSkip, NULL, NULL));
-        PetscCallAbort(comm, KSPSetNormType(kspl, KSP_NORM_NONE));
-        PetscCallAbort(comm, KSPSetTolerances(kspl, PETSC_DEFAULT, PETSC_DEFAULT,
-                                              PETSC_DEFAULT, 2));
+            // Use Chebyshev + Jacobi smoothing on all levels.
+            PetscCallAbort(comm, KSPSetType(kspl, KSPCHEBYSHEV));
+            PetscCallAbort(comm, KSPGetPC(kspl, &pcl));
+            PetscCallAbort(comm, PCSetType(pcl, PCJACOBI));
+            PCJacobiSetType(pcl, PC_JACOBI_DIAGONAL);
+            // Auto-estimate spectral bounds (cheap power iterations), robust across levels.
+            PetscCallAbort(comm, KSPChebyshevEstEigSet(kspl, PETSC_DEFAULT, PETSC_DEFAULT,
+                                                       PETSC_DEFAULT, PETSC_DEFAULT));
+            PetscCallAbort(comm, KSPSetConvergenceTest(kspl, KSPConvergedSkip, NULL, NULL));
+            PetscCallAbort(comm, KSPSetNormType(kspl, KSP_NORM_NONE));
+            PetscCallAbort(comm,
+                           KSPSetTolerances(kspl, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT, 2));
         }
     }
 
@@ -1625,15 +1669,19 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     // SPD: preonly + Cholesky (fast).  Pure-Neumann (singular): preonly + SVD.
     {
         KSP kspc = NULL;
-        PC  pcc  = NULL;
+        PC pcc = NULL;
         PetscCallAbort(comm, PCMGGetCoarseSolve(pc, &kspc));
-        if (kspc) {
+        if (kspc)
+        {
             PetscCallAbort(comm, KSPSetType(kspc, KSPPREONLY));
             PetscCallAbort(comm, KSPGetPC(kspc, &pcc));
-            if (impl.all_neumann) {
+            if (impl.all_neumann)
+            {
                 // Robust for rank-deficient coarse operators
                 PetscCallAbort(comm, PCSetType(pcc, PCSVD));
-            } else {
+            }
+            else
+            {
                 PetscCallAbort(comm, PCSetType(pcc, PCCHOLESKY));
             }
         }
@@ -1686,18 +1734,21 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     // ---- Lightweight KSP monitor into our logger (DEBUG only) ----
     // Logs: [poisson] it=… ||r||=…   only when SOLVER_LOG>=debug.
     {
-        auto monitor = [](KSP ksp, PetscInt it, PetscReal rnorm, void*) -> PetscErrorCode {
+        auto monitor = [](KSP ksp, PetscInt it, PetscReal rnorm, void*) -> PetscErrorCode
+        {
             using core::master::logx::Level;
-            if (core::master::logx::g_level.load() >= Level::Debug) {
-                LOGD("[poisson] it=%d  ||r||=%.6e\n", (int)it, (double)rnorm);
+            if (core::master::logx::g_level.load() >= Level::Debug)
+            {
+                LOGD("[poisson] it=%d  ||r||=%.6e\n", (int) it, (double) rnorm);
             }
             return 0;
         };
         // Attach after KSP is configured so options may still add PETSc's own monitors.
         // (Multiple monitors can coexist.)
         PetscErrorCode ierr = KSPMonitorSet(impl.ksp, monitor, nullptr, nullptr);
-        if (ierr) {
-            LOGW("[poisson] unable to attach KSP monitor (ierr=%d)\n", (int)ierr);
+        if (ierr)
+        {
+            LOGW("[poisson] unable to attach KSP monitor (ierr=%d)\n", (int) ierr);
         }
     }
 }
@@ -1824,22 +1875,24 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
     // Partition sanity check: with the reordered child communicator, the owned corners
     // should now agree with the application's Cartesian decomposition.
     {
-        PetscInt xs_chk=0, ys_chk=0, zs_chk=0, xm_chk=0, ym_chk=0, zm_chk=0;
+        PetscInt xs_chk = 0, ys_chk = 0, zs_chk = 0, xm_chk = 0, ym_chk = 0, zm_chk = 0;
         DMDAGetCorners(impl_->da_fine, &xs_chk, &ys_chk, &zs_chk, &xm_chk, &ym_chk, &zm_chk);
         const int i0_mesh = (tile.mesh ? tile.mesh->global_lo[0] : 0);
         const int j0_mesh = (tile.mesh ? tile.mesh->global_lo[1] : 0);
         const int k0_mesh = (tile.mesh ? tile.mesh->global_lo[2] : 0);
-        if (xs_chk != i0_mesh || ys_chk != j0_mesh || zs_chk != k0_mesh) {
+        if (xs_chk != i0_mesh || ys_chk != j0_mesh || zs_chk != k0_mesh)
+        {
             SETERRABORT(impl_->comm, PETSC_ERR_PLIB,
-                "DMDA corner (%d,%d,%d) != mesh.global_lo (%d,%d,%d) after reordering — check proc_grid.",
-                (int)xs_chk,(int)ys_chk,(int)zs_chk, i0_mesh,j0_mesh,k0_mesh);
+                        "DMDA corner (%d,%d,%d) != mesh.global_lo (%d,%d,%d) after reordering — "
+                        "check proc_grid.",
+                        (int) xs_chk, (int) ys_chk, (int) zs_chk, i0_mesh, j0_mesh, k0_mesh);
         }
     }
 
     // ---------------- RHS = - (1/dt) * div(u*) plus BC contributions ----------------
 
     {
-        core::master::exchange_named_fields(fields, *tile.mesh, mpi_comm_, {"u","v","w"});
+        core::master::exchange_named_fields(fields, *tile.mesh, mpi_comm_, {"u", "v", "w"});
     }
 
     std::vector<double> div(std::size_t(nxc_tot) * nyc_tot * nzc_tot, 0.0);
@@ -1873,8 +1926,8 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
                     const int jc = (j - j0) + impl_->ng;
                     const int kc = (k - k0) + impl_->ng;
                     // Guard in case a rank owns a DM slab that this tile does not cover
-                    if (ic >= 0 && jc >= 0 && kc >= 0 &&
-                        ic < nxc_tot && jc < nyc_tot && kc < nzc_tot)
+                    if (ic >= 0 && jc >= 0 && kc >= 0 && ic < nxc_tot && jc < nyc_tot &&
+                        kc < nzc_tot)
                     {
                         const std::size_t c =
                             std::size_t(ic) +
@@ -1883,8 +1936,8 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
                         const std::size_t g =
                             std::size_t(i) +
                             std::size_t(impl_->beta_fine.nxi) *
-                                (std::size_t(j) + std::size_t(impl_->beta_fine.nyi) *
-                                                      std::size_t(k));
+                                (std::size_t(j) +
+                                 std::size_t(impl_->beta_fine.nyi) * std::size_t(k));
                         impl_->beta_fine.data[g] =
                             1.0 / static_cast<const double*>(vrho.host_ptr)[c];
                     }
@@ -2018,9 +2071,9 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
             for (int j = ys; j < ys + ym; ++j)
                 for (int i = xs; i < xs + xm; ++i)
                 {
-                    const int ii = (int)(i - i0) + ng;
-                    const int jj = (int)(j - j0) + ng;
-                    const int kk = (int)(k - k0) + ng;
+                    const int ii = (int) (i - i0) + ng;
+                    const int jj = (int) (j - j0) + ng;
+                    const int kk = (int) (k - k0) + ng;
                     const std::size_t c =
                         std::size_t(ii) +
                         std::size_t(nxc_tot) *
@@ -2108,9 +2161,9 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
             for (int j = ys; j < ys + ym; ++j)
                 for (int i = xs; i < xs + xm; ++i)
                 {
-                    const int ii = (int)(i - i0) + ng;
-                    const int jj = (int)(j - j0) + ng;
-                    const int kk = (int)(k - k0) + ng;
+                    const int ii = (int) (i - i0) + ng;
+                    const int jj = (int) (j - j0) + ng;
+                    const int kk = (int) (k - k0) + ng;
                     const std::size_t c =
                         std::size_t(ii) +
                         std::size_t(nxc_tot) *
@@ -2191,14 +2244,20 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
     // ---- One-shot status line after solve ----
     {
         KSPConvergedReason reason = KSP_CONVERGED_ITERATING;
-        PetscInt its = 0; PetscReal rnorm = 0.0;
+        PetscInt its = 0;
+        PetscReal rnorm = 0.0;
         KSPGetConvergedReason(impl_->ksp, &reason);
         KSPGetIterationNumber(impl_->ksp, &its);
         KSPGetResidualNorm(impl_->ksp, &rnorm);
-        if (reason < 0) {
-            LOGE("[poisson] solve failed: reason=%d  iters=%d  ||r||=%.6e\n", (int)reason, (int)its, (double)rnorm);
-        } else {
-            LOGD("[poisson] converged: reason=%d  iters=%d  ||r||=%.6e\n", (int)reason, (int)its, (double)rnorm);
+        if (reason < 0)
+        {
+            LOGE("[poisson] solve failed: reason=%d  iters=%d  ||r||=%.6e\n", (int) reason,
+                 (int) its, (double) rnorm);
+        }
+        else
+        {
+            LOGD("[poisson] converged: reason=%d  iters=%d  ||r||=%.6e\n", (int) reason, (int) its,
+                 (double) rnorm);
         }
     }
 
@@ -2227,9 +2286,9 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
             for (int j = ys; j < ys + ym; ++j)
                 for (int i = xs; i < xs + xm; ++i)
                 {
-                    const int ii = (int)(i - i0) + ng;
-                    const int jj = (int)(j - j0) + ng;
-                    const int kk = (int)(k - k0) + ng;
+                    const int ii = (int) (i - i0) + ng;
+                    const int jj = (int) (j - j0) + ng;
+                    const int kk = (int) (k - k0) + ng;
                     const std::size_t c =
                         std::size_t(ii) +
                         std::size_t(nxc_tot) *

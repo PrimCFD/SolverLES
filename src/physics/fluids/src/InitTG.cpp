@@ -5,13 +5,13 @@
 #include "mesh/Mesh.hpp"
 #include <algorithm>
 #include <cmath>
-#include <stdexcept>
-#include <mpi.h>
 #include <iostream>
+#include <mpi.h>
+#include <stdexcept>
 
+#include "master/Views.hpp"
 #include "memory/MpiBox.hpp"
 #include "mesh/Field.hpp"
-#include "master/Views.hpp"
 
 using namespace core::master;
 
@@ -183,7 +183,6 @@ void InitTG::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     {
         core::master::exchange_named_fields(fields, *tile.mesh, mpi_comm_, {"u", "v", "w"});
     }
-
 }
 
 } // namespace fluids

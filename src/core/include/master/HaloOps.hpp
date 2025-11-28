@@ -23,20 +23,23 @@ static inline int tag_base_for_name_comm(const char* name, MPI_Comm comm)
     // djb2-xor hash; stable across ranks
     unsigned h = 5381u;
     const unsigned char* s = reinterpret_cast<const unsigned char*>(name ? name : "");
-    while (*s) { h = ((h << 5) + h) ^ *s++; }
+    while (*s)
+    {
+        h = ((h << 5) + h) ^ *s++;
+    }
 
     // Query MPI_TAG_UB to stay within the impl's legal tag range.
     int *p_ub = nullptr, flag = 0; // MPI says tags must be in [0..MPI_TAG_UB]
     MPI_Comm_get_attr(comm, MPI_TAG_UB, &p_ub, &flag);
-    int tag_ub = (flag && p_ub) ? *p_ub : 32767;  // standard guarantees >= 32767
+    int tag_ub = (flag && p_ub) ? *p_ub : 32767; // standard guarantees >= 32767
 
     // Reserve a window per field large enough for all 26 directions, rounded up.
     // Leave some headroom: choose 64.
     const int window = 64;
-    const int guard  = 200;                 // keep away from tiny tags used elsewhere
-    const int limit  = std::max(guard + window, tag_ub - window); // safety
-    const int slots  = std::max(1, (limit - guard) / window);
-    const int slot   = static_cast<int>(h % static_cast<unsigned>(slots));
+    const int guard = 200; // keep away from tiny tags used elsewhere
+    const int limit = std::max(guard + window, tag_ub - window); // safety
+    const int slots = std::max(1, (limit - guard) / window);
+    const int slot = static_cast<int>(h % static_cast<unsigned>(slots));
     return guard + slot * window;
 }
 
@@ -117,8 +120,7 @@ inline void exchange_all_fields(FieldCatalog& cat, const core::mesh::Mesh& m,
         for (const AnyFieldView& v : cat.all_views())
         {
             const auto e = v.extents;
-            const int tag_base = tag_base_for_name_comm(
-                v.name.empty() ? "" : v.name.c_str(), comm);
+            const int tag_base = tag_base_for_name_comm(v.name.empty() ? "" : v.name.c_str(), comm);
             if (v.elem_size == sizeof(double))
             {
                 core::mesh::Field<double> f(static_cast<double*>(v.host_ptr), e, m.ng);

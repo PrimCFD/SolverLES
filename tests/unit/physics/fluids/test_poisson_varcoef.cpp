@@ -248,10 +248,12 @@ TEST_CASE("MG variable-β Poisson: A p ≈ rhs and β→1 consistency", "[fluids
     mesh.proc_grid[1] = dims[1];
     mesh.proc_grid[2] = dims[2];
 
-    auto owner_start = [](int n, int p, int r) {
+    auto owner_start = [](int n, int p, int r)
+    {
         const int q = n / p;
         const int rem = n % p;
-        if (r < rem) return r * (q + 1);
+        if (r < rem)
+            return r * (q + 1);
         return rem * (q + 1) + (r - rem) * q;
     };
 

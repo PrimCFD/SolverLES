@@ -180,7 +180,7 @@ int main(int argc, char** argv)
         MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
         // Heuristic: try to form a near-cube 3D grid of ranks
-        MPI_Dims_create(world_size, 3, dims); // fills dims in-place
+        MPI_Dims_create(world_size, 3, dims);     // fills dims in-place
         periods[0] = periods[1] = periods[2] = 0; // non-periodic for this bench
 
         // Create the Cartesian communicator into the *outer* cart_comm
@@ -231,10 +231,12 @@ int main(int argc, char** argv)
         mesh.proc_grid[1] = dims[1];
         mesh.proc_grid[2] = dims[2];
 
-        auto owner_start = [](int n, int p, int r) {
+        auto owner_start = [](int n, int p, int r)
+        {
             const int q = n / p;
             const int rem = n % p;
-            if (r < rem) return r * (q + 1);
+            if (r < rem)
+                return r * (q + 1);
             return rem * (q + 1) + (r - rem) * q;
         };
 

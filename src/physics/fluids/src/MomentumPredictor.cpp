@@ -429,7 +429,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
                 }
             }
         }
-        
+
         const double dt_imp = theta * dt; // scale the implicit block to match AMk diagonal
 
         const int kmax = std::max(1, pred_imp_max_iters_);

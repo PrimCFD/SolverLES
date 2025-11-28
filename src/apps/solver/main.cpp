@@ -416,7 +416,8 @@ int main(int argc, char** argv)
         MPI_Comm cart = MPI_COMM_NULL;
         MPI_Cart_create(world, 3, dims, periods, reorder, &cart);
 
-        if (cart == MPI_COMM_NULL) {
+        if (cart == MPI_COMM_NULL)
+        {
             LOGE("[fatal] MPI_Cart_create failed; communicator must be 3D Cartesian.\n");
             MPI_Abort(world, 1);
         }
