@@ -3,11 +3,11 @@ mesh:
   global: [256, 256, 1]        # thin slab in z
   ng: 2
   periodic: [false, false, true]   # periodic in z ⇒ spanwise-invariant “2-D”
-  proc_grid: [0, 0, 1]   # px, py, pz
+  proc_grid: [0, 0, 1]   # MPI cores decomposition by axis px, py, pz / 0 is automatically chosen
 
 time:
   dt: 5.0e-4
-  t_end: 1.0             # run to steady; increase if needed
+  t_end: 2.0             # run to steady
   write_every: { steps: 200 }
 
 io:
@@ -29,10 +29,9 @@ program:
     dz: "1.0"
 
     rho: "1"
-    # Pick Re by nu = 1/Re (with U0 = 1, L = 1). Example: Re=1000 → nu=0.001
-    nu: "0.001"             # <- change per target Re (e.g., 0.01 for Re=100, 0.0025 for Re=400)
+    # Pick Re by nu = 1/Re (with U0 = 1, L = 1)
 
-    Cs: "0.0"
+    Cs: "0.0" # No LES for benchmark
 
     scheme: "piso"
     num_corrections: "2"

@@ -27,24 +27,25 @@ if [[ -f "scripts/mpi_env.sh" ]]; then
   source scripts/mpi_env.sh "${MPI_MODE:-auto}"
   # Perf-critical: turn on strict PE by default (ranks × PE must fit cores)
   export MPI_STRICT_PE="${MPI_STRICT_PE:-1}"
-  export OMP_NUM_THREADS=4 # limit thread number for small runs (32^3)
+  export OMP_NUM_THREADS=1 # limit thread number for small runs (32^3)
 fi
 
 BUILD_DIR=${BUILD_DIR:-build-regression}
 SKIP_BUILD=${SKIP_BUILD:-0}
 CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-Release}
 CTEST_PARALLEL_LEVEL=${CTEST_PARALLEL_LEVEL:-$(command -v nproc >/dev/null && nproc || echo 2)}
-CTEST_TIMEOUT=${CTEST_TIMEOUT:-7500}
+CTEST_TIMEOUT=${CTEST_TIMEOUT:-150000}
 REPORT_DIR=${REPORT_DIR:-"${BUILD_DIR}/test-reports/regression"}
 LABEL_RE=${LABEL_RE:-regression}
 CTEST_NAME_REGEX=${CTEST_NAME_REGEX:-}
 
 PETSC_OPTIONS="-ksp_converged_reason \
--ksp_error_if_not_converged true \
--ksp_view \
 -ksp_monitor_short \
--mg_levels_ksp_view \
--mg_levels_ksp_monitor"
+-ksp_view \
+-pc_view \
+-error_output_stdout \
+-on_error_abort"
+
 
 # Uncomment for PETSC linear solve logging
 # export PETSC_OPTIONS

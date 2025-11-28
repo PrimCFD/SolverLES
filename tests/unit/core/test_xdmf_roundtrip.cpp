@@ -108,10 +108,10 @@ TEST_CASE("XDMF/HDF5 roundtrip: two scalar fields, 1 timestep", "[io][xdmf]")
     cfg.path = outdir.string();
 
     static cm::Mesh mesh{};
-    mesh.global    = {nx, ny, nz};
-    mesh.local     = {nx, ny, nz};
-    mesh.global_lo = {0,  0,  0 };
-    mesh.proc_grid = {1,  1,  1 };
+    mesh.global = {nx, ny, nz};
+    mesh.local = {nx, ny, nz};
+    mesh.global_lo = {0, 0, 0};
+    mesh.proc_grid = {1, 1, 1};
     mesh.ng = 0;
     cfg.mesh = &mesh;
     cfg.mpi_cart_comm = mpi_box(MPI_COMM_WORLD);

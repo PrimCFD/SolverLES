@@ -16,6 +16,7 @@
 #include "master/FieldCatalog.hpp"
 #include "master/RunContext.hpp"
 #include "master/Views.hpp"
+#include "mesh/Mesh.hpp"
 
 // Byte-stride helper
 static inline std::array<std::ptrdiff_t, 3> strides_bytes(int nx, int ny)
@@ -132,8 +133,19 @@ int main(int argc, char** argv)
     // Build MAC faces so (1/dt)div(u*) = div(∇p*) with β=1
     build_faces_from_pstar(pstar, u, v, w, nx, ny, nz, ng, dx, dy, dz, dt);
 
-    // One-tile view like the tests
+    // One-tile view
     core::master::MeshTileView tile{};
+
+    // Minimal mesh matching the global grid; used by PressurePoisson to build its DMDA
+    core::mesh::Mesh mesh{};
+    mesh.ng = ng;
+    mesh.global[0] = nx;
+    mesh.global[1] = ny;
+    mesh.global[2] = nz;
+    mesh.periodic[0] = false;
+    mesh.periodic[1] = false;
+    mesh.periodic[2] = false;
+    tile.mesh = &mesh;
 
     core::master::FieldCatalog fields;
     fields.register_scalar("p", p.data(), sizeof(double), {nxc_tot, nyc_tot, nzc_tot},
@@ -155,6 +167,11 @@ int main(int argc, char** argv)
                                 {"iters", "50"},
                                 {"div_tol", "1e-10"}};
 
+    // 3D Cartesian MPI topology used both by the runtime and the mesh decomposition
+    int dims[3] = {0, 0, 0};
+    int periods[3] = {0, 0, 0};
+    MPI_Comm cart_comm = MPI_COMM_NULL;
+
     // --- Build an MPI Cartesian communicator just like the app does ---
     core::master::RunContext rc{};
     {
@@ -163,11 +180,10 @@ int main(int argc, char** argv)
         MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
         // Heuristic: try to form a near-cube 3D grid of ranks
-        int dims[3] = {0, 0, 0};
         MPI_Dims_create(world_size, 3, dims); // fills dims in-place
-        int periods[3] = {0, 0, 0};           // non-periodic for this bench
+        periods[0] = periods[1] = periods[2] = 0; // non-periodic for this bench
 
-        MPI_Comm cart_comm = MPI_COMM_NULL;
+        // Create the Cartesian communicator into the *outer* cart_comm
         MPI_Cart_create(MPI_COMM_WORLD, 3, dims, periods, /*reorder*/ 1, &cart_comm);
         if (cart_comm == MPI_COMM_NULL)
             cart_comm = MPI_COMM_WORLD; // fallback
@@ -176,6 +192,55 @@ int main(int argc, char** argv)
         rc.mpi_comm = mpi_box(cart_comm);
         rc.world_size = world_size;
         rc.world_rank = world_rank;
+    }
+
+    // Fill the mesh decomposition (proc_grid and this rank's global_lo) from the Cartesian grid
+    {
+        int coords[3] = {0, 0, 0};
+
+        if (cart_comm != MPI_COMM_NULL)
+        {
+            int topo = MPI_UNDEFINED;
+            MPI_Topo_test(cart_comm, &topo);
+            if (topo == MPI_CART)
+            {
+                MPI_Cart_get(cart_comm, 3, dims, periods, coords);
+            }
+            else
+            {
+                // Fallback: treat the world as a 1D grid in x if no Cartesian topology
+                dims[0] = rc.world_size;
+                dims[1] = 1;
+                dims[2] = 1;
+                coords[0] = rc.world_rank;
+                coords[1] = 0;
+                coords[2] = 0;
+            }
+        }
+        else
+        {
+            dims[0] = rc.world_size;
+            dims[1] = 1;
+            dims[2] = 1;
+            coords[0] = rc.world_rank;
+            coords[1] = 0;
+            coords[2] = 0;
+        }
+
+        mesh.proc_grid[0] = dims[0];
+        mesh.proc_grid[1] = dims[1];
+        mesh.proc_grid[2] = dims[2];
+
+        auto owner_start = [](int n, int p, int r) {
+            const int q = n / p;
+            const int rem = n % p;
+            if (r < rem) return r * (q + 1);
+            return rem * (q + 1) + (r - rem) * q;
+        };
+
+        mesh.global_lo[0] = owner_start(nx, mesh.proc_grid[0], coords[0]);
+        mesh.global_lo[1] = owner_start(ny, mesh.proc_grid[1], coords[1]);
+        mesh.global_lo[2] = owner_start(nz, mesh.proc_grid[2], coords[2]);
     }
 
     // Time a full action execute (this runs MG inside PressurePoisson)

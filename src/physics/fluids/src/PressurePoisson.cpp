@@ -197,7 +197,7 @@ static PetscErrorCode ShellMult(Mat A, Vec x, Vec y)
     const double TXc = ctx->beta_const * (ctx->dy * ctx->dz / ctx->dx);
     const double TYc = ctx->beta_const * (ctx->dx * ctx->dz / ctx->dy);
     const double TZc = ctx->beta_const * (ctx->dx * ctx->dy / ctx->dz);
-    const bool constBeta = ctx->use_const_beta;
+    const bool constBeta = ctx->use_const_beta || (ctx->beta == nullptr);
 
     PetscInt xs, ys, zs, xm, ym, zm;
     PetscCall(DMDAGetCorners(ctx->da, &xs, &ys, &zs, &xm, &ym, &zm));
@@ -219,7 +219,8 @@ static PetscErrorCode ShellMult(Mat A, Vec x, Vec y)
             {
                 const double xc = xarr[k][j][i];
 
-                // neighbor presence (periodic-aware)
+                // Decide neighbors against *global* domain edges.
+                // DMDA ghosts provide inter-rank neighbors automatically.
                 const bool hasW = (i > 0) || ctx->perX;
                 const bool hasE = (i < ctx->nxi - 1) || ctx->perX;
                 const bool hasS = (j > 0) || ctx->perY;
@@ -447,7 +448,7 @@ static PetscErrorCode ShellBuildDiagonal(ShellCtx* ctx)
     const double TXc = ctx->beta_const * (ctx->dy * ctx->dz / ctx->dx);
     const double TYc = ctx->beta_const * (ctx->dx * ctx->dz / ctx->dy);
     const double TZc = ctx->beta_const * (ctx->dx * ctx->dy / ctx->dz);
-    const bool constBeta = ctx->use_const_beta;
+    const bool constBeta = ctx->use_const_beta || (ctx->beta == nullptr);
 
     if (!ctx->diag)
     {
@@ -466,6 +467,7 @@ static PetscErrorCode ShellBuildDiagonal(ShellCtx* ctx)
         for (PetscInt j = ys; j < ys + ym; ++j)
             for (PetscInt i = xs; i < xs + xm; ++i)
             {
+                // Use *global* tests; inter-rank neighbors arrive via DMDA ghosts.
                 const bool hasW = (i > 0) || ctx->perX;
                 const bool hasE = (i < ctx->nxi - 1) || ctx->perX;
                 const bool hasS = (j > 0) || ctx->perY;
@@ -476,7 +478,10 @@ static PetscErrorCode ShellBuildDiagonal(ShellCtx* ctx)
                 double Tw, Te, Ts, Tn, Tb, Tt;
                 // X faces (match ShellMult logic)
                 if (i > 0)
-                    Tw = useTx ? ctx->trans->TX(i - 1, j, k) : TXc;
+                    Tw = useTx ? ctx->trans->TX(i - 1, j, k)
+                               : (constBeta ? TXc
+                                            : (hmean(ctx->beta->B(i - 1, j, k), bC) *
+                                               (ctx->dy * ctx->dz / ctx->dx)));
                 else if (ctx->perX)
                     Tw = constBeta ? TXc
                                    : (hmean(ctx->beta->B(ctx->nxi - 1, j, k), bC) *
@@ -484,7 +489,10 @@ static PetscErrorCode ShellBuildDiagonal(ShellCtx* ctx)
                 else
                     Tw = useTx ? ctx->trans->TWb(j, k) : (bC * (ctx->dy * ctx->dz / ctx->dx));
                 if (i < ctx->nxi - 1)
-                    Te = useTx ? ctx->trans->TX(i, j, k) : TXc;
+                    Te = useTx ? ctx->trans->TX(i, j, k)
+                               : (constBeta ? TXc
+                                            : (hmean(ctx->beta->B(i + 1, j, k), bC) *
+                                               (ctx->dy * ctx->dz / ctx->dx)));
                 else if (ctx->perX)
                     Te = constBeta
                              ? TXc
@@ -493,7 +501,10 @@ static PetscErrorCode ShellBuildDiagonal(ShellCtx* ctx)
                     Te = useTx ? ctx->trans->TEb(j, k) : (bC * (ctx->dy * ctx->dz / ctx->dx));
                 // Y faces
                 if (j > 0)
-                    Ts = useTy ? ctx->trans->TY(i, j - 1, k) : TYc;
+                    Ts = useTy ? ctx->trans->TY(i, j - 1, k)
+                               : (constBeta ? TYc
+                                            : (hmean(ctx->beta->B(i, j - 1, k), bC) *
+                                               (ctx->dx * ctx->dz / ctx->dy)));
                 else if (ctx->perY)
                     Ts = constBeta ? TYc
                                    : (hmean(ctx->beta->B(i, ctx->nyi - 1, k), bC) *
@@ -501,7 +512,10 @@ static PetscErrorCode ShellBuildDiagonal(ShellCtx* ctx)
                 else
                     Ts = useTy ? ctx->trans->TSb(i, k) : (bC * (ctx->dx * ctx->dz / ctx->dy));
                 if (j < ctx->nyi - 1)
-                    Tn = useTy ? ctx->trans->TY(i, j, k) : TYc;
+                    Tn = useTy ? ctx->trans->TY(i, j, k)
+                               : (constBeta ? TYc
+                                            : (hmean(ctx->beta->B(i, j + 1, k), bC) *
+                                               (ctx->dx * ctx->dz / ctx->dy)));
                 else if (ctx->perY)
                     Tn = constBeta
                              ? TYc
@@ -510,7 +524,10 @@ static PetscErrorCode ShellBuildDiagonal(ShellCtx* ctx)
                     Tn = useTy ? ctx->trans->TNb(i, k) : (bC * (ctx->dx * ctx->dz / ctx->dy));
                 // Z faces
                 if (k > 0)
-                    Tb = useTz ? ctx->trans->TZ(i, j, k - 1) : TZc;
+                    Tb = useTz ? ctx->trans->TZ(i, j, k - 1)
+                               : (constBeta ? TZc
+                                            : (hmean(ctx->beta->B(i, j, k - 1), bC) *
+                                               (ctx->dx * ctx->dy / ctx->dz)));
                 else if (ctx->perZ)
                     Tb = constBeta ? TZc
                                    : (hmean(ctx->beta->B(i, j, ctx->nzi - 1), bC) *
@@ -518,7 +535,10 @@ static PetscErrorCode ShellBuildDiagonal(ShellCtx* ctx)
                 else
                     Tb = useTz ? ctx->trans->TBb(i, j) : (bC * (ctx->dx * ctx->dy / ctx->dz));
                 if (k < ctx->nzi - 1)
-                    Tt = useTz ? ctx->trans->TZ(i, j, k) : TZc;
+                    Tt = useTz ? ctx->trans->TZ(i, j, k)
+                               : (constBeta ? TZc
+                                            : (hmean(ctx->beta->B(i, j, k + 1), bC) *
+                                               (ctx->dx * ctx->dy / ctx->dz)));
                 else if (ctx->perZ)
                     Tt = constBeta
                              ? TZc
@@ -579,7 +599,35 @@ static PetscErrorCode ShellGetDiagonal(Mat A, Vec d)
     PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aout)
+// Ensure Chebyshev smoothers are (re)tuned after operator/PMAT updates.
+// This re-runs PETSc's eigenvalue estimator so the Chebyshev bounds track
+// changes in the preconditioned operator (crucial when coefficients/RHS vary).
+static void retune_chebyshev_on_levels(KSP outerKSP)
+{
+    MPI_Comm comm = PETSC_COMM_SELF;
+    if (outerKSP) PetscObjectGetComm((PetscObject) outerKSP, &comm);
+    PC pc = NULL;
+    PetscCallAbort(comm, KSPGetPC(outerKSP, &pc));
+    PetscInt nlev = 0;
+    PetscCallAbort(comm, PCMGGetLevels(pc, &nlev));
+    for (PetscInt l = 1; l < nlev; ++l) {
+        KSP kspl = NULL;
+        PetscCallAbort(comm, PCMGGetSmoother(pc, l, &kspl));
+        if (!kspl) continue;
+        // Keep Jacobi PC as set elsewhere; just (re)enable Chebyshev + auto eig est.
+        PetscCallAbort(comm, KSPSetType(kspl, KSPCHEBYSHEV));
+        PetscCallAbort(comm, KSPChebyshevEstEigSet(kspl,
+                                                   PETSC_DEFAULT, PETSC_DEFAULT,
+                                                   PETSC_DEFAULT, PETSC_DEFAULT));
+        PetscCallAbort(comm, KSPSetTolerances(kspl, PETSC_DEFAULT, PETSC_DEFAULT,
+                                              PETSC_DEFAULT, 2));
+        PetscCallAbort(comm, KSPSetConvergenceTest(kspl, KSPConvergedSkip, NULL, NULL));
+        PetscCallAbort(comm, KSPSetNormType(kspl, KSP_NORM_NONE));
+    }
+}
+
+// If *Aio is nullptr, create & preallocate. Otherwise, reuse the existing pattern and just overwrite values.
+static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aio)
 {
     const bool useTx = (ctx.trans && !ctx.trans->Tx.empty());
     const bool useTy = (ctx.trans && !ctx.trans->Ty.empty());
@@ -587,122 +635,147 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aout)
     PetscFunctionBegin;
     DM da = ctx.da;
 
-    AO ao = NULL;
-    PetscCall(DMDAGetAO(da, &ao));
     const PetscInt nxi = ctx.nxi, nyi = ctx.nyi, nzi = ctx.nzi;
 
-    // map (i,j,k) -> global row/col using AO
-    auto gid = [&](PetscInt i, PetscInt j, PetscInt k) -> PetscInt
-    {
-        PetscInt app = i + nxi * (j + nyi * k); // application/global logical index
-        AOApplicationToPetsc(ao, 1, &app);      // map to PETSc global id for this DMDA layout
-        return app;
-    };
-
-    // Create a properly preallocated AIJ using the DMDA stencil (STAR, width=1)
-    PetscCall(DMSetMatType(da, MATAIJ));
-    PetscCall(DMCreateMatrix(da, Aout)); // Aout gets AIJ with 7-pt prealloc
-    PetscCall(MatSetOption(*Aout, MAT_IGNORE_ZERO_ENTRIES, PETSC_TRUE));
+    // Create on first use; otherwise reuse the existing sparsity pattern
+    if (!*Aio) {
+        // Create a properly preallocated AIJ using the DMDA stencil (STAR, width=1)
+        PetscCall(DMSetMatType(da, MATAIJ));
+        PetscCall(DMCreateMatrix(da, Aio)); // *Aio gets AIJ with 7-pt prealloc
+        PetscCall(MatSetOption(*Aio, MAT_IGNORE_ZERO_ENTRIES, PETSC_TRUE));
+    } else {
+        // Zero existing entries; keep structure
+        PetscCall(MatZeroEntries(*Aio));
+    }
+ 
+    // From this point on, always insert into *Aio (created or reused)
+    Mat Afill = *Aio;
 
     const double invV = 1.0 / (ctx.dx * ctx.dy * ctx.dz);
 
+    // Work with both owned corners and ghosted corners so we can insert using *local* stencil
+    // (avoids ISLocalToGlobalMappingApply() overflow on periodic wraps).
     PetscInt xs, ys, zs, xm, ym, zm;
     PetscCall(DMDAGetCorners(da, &xs, &ys, &zs, &xm, &ym, &zm));
+    PetscInt gxs, gys, gzs, gxm, gym, gzm;
+    PetscCall(DMDAGetGhostCorners(da, &gxs, &gys, &gzs, &gxm, &gym, &gzm));
 
+    // Accept subset/off-proc inserts and allow non-prealloc'd slots (safe with DMDA pattern).
+    PetscCall(MatSetOption(Afill, MAT_SUBSET_OFF_PROC_ENTRIES, PETSC_TRUE));
+    PetscCall(MatSetOption(Afill, MAT_NEW_NONZERO_LOCATION_ERR, PETSC_FALSE));
+    const bool constBeta = ctx.use_const_beta || (ctx.beta == nullptr);
     auto Tw = [&](int i, int j, int k)
     {
         if (i > 0)
-            return useTx ? ctx.trans->TX(i - 1, j, k) : ctx.beta_const * (ctx.dy * ctx.dz / ctx.dx);
+            return useTx ? ctx.trans->TX(i - 1, j, k)
+                         : (constBeta ? ctx.beta_const * (ctx.dy * ctx.dz / ctx.dx)
+                                      : (hmean(ctx.beta->B(i - 1, j, k), ctx.beta->B(i, j, k)) *
+                                         (ctx.dy * ctx.dz / ctx.dx)));
         if (ctx.perX)
         {
-            if (ctx.use_const_beta)
+            if (constBeta)
                 return ctx.beta_const * (ctx.dy * ctx.dz / ctx.dx);
             const double bC = ctx.beta->B(i, j, k);
             const double bw = ctx.beta->B(ctx.nxi - 1, j, k);
             return hmean(bw, bC) * (ctx.dy * ctx.dz / ctx.dx);
         }
         return useTx ? ctx.trans->TWb(j, k)
-                     : ((ctx.use_const_beta ? ctx.beta_const : ctx.beta->B(i, j, k)) *
+                     : ((constBeta ? ctx.beta_const : ctx.beta->B(i, j, k)) *
                         (ctx.dy * ctx.dz / ctx.dx));
     };
     auto Te = [&](int i, int j, int k)
     {
         if (i < ctx.nxi - 1)
-            return useTx ? ctx.trans->TX(i, j, k) : ctx.beta_const * (ctx.dy * ctx.dz / ctx.dx);
+            return useTx ? ctx.trans->TX(i, j, k)
+                         : (constBeta ? ctx.beta_const * (ctx.dy * ctx.dz / ctx.dx)
+                                      : (hmean(ctx.beta->B(i + 1, j, k), ctx.beta->B(i, j, k)) *
+                                         (ctx.dy * ctx.dz / ctx.dx)));
         if (ctx.perX)
         {
-            if (ctx.use_const_beta)
+            if (constBeta)
                 return ctx.beta_const * (ctx.dy * ctx.dz / ctx.dx);
             const double bC = ctx.beta->B(i, j, k);
             const double be = ctx.beta->B(0, j, k);
             return hmean(be, bC) * (ctx.dy * ctx.dz / ctx.dx);
         }
         return useTx ? ctx.trans->TEb(j, k)
-                     : ((ctx.use_const_beta ? ctx.beta_const : ctx.beta->B(i, j, k)) *
+                     : ((constBeta ? ctx.beta_const : ctx.beta->B(i, j, k)) *
                         (ctx.dy * ctx.dz / ctx.dx));
     };
     auto Ts = [&](int i, int j, int k)
     {
         if (j > 0)
-            return useTy ? ctx.trans->TY(i, j - 1, k) : ctx.beta_const * (ctx.dx * ctx.dz / ctx.dy);
+            return useTy ? ctx.trans->TY(i, j - 1, k)
+                         : (constBeta ? ctx.beta_const * (ctx.dx * ctx.dz / ctx.dy)
+                                      : (hmean(ctx.beta->B(i, j - 1, k), ctx.beta->B(i, j, k)) *
+                                         (ctx.dx * ctx.dz / ctx.dy)));
         if (ctx.perY)
         {
-            if (ctx.use_const_beta)
+            if (constBeta)
                 return ctx.beta_const * (ctx.dx * ctx.dz / ctx.dy);
             const double bC = ctx.beta->B(i, j, k);
             const double bs = ctx.beta->B(i, ctx.nyi - 1, k);
             return hmean(bs, bC) * (ctx.dx * ctx.dz / ctx.dy);
         }
         return useTy ? ctx.trans->TSb(i, k)
-                     : ((ctx.use_const_beta ? ctx.beta_const : ctx.beta->B(i, j, k)) *
+                     : ((constBeta ? ctx.beta_const : ctx.beta->B(i, j, k)) *
                         (ctx.dx * ctx.dz / ctx.dy));
     };
     auto Tn = [&](int i, int j, int k)
     {
         if (j < ctx.nyi - 1)
-            return useTy ? ctx.trans->TY(i, j, k) : ctx.beta_const * (ctx.dx * ctx.dz / ctx.dy);
+            return useTy ? ctx.trans->TY(i, j, k)
+                         : (constBeta ? ctx.beta_const * (ctx.dx * ctx.dz / ctx.dy)
+                                      : (hmean(ctx.beta->B(i, j + 1, k), ctx.beta->B(i, j, k)) *
+                                         (ctx.dx * ctx.dz / ctx.dy)));
         if (ctx.perY)
         {
-            if (ctx.use_const_beta)
+            if (constBeta)
                 return ctx.beta_const * (ctx.dx * ctx.dz / ctx.dy);
             const double bC = ctx.beta->B(i, j, k);
             const double bn = ctx.beta->B(i, 0, k);
             return hmean(bn, bC) * (ctx.dx * ctx.dz / ctx.dy);
         }
         return useTy ? ctx.trans->TNb(i, k)
-                     : ((ctx.use_const_beta ? ctx.beta_const : ctx.beta->B(i, j, k)) *
+                     : ((constBeta ? ctx.beta_const : ctx.beta->B(i, j, k)) *
                         (ctx.dx * ctx.dz / ctx.dy));
     };
     auto Tb = [&](int i, int j, int k)
     {
         if (k > 0)
-            return useTz ? ctx.trans->TZ(i, j, k - 1) : ctx.beta_const * (ctx.dx * ctx.dy / ctx.dz);
+            return useTz ? ctx.trans->TZ(i, j, k - 1)
+                         : (constBeta ? ctx.beta_const * (ctx.dx * ctx.dy / ctx.dz)
+                                      : (hmean(ctx.beta->B(i, j, k - 1), ctx.beta->B(i, j, k)) *
+                                         (ctx.dx * ctx.dy / ctx.dz)));
         if (ctx.perZ)
         {
-            if (ctx.use_const_beta)
+            if (constBeta)
                 return ctx.beta_const * (ctx.dx * ctx.dy / ctx.dz);
             const double bC = ctx.beta->B(i, j, k);
             const double bb = ctx.beta->B(i, j, ctx.nzi - 1);
             return hmean(bb, bC) * (ctx.dx * ctx.dy / ctx.dz);
         }
         return useTz ? ctx.trans->TBb(i, j)
-                     : ((ctx.use_const_beta ? ctx.beta_const : ctx.beta->B(i, j, k)) *
+                     : ((constBeta ? ctx.beta_const : ctx.beta->B(i, j, k)) *
                         (ctx.dx * ctx.dy / ctx.dz));
     };
     auto Tt = [&](int i, int j, int k)
     {
         if (k < ctx.nzi - 1)
-            return useTz ? ctx.trans->TZ(i, j, k) : ctx.beta_const * (ctx.dx * ctx.dy / ctx.dz);
+            return useTz ? ctx.trans->TZ(i, j, k)
+                         : (constBeta ? ctx.beta_const * (ctx.dx * ctx.dy / ctx.dz)
+                                      : (hmean(ctx.beta->B(i, j, k + 1), ctx.beta->B(i, j, k)) *
+                                         (ctx.dx * ctx.dy / ctx.dz)));
         if (ctx.perZ)
         {
-            if (ctx.use_const_beta)
+            if (constBeta)
                 return ctx.beta_const * (ctx.dx * ctx.dy / ctx.dz);
             const double bC = ctx.beta->B(i, j, k);
             const double bt = ctx.beta->B(i, j, 0);
             return hmean(bt, bC) * (ctx.dx * ctx.dy / ctx.dz);
         }
         return useTz ? ctx.trans->TTb(i, j)
-                     : ((ctx.use_const_beta ? ctx.beta_const : ctx.beta->B(i, j, k)) *
+                     : ((constBeta ? ctx.beta_const : ctx.beta->B(i, j, k)) *
                         (ctx.dx * ctx.dy / ctx.dz));
     };
 
@@ -718,12 +791,13 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aout)
                 const bool hasB = (k > 0) || ctx.perZ;
                 const bool hasT = (k < ctx.nzi - 1) || ctx.perZ;
 
-                const PetscInt iw = (i > 0) ? (i - 1) : (ctx.nxi - 1);
-                const PetscInt ie = (i < ctx.nxi - 1) ? (i + 1) : 0;
-                const PetscInt js = (j > 0) ? (j - 1) : (ctx.nyi - 1);
-                const PetscInt jn = (j < ctx.nyi - 1) ? (j + 1) : 0;
-                const PetscInt kb = (k > 0) ? (k - 1) : (ctx.nzi - 1);
-                const PetscInt kt = (k < ctx.nzi - 1) ? (k + 1) : 0;
+                // local neighbor indices (ghosts hold periodic wraps)
+                const PetscInt iw = i - 1;
+                const PetscInt ie = i + 1;
+                const PetscInt js = j - 1;
+                const PetscInt jn = j + 1;
+                const PetscInt kb = k - 1;
+                const PetscInt kt = k + 1;
 
                 const double te = hasE ? Te(i, j, k) : 0.0;
                 const double tw = hasW ? Tw(i, j, k) : 0.0;
@@ -736,65 +810,82 @@ static PetscErrorCode AssembleAIJFromShell(const ShellCtx& ctx, Mat* Aout)
                 // Neumann faces affect only RHS -> not part of the matrix)
                 double diag = 0.0;
 
-                PetscInt row = gid(i, j, k);
-                PetscInt cols[7];
+                MatStencil row, cols[7];
                 PetscScalar vals[7];
-                int nz = 0;
-
-                auto add_off = [&](int ii, int jj, int kk, double coef)
-                {
-                    cols[nz] = gid(ii, jj, kk);
-                    vals[nz] = -invV * coef;
-                    nz++;
-                    diag += coef;
-                };
+                PetscInt nset = 0;
+                // Use global logical stencil indices (DMDA handles periodic wraps).
+                row.k = k; row.j = j; row.i = i; row.c = 0;
 
                 if (hasW)
-                    add_off(iw, j, k, tw);
+                {
+                    cols[nset] = MatStencil{ .k = k, .j = j, .i = iw, .c = 0 };
+                    vals[nset] = -invV * tw;
+                    diag += tw; ++nset;
+                }
                 else if (!ctx.perX && ctx.pbc.W &&
                          norm_p_type(ctx.pbc.W->type) == BcSpec::Type::dirichlet)
                     diag += Tw(i, j, k);
 
                 if (hasE)
-                    add_off(ie, j, k, te);
+                {
+                    cols[nset] = MatStencil{ .k = k, .j = j, .i = ie, .c = 0 };
+                    vals[nset] = -invV * te;
+                    diag += te; ++nset;
+                }
                 else if (!ctx.perX && ctx.pbc.E &&
                          norm_p_type(ctx.pbc.E->type) == BcSpec::Type::dirichlet)
                     diag += Te(i, j, k);
 
                 if (hasS)
-                    add_off(i, js, k, ts);
+                {
+                    cols[nset] = MatStencil{ .k = k, .j = js, .i = i, .c = 0 };
+                    vals[nset] = -invV * ts;
+                    diag += ts; ++nset;
+                }
                 else if (!ctx.perY && ctx.pbc.S &&
                          norm_p_type(ctx.pbc.S->type) == BcSpec::Type::dirichlet)
                     diag += Ts(i, j, k);
 
                 if (hasN)
-                    add_off(i, jn, k, tn);
+                {
+                    cols[nset] = MatStencil{ .k = k, .j = jn, .i = i, .c = 0 };
+                    vals[nset] = -invV * tn;
+                    diag += tn; ++nset;
+                }
                 else if (!ctx.perY && ctx.pbc.N &&
                          norm_p_type(ctx.pbc.N->type) == BcSpec::Type::dirichlet)
                     diag += Tn(i, j, k);
 
                 if (hasB)
-                    add_off(i, j, kb, tb);
+                {
+                    cols[nset] = MatStencil{ .k = kb, .j = j, .i = i, .c = 0 };
+                    vals[nset] = -invV * tb;
+                    diag += tb; ++nset;
+                }
                 else if (!ctx.perZ && ctx.pbc.B &&
                          norm_p_type(ctx.pbc.B->type) == BcSpec::Type::dirichlet)
                     diag += Tb(i, j, k);
 
                 if (hasT)
-                    add_off(i, j, kt, tt);
+                {
+                    cols[nset] = MatStencil{ .k = kt, .j = j, .i = i, .c = 0 };
+                    vals[nset] = -invV * tt;
+                    diag += tt; ++nset;
+                }
                 else if (!ctx.perZ && ctx.pbc.T &&
                          norm_p_type(ctx.pbc.T->type) == BcSpec::Type::dirichlet)
                     diag += Tt(i, j, k);
 
                 // center
-                cols[nz] = row;
-                vals[nz] = invV * diag;
-                nz++;
+                cols[nset] = row;
+                vals[nset] = invV * diag;
+                ++nset;
 
-                PetscCall(MatSetValues(*Aout, 1, &row, nz, cols, vals, INSERT_VALUES));
+                PetscCall(MatSetValuesStencil(Afill, 1, &row, nset, cols, vals, INSERT_VALUES));
             }
 
-    PetscCall(MatAssemblyBegin(*Aout, MAT_FINAL_ASSEMBLY));
-    PetscCall(MatAssemblyEnd(*Aout, MAT_FINAL_ASSEMBLY));
+    PetscCall(MatAssemblyBegin(Afill, MAT_FINAL_ASSEMBLY));
+    PetscCall(MatAssemblyEnd(Afill, MAT_FINAL_ASSEMBLY));
     PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -808,10 +899,12 @@ struct PPImpl
     bool varrho{};
     double rho_const{};
     bool all_neumann{};
+    int nxi_glob{}, nyi_glob{}, nzi_glob{};
 
     // Borrowed communicator owned by the main application.
     // Lifetime is managed externally; we must not duplicate or free it.
     MPI_Comm comm{MPI_COMM_NULL};
+    bool comm_owned{false}; // true only if we create a child/reordered communicator
 
     // PETSc objects
     DM da_fine{};           // finest DM (interior)
@@ -891,7 +984,11 @@ struct PPImpl
             MatNullSpaceDestroy(&ns_const);
             ns_const = nullptr;
         }
-        // Borrowed communicator: do NOT free; just clear the handle.
+        // Only free if we created a child communicator; never free the caller's.
+        if (comm_owned && comm != MPI_COMM_NULL) {
+            MPI_Comm_free(&comm);
+        }
+        comm_owned = false;
         comm = MPI_COMM_NULL;
     }
 };
@@ -1148,29 +1245,52 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
                             bool meshPerY, bool meshPerZ, std::array<int, 3> proc_grid)
 {
 
-    // Use the application's communicator as-is (borrowed; not owned here).
-    if (impl.comm == MPI_COMM_NULL)
-        impl.comm = user_comm_in;
+    // Start from the application's communicator (borrowed).
+    if (impl.comm == MPI_COMM_NULL) impl.comm = user_comm_in;
     MPI_Comm comm = impl.comm;
 
     {
         int sz = -1, rk = -1;
-        if (MPI_Comm_size(comm, &sz) != MPI_SUCCESS || sz < 1)
-        {
-            LOGE(
-                    "[poisson] FATAL: invalid MPI_Comm passed into PressurePoisson (size=%d). "
-                    "Falling back to PETSC_COMM_WORLD.\n",
-                    sz);
-            comm = PETSC_COMM_WORLD;
-            impl.comm = comm;
+        if (MPI_Comm_size(comm, &sz) != MPI_SUCCESS || sz < 1) {
+            SETERRABORT(comm, PETSC_ERR_ARG_INCOMP,
+                        "invalid MPI_Comm passed into PressurePoisson (size=%d) — must be a live communicator", sz);
         }
-        MPI_Comm_rank(comm, &rk); // also warms up the comm; ignore return for brevity
+        MPI_Comm_rank(comm, &rk); // warm up the comm
+    }
+
+    // --- If the app's communicator is Cartesian, derive a *reordered child communicator*
+    //     whose rank order is lexicographic in (x,y,z). This matches DMDA's process order.
+    //     We keep the same process set (color=0), only the ordering (key) changes.
+    {
+        int topo_type = MPI_UNDEFINED;
+        MPI_Topo_test(comm, &topo_type);
+        if (topo_type == MPI_CART) {
+            int ndims = 0; MPI_Cartdim_get(comm, &ndims);
+            if (ndims == 3) {
+                int dims[3]={0,0,0}, periods[3]={0,0,0}, coords[3]={0,0,0};
+                MPI_Cart_get(comm, 3, dims, periods, coords);
+                // Lexicographic key: z-major over (x,y,z) -> (k * Ny * Nx) + j * Nx + i
+                const int key = coords[2] * (dims[0]*dims[1]) + coords[1] * dims[0] + coords[0];
+                MPI_Comm child = MPI_COMM_NULL;
+                // color=0 keeps the same group; key sets rank order inside it.
+                MPI_Comm_split(comm, /*color*/0, /*key*/key, &child);
+                if (child != MPI_COMM_NULL) {
+                    // If we previously owned a child, free it before replacing.
+                    if (impl.comm_owned && impl.comm != MPI_COMM_NULL && impl.comm != user_comm_in) {
+                        MPI_Comm_free(&impl.comm);
+                    }
+                    impl.comm = child;
+                    impl.comm_owned = true;
+                    comm = impl.comm;
+                }
+            }
+        }
     }
 
     // ----- finest DMDA over interior cells -----
-    const PetscInt nxi = impl.nxc_tot - 2 * impl.ng;
-    const PetscInt nyi = impl.nyc_tot - 2 * impl.ng;
-    const PetscInt nzi = impl.nzc_tot - 2 * impl.ng;
+    const PetscInt nxi = impl.nxi_glob;  // use mesh global interior sizes
+    const PetscInt nyi = impl.nyi_glob;
+    const PetscInt nzi = impl.nzi_glob;
 
     // Periodicity from BCs OR mesh flags (mesh flags take precedence)
     auto is_periodic = [](const BcSpec* s) { return s && s->type == BcSpec::Type::periodic; };
@@ -1181,72 +1301,85 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     DMBoundaryType by = perY ? DM_BOUNDARY_PERIODIC : DM_BOUNDARY_NONE;
     DMBoundaryType bz = perZ ? DM_BOUNDARY_PERIODIC : DM_BOUNDARY_NONE;
 
-    // ---------------- Processor grid (balanced & safe by default) ----------------
-    // Prefer a 3D factorization that (1) multiplies to the MPI size and (2) fits within
-    // the global cell counts of the finest level. If the dims from MPI_Dims_create
-    // do not fit, fall back to a 1D stripe along the largest axis that *does* fit.
-    int size_world = 1;
-    MPI_Comm_size(comm, &size_world);
-
-    // Start with user hint if provided, otherwise 0s so MPI_Dims_create can fill them.
+    // ---------------- Processor grid ----------------
+    // If the communicator is (still) Cartesian, read its dims; otherwise fall back
+    // to MPI_Dims_create using the mesh hint. With the child comm (if created),
+    // the rank order now matches DMDA's lexicographic assumptions.
     int dims3[3] = {proc_grid[0], proc_grid[1], proc_grid[2]};
-    // Any non-zero entries are kept; zeros are chosen so the product equals size_world.
-    MPI_Dims_create(size_world, 3, dims3);
-    auto fits_finest = [&](int px, int py, int pz) -> bool
     {
-        return (px <= (int) nxi) && (py <= (int) nyi) && (pz <= (int) nzi) &&
-               (px > 0 && py > 0 && pz > 0) && (px * py * pz == size_world);
-    };
-    bool ok3d = fits_finest(dims3[0], dims3[1], dims3[2]);
-
-    if (!ok3d)
-    {
-        // Fall back: 1D stripe along the largest dimension that can hold all ranks.
-        struct Axis
-        {
-            int len;
-            int id;
-        };
-        Axis axes[3] = {{(int) nxi, 0}, {(int) nyi, 1}, {(int) nzi, 2}};
-        std::sort(std::begin(axes), std::end(axes),
-                  [](const Axis& a, const Axis& b) { return a.len > b.len; });
-        bool placed = false;
-        for (auto ax : axes)
-        {
-            if (ax.len >= size_world)
-            {
-                dims3[0] = dims3[1] = dims3[2] = 1;
-                dims3[ax.id] = size_world;
-                placed = true;
-                break;
+        int topo_type = MPI_UNDEFINED;
+        MPI_Topo_test(comm, &topo_type);
+        if (topo_type == MPI_CART) {
+            int cdims[3] = {0,0,0};
+            int cper[3] = {0,0,0};
+            int coords_dummy[3] = {0,0,0};
+            int ndims = 0;
+            MPI_Cartdim_get(comm, &ndims);
+            if (ndims == 3) {
+                MPI_Cart_get(comm, 3, cdims, cper, coords_dummy);
+                // Keep (x,y,z) order consistent with MPI_Cart dims and PETSc DMDA:
+                dims3[0] = cdims[0];  // x
+                dims3[1] = cdims[1];  // y
+                dims3[2] = cdims[2];  // z
             }
-        }
-        if (!placed)
-        {
-            // 2D fallback: split across the two largest axes via MPI_Dims_create(ndims=2)
-            int dims2[2] = {0, 0};
-            MPI_Dims_create(size_world, 2, dims2);
-
-            // Map dims2 onto the two largest axes; smallest axis stays 1.
-            dims3[0] = dims3[1] = dims3[2] = 1;
-            dims3[axes[0].id] = dims2[0];
-            dims3[axes[1].id] = dims2[1];
-            // As a last sanity, if still not fitting (extremely unlikely on typical grids),
-            // clamp down to 1D on the single largest axis.
-            if (!fits_finest(dims3[0], dims3[1], dims3[2]))
-            {
-                dims3[0] = dims3[1] = dims3[2] = 1;
-                dims3[axes[0].id] = size_world;
+        } else {
+            int size_world = 1; MPI_Comm_size(comm, &size_world);
+            bool user_fixed = (dims3[0] > 0 && dims3[1] > 0 && dims3[2] > 0);
+            if (user_fixed) {
+                const long long prod = 1LL * dims3[0] * dims3[1] * dims3[2];
+                if (prod != size_world) {
+                    SETERRABORT(comm, PETSC_ERR_ARG_INCOMP,
+                                "mesh.proc_grid=%dx%dx%d must multiply to communicator size %d",
+                                dims3[0], dims3[1], dims3[2], size_world);
+                }
+            } else {
+                int tmp[3] = {dims3[0], dims3[1], dims3[2]};
+                int sz; MPI_Comm_size(comm, &sz);
+                int prod = 1;
+                for (int a=0;a<3;++a) if (tmp[a]>0) prod *= tmp[a];
+                if (sz % prod != 0) {
+                    SETERRABORT(comm, PETSC_ERR_ARG_INCOMP,
+                                "mesh.proc_grid contains fixed axes that do not divide MPI size");
+                }
+                int need = sz / prod;
+                int fill[3] = {0,0,0};
+                MPI_Dims_create(need, 3, fill);
+                for (int a=0, t=0; a<3; ++a) if (tmp[a]==0) tmp[a] = (fill[t++] ? fill[t-1] : 1);
+                dims3[0]=tmp[0]; dims3[1]=tmp[1]; dims3[2]=tmp[2];
             }
         }
     }
 
+    // Compute explicit ownership ranges so DMDA matches our mesh partition exactly.
+    auto make_ownership = [](PetscInt n, int p) {
+        std::vector<PetscInt> l(std::max(1,p),0);
+        PetscInt q = n / p, r = n % p;
+        for (int i = 0; i < p; ++i) l[i] = q + (i < r ? 1 : 0);
+        return l;
+    };
+    const int px = dims3[0], py = dims3[1], pz = dims3[2];
+    std::vector<PetscInt> lx = make_ownership(nxi, px);
+    std::vector<PetscInt> ly = make_ownership(nyi, py);
+    std::vector<PetscInt> lz = make_ownership(nzi, pz);
+
     // Create the finest DMDA with an explicit (px,py,pz) that multiplies to size.
-    DMDACreate3d(comm, bx, by, bz, DMDA_STENCIL_STAR, nxi, nyi, nzi, dims3[0], dims3[1], dims3[2],
-                 /*dof*/ 1, /*stencil width*/ 1, nullptr, nullptr, nullptr, &impl.da_fine);
+    DMDACreate3d(comm, bx, by, bz, DMDA_STENCIL_STAR, nxi, nyi, nzi,
+                 px, py, pz,
+                 /*dof*/ 1, /*stencil width*/ 1,
+                 /*lx*/ lx.data(), /*ly*/ ly.data(), /*lz*/ lz.data(),
+                 &impl.da_fine);
     // Allow -da_* options at runtime for debugging/overrides
     DMSetFromOptions(impl.da_fine);
     DMSetUp(impl.da_fine);
+
+    // Sanity: the process grid must not exceed the per-axis cell counts.
+    // (Catches impossible user hints early and avoids hard-to-trace segfaults later.)
+    if (!(dims3[0] <= (int)nxi && dims3[1] <= (int)nyi && dims3[2] <= (int)nzi)) {
+        SETERRABORT(comm, PETSC_ERR_ARG_OUTOFRANGE,
+                "proc grid %dx%dx%d exceeds cell grid %dx%dx%d",
+                dims3[0], dims3[1], dims3[2], (int)nxi, (int)nyi, (int)nzi);
+    }
+
     DMDASetInterpolationType(impl.da_fine, DMDA_Q0);
 
     // --- Build hierarchy using PETSc's DMCoarsen, which naturally handles odd sizes. ---
@@ -1444,10 +1577,15 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
         impl.A_shell = A;
     }
 
-    // MG cycle config (multiplicative V-cycle, 4 pre/post by default)
-    PCMGSetType(pc, PC_MG_MULTIPLICATIVE);
-    PCMGSetCycleType(pc, PC_MG_CYCLE_V);
-    PCMGSetNumberSmooth(pc, 4);
+    // MG cycle config
+    // For all-Neumann (singular) prefer additive MG to keep the preconditioner benign/symmetric for MINRES;
+    // otherwise multiplicative V is fine.
+    if (impl.all_neumann) {
+        PCMGSetType(pc, PC_MG_ADDITIVE);
+    } else {
+        PCMGSetType(pc, PC_MG_MULTIPLICATIVE);
+    }
+    PCMGSetNumberSmooth(pc, 2);
 
     // connect fine DM to outer KSP (for viewers/options), but keep DM-owned by PCMG
     KSPSetDM(impl.ksp, impl.da_fine);
@@ -1467,36 +1605,37 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
             if (!kspl)
                 continue;
 
-            // Chebyshev + Jacobi (GET_DIAGONAL)
-            PetscCallAbort(comm, KSPSetType(kspl, KSPCHEBYSHEV));
-            PetscCallAbort(comm, KSPGetPC(kspl, &pcl));
-            PetscCallAbort(comm, PCSetType(pcl, PCJACOBI));
-            PCJacobiSetType(pcl, PC_JACOBI_DIAGONAL);
-            PetscCallAbort(comm, KSPChebyshevEstEigSet(kspl, PETSC_DEFAULT, PETSC_DEFAULT,
-                                                       PETSC_DEFAULT, PETSC_DEFAULT));
-            PetscCallAbort(comm, KSPSetConvergenceTest(kspl, KSPConvergedSkip, NULL, NULL));
-            PetscCallAbort(comm, KSPSetNormType(kspl, KSP_NORM_NONE));
-            PetscCallAbort(comm,
-                           KSPSetTolerances(kspl, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT, 3));
+        // Use Chebyshev + Jacobi smoothing on all levels.
+        PetscCallAbort(comm, KSPSetType(kspl, KSPCHEBYSHEV));
+        PetscCallAbort(comm, KSPGetPC(kspl, &pcl));
+        PetscCallAbort(comm, PCSetType(pcl, PCJACOBI));
+        PCJacobiSetType(pcl, PC_JACOBI_DIAGONAL);
+        // Auto-estimate spectral bounds (cheap power iterations), robust across levels.
+        PetscCallAbort(comm, KSPChebyshevEstEigSet(kspl,
+                                                   PETSC_DEFAULT, PETSC_DEFAULT,
+                                                   PETSC_DEFAULT, PETSC_DEFAULT));
+        PetscCallAbort(comm, KSPSetConvergenceTest(kspl, KSPConvergedSkip, NULL, NULL));
+        PetscCallAbort(comm, KSPSetNormType(kspl, KSP_NORM_NONE));
+        PetscCallAbort(comm, KSPSetTolerances(kspl, PETSC_DEFAULT, PETSC_DEFAULT,
+                                              PETSC_DEFAULT, 2));
         }
     }
 
-    // ---- Coarse level: force a direct solve by default (preonly + LU) ----
-    // This pins the L=0 KSP/PC to a direct factorization unless the user overrides
+    // ---- Coarse level ----
+    // SPD: preonly + Cholesky (fast).  Pure-Neumann (singular): preonly + SVD.
     {
         KSP kspc = NULL;
-        PC pcc = NULL;
-        // Get the PCMG-managed coarse solver (level 0)
+        PC  pcc  = NULL;
         PetscCallAbort(comm, PCMGGetCoarseSolve(pc, &kspc));
-        if (kspc)
-        {
-            // No iterations on coarse grid: just apply the preconditioner once
+        if (kspc) {
             PetscCallAbort(comm, KSPSetType(kspc, KSPPREONLY));
             PetscCallAbort(comm, KSPGetPC(kspc, &pcc));
-            // Prefer LU to work for both SPD and non-SPD coarse operators
-            PetscCallAbort(comm, PCSetType(pcc, PCLU));
-            if (!impl.all_neumann)
+            if (impl.all_neumann) {
+                // Robust for rank-deficient coarse operators
+                PetscCallAbort(comm, PCSetType(pcc, PCSVD));
+            } else {
                 PetscCallAbort(comm, PCSetType(pcc, PCCHOLESKY));
+            }
         }
     }
 
@@ -1507,11 +1646,9 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     // Assemble fine-level AIJ (PMAT) from the fine ShellCtx and wire operators:
     //  - Outer KSP: Amat = fine MatShell; Pmat = fine AIJ
     //  - PCMG: set only the finest level operators; Galerkin builds coarse PMATs
-    if (impl.Afine_aij)
-    {
-        MatDestroy(&impl.Afine_aij);
+    // Create on first build; later we will reuse the same matrix pattern.
+    if (!impl.Afine_aij)
         impl.Afine_aij = nullptr;
-    }
     PetscCallAbort(comm, AssembleAIJFromShell(*impl.ctx_lvl[L - 1], &impl.Afine_aij));
     MatSetOption(impl.Afine_aij, MAT_SYMMETRIC, PETSC_TRUE);
     if (!impl.all_neumann)
@@ -1526,6 +1663,8 @@ static void build_hierarchy(PPImpl& impl, MPI_Comm user_comm_in, const PBC& pbc,
     PC pc_for_ops = NULL;
     KSPGetPC(impl.ksp, &pc_for_ops);
     PCMGSetOperators(pc_for_ops, L - 1, impl.A_shell, impl.Afine_aij);
+
+    retune_chebyshev_on_levels(impl.ksp);
 
     // ---------- Proper nullspace propagation (pure Neumann) ----------
     if (impl.all_neumann)
@@ -1603,6 +1742,12 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
     (void) nx_interior; // suppress unused warnings in release
     assert(nx_interior >= 1 && "Mesh halo inconsistent with pressure extent totals");
 
+    // Translate DMDA global indices (xs,ys,zs) to this tile's local array offsets.
+    // These are the global starting cell-indices (center-based) for this tile.
+    const int i0 = (tile.mesh ? tile.mesh->global_lo[0] : 0);
+    const int j0 = (tile.mesh ? tile.mesh->global_lo[1] : 0);
+    const int k0 = (tile.mesh ? tile.mesh->global_lo[2] : 0);
+
     // Borrowed communicator: if null, fall back to self for single-rank use.
     // Robust unbox + validate. Prefer the app comm; fall back to PETSC_COMM_WORLD.
     MPI_Comm user_comm = PETSC_COMM_WORLD;
@@ -1612,10 +1757,6 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
         MPI_Comm cand = mpi_unbox(mpi_comm_);
         user_comm = valid_comm_or(cand, PETSC_COMM_WORLD);
     }
-    int sz = 1;
-    MPI_Comm_size(user_comm, &sz);
-    if (sz == 1)
-        user_comm = PETSC_COMM_SELF;
 
     // rebuild hierarchy if geometry changed
     if (!impl_ || impl_->nxc_tot != nxc_tot || impl_->nyc_tot != nyc_tot ||
@@ -1634,6 +1775,9 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
         impl_->dz = dz_;
         impl_->varrho = have_rho;
         impl_->rho_const = rho_;
+        impl_->nxi_glob = tile.mesh->global[0];
+        impl_->nyi_glob = tile.mesh->global[1];
+        impl_->nzi_glob = tile.mesh->global[2];
         impl_->p_host.assign(std::size_t(nxc_tot) * nyc_tot * nzc_tot, 0.0);
 
         auto find_bc = [&](const char* k) -> const BcSpec*
@@ -1671,13 +1815,33 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
         const bool meshPerZ = (tile.mesh && tile.mesh->periodic[2]);
 
         // Read desired process grid from the mesh (if provided), else auto-compute.
-        std::array<int, 3> proc_grid = {1, 1, 1};
+        std::array<int, 3> proc_grid = {0, 0, 0};
         if (tile.mesh)
             proc_grid = tile.mesh->proc_grid;
         build_hierarchy(*impl_, user_comm, pbc, meshPerX, meshPerY, meshPerZ, proc_grid);
     }
 
+    // Partition sanity check: with the reordered child communicator, the owned corners
+    // should now agree with the application's Cartesian decomposition.
+    {
+        PetscInt xs_chk=0, ys_chk=0, zs_chk=0, xm_chk=0, ym_chk=0, zm_chk=0;
+        DMDAGetCorners(impl_->da_fine, &xs_chk, &ys_chk, &zs_chk, &xm_chk, &ym_chk, &zm_chk);
+        const int i0_mesh = (tile.mesh ? tile.mesh->global_lo[0] : 0);
+        const int j0_mesh = (tile.mesh ? tile.mesh->global_lo[1] : 0);
+        const int k0_mesh = (tile.mesh ? tile.mesh->global_lo[2] : 0);
+        if (xs_chk != i0_mesh || ys_chk != j0_mesh || zs_chk != k0_mesh) {
+            SETERRABORT(impl_->comm, PETSC_ERR_PLIB,
+                "DMDA corner (%d,%d,%d) != mesh.global_lo (%d,%d,%d) after reordering — check proc_grid.",
+                (int)xs_chk,(int)ys_chk,(int)zs_chk, i0_mesh,j0_mesh,k0_mesh);
+        }
+    }
+
     // ---------------- RHS = - (1/dt) * div(u*) plus BC contributions ----------------
+
+    {
+        core::master::exchange_named_fields(fields, *tile.mesh, mpi_comm_, {"u","v","w"});
+    }
+
     std::vector<double> div(std::size_t(nxc_tot) * nyc_tot * nzc_tot, 0.0);
     divergence_mac_c(
         static_cast<const double*>(vu.host_ptr), static_cast<const double*>(vv.host_ptr),
@@ -1697,20 +1861,33 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
         impl_->beta_fine.nyi = (int) nyi_l;
         impl_->beta_fine.nzi = (int) nzi_l;
         impl_->beta_fine.data.assign(std::size_t(nxi_l) * nyi_l * nzi_l, 0.0);
-        for (int k = 0; k < impl_->beta_fine.nzi; ++k)
-            for (int j = 0; j < impl_->beta_fine.nyi; ++j)
-                for (int i = 0; i < impl_->beta_fine.nxi; ++i)
+        // Fill only this rank's owned DMDA box using global (xs,ys,zs), translating
+        // to the tile-local storage via (i - i0) etc.
+        PetscInt xs_b, ys_b, zs_b, xm_b, ym_b, zm_b;
+        DMDAGetCorners(impl_->da_lvl.back(), &xs_b, &ys_b, &zs_b, &xm_b, &ym_b, &zm_b);
+        for (int k = zs_b; k < zs_b + zm_b; ++k)
+            for (int j = ys_b; j < ys_b + ym_b; ++j)
+                for (int i = xs_b; i < xs_b + xm_b; ++i)
                 {
-                    const int ic = i + impl_->ng, jc = j + impl_->ng, kc = k + impl_->ng;
-                    const std::size_t c =
-                        std::size_t(ic) +
-                        std::size_t(nxc_tot) *
-                            (std::size_t(jc) + std::size_t(nyc_tot) * std::size_t(kc));
-                    impl_->beta_fine.data[std::size_t(i) +
-                                          std::size_t(impl_->beta_fine.nxi) *
-                                              (std::size_t(j) + std::size_t(impl_->beta_fine.nyi) *
-                                                                    std::size_t(k))] =
-                        1.0 / static_cast<const double*>(vrho.host_ptr)[c];
+                    const int ic = (i - i0) + impl_->ng;
+                    const int jc = (j - j0) + impl_->ng;
+                    const int kc = (k - k0) + impl_->ng;
+                    // Guard in case a rank owns a DM slab that this tile does not cover
+                    if (ic >= 0 && jc >= 0 && kc >= 0 &&
+                        ic < nxc_tot && jc < nyc_tot && kc < nzc_tot)
+                    {
+                        const std::size_t c =
+                            std::size_t(ic) +
+                            std::size_t(nxc_tot) *
+                                (std::size_t(jc) + std::size_t(nyc_tot) * std::size_t(kc));
+                        const std::size_t g =
+                            std::size_t(i) +
+                            std::size_t(impl_->beta_fine.nxi) *
+                                (std::size_t(j) + std::size_t(impl_->beta_fine.nyi) *
+                                                      std::size_t(k));
+                        impl_->beta_fine.data[g] =
+                            1.0 / static_cast<const double*>(vrho.host_ptr)[c];
+                    }
                 }
         // attach to finest MatShell ctx and mark diagonal dirty
         auto* fctx = impl_->ctx_lvl.back().get();
@@ -1718,12 +1895,8 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
         fctx->use_const_beta = false;
         fctx->diag_built = false;
 
-        // Rebuild fine assembled PMAT from the shell (uses current ctx->beta)
-        if (impl_->Afine_aij)
-        {
-            MatDestroy(&impl_->Afine_aij);
-            impl_->Afine_aij = nullptr;
-        }
+        // Reuse existing PMAT pattern; AssembleAIJFromShell() will MatZeroEntries()
+        // and overwrite values in-place if impl_->Afine_aij already exists.
         PetscCallAbort(impl_->comm, AssembleAIJFromShell(*fctx, &impl_->Afine_aij));
         if (!impl_->all_neumann)
             MatSetOption(impl_->Afine_aij, MAT_SPD, PETSC_TRUE);
@@ -1744,6 +1917,8 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
         KSPGetPC(impl_->ksp, &pc_refresh);
         const PetscInt L = (PetscInt) impl_->da_lvl.size();
         PCMGSetOperators(pc_refresh, L - 1, impl_->A_shell, impl_->Afine_aij);
+
+        retune_chebyshev_on_levels(impl_->ksp);
     }
 
     // Build RHS on fine DMDA (owned box only) with BC shifts
@@ -1756,11 +1931,13 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
         PBC pbc{find_bc("west"),  find_bc("east"),   find_bc("south"),
                 find_bc("north"), find_bc("bottom"), find_bc("top")};
 
+        // Local DMDA (global) corner and owned size (no ghosts)
         PetscInt xs, ys, zs, xm, ym, zm;
         DMDAGetCorners(impl_->da_fine, &xs, &ys, &zs, &xm, &ym, &zm);
 
         PetscScalar*** barr;
         DMDAVecGetArray(impl_->da_fine, impl_->b, &barr);
+        const int nxc_tot = vp.extents[0], nyc_tot = vp.extents[1], nzc_tot = vp.extents[2];
 
         // Face transmissibilities on-the-fly (no stored Tx/Ty/Tz):
         const double invV = 1.0 / (dx_ * dy_ * dz_);
@@ -1841,10 +2018,13 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
             for (int j = ys; j < ys + ym; ++j)
                 for (int i = xs; i < xs + xm; ++i)
                 {
+                    const int ii = (int)(i - i0) + ng;
+                    const int jj = (int)(j - j0) + ng;
+                    const int kk = (int)(k - k0) + ng;
                     const std::size_t c =
-                        std::size_t(i + ng) +
+                        std::size_t(ii) +
                         std::size_t(nxc_tot) *
-                            (std::size_t(j + ng) + std::size_t(nyc_tot) * std::size_t(k + ng));
+                            (std::size_t(jj) + std::size_t(nyc_tot) * std::size_t(kk));
                     // A is -div(β∇p) (SPD). Projection gives -div(β∇p) = -(1/dt) div(u*).
                     double rhs = -div[c] / dt;
 
@@ -1928,14 +2108,19 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
             for (int j = ys; j < ys + ym; ++j)
                 for (int i = xs; i < xs + xm; ++i)
                 {
+                    const int ii = (int)(i - i0) + ng;
+                    const int jj = (int)(j - j0) + ng;
+                    const int kk = (int)(k - k0) + ng;
                     const std::size_t c =
-                        std::size_t(i + ng) +
+                        std::size_t(ii) +
                         std::size_t(nxc_tot) *
-                            (std::size_t(j + ng) + std::size_t(nyc_tot) * std::size_t(k + ng));
+                            (std::size_t(jj) + std::size_t(nyc_tot) * std::size_t(kk));
                     xarr[k][j][i] = impl_->p_host[c];
                 }
         DMDAVecRestoreArray(impl_->da_fine, impl_->x, &xarr);
     }
+
+    PetscCallAbort(impl_->comm, KSPSetInitialGuessNonzero(impl_->ksp, PETSC_TRUE));
 
     // Remove constant component from BOTH b and x when a nullspace is present (pure Neumann).
     // This keeps the singular system well-posed for Krylov and avoids stalls.
@@ -1996,7 +2181,7 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
             rtol = (cand < 1.0) ? cand : 0.0;
         }
         // Large dtol to avoid false divergence on tiny RHS; cap iters reasonably.
-        KSPSetTolerances(impl_->ksp, rtol, atol, 1e50, 200);
+        KSPSetTolerances(impl_->ksp, rtol, atol, 1e50, iters_);
     }
     // solve
     MPI_Comm pcomm;
@@ -2042,10 +2227,13 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
             for (int j = ys; j < ys + ym; ++j)
                 for (int i = xs; i < xs + xm; ++i)
                 {
+                    const int ii = (int)(i - i0) + ng;
+                    const int jj = (int)(j - j0) + ng;
+                    const int kk = (int)(k - k0) + ng;
                     const std::size_t c =
-                        std::size_t(i + ng) +
+                        std::size_t(ii) +
                         std::size_t(nxc_tot) *
-                            (std::size_t(j + ng) + std::size_t(nyc_tot) * std::size_t(k + ng));
+                            (std::size_t(jj) + std::size_t(nyc_tot) * std::size_t(kk));
                     impl_->p_host[c] = xarr[k][j][i];
                 }
         DMDAVecRestoreArrayRead(impl_->da_fine, impl_->x, &xarr);
@@ -2058,6 +2246,7 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
         auto vp_sync = fields.view("p");
         const std::size_t nTot = std::size_t(nxc_tot) * nyc_tot * nzc_tot;
         std::memcpy(vp_sync.host_ptr, impl_->p_host.data(), nTot * sizeof(double));
+        core::master::exchange_named_fields(fields, *tile.mesh, mpi_comm_, {"p"});
     }
 }
 
@@ -2075,7 +2264,7 @@ std::shared_ptr<core::master::plugin::IAction> make_poisson(const core::master::
     const double dx = std::stod(get("dx", "1.0"));
     const double dy = std::stod(get("dy", "1.0"));
     const double dz = std::stod(get("dz", "1.0"));
-    const int iters = std::stoi(get("iters", "50")); // retained for compatibility
+    const int iters = std::stoi(get("iters", "400"));
     const Params p = parse_params(kv);
     auto obj = std::make_shared<PressurePoisson>(rho, dx, dy, dz, iters, rc.mpi_comm, p.bcs);
     // propagate div_tol from user params if present (fallback 1e-7)

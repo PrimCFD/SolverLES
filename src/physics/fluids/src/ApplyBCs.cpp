@@ -153,7 +153,8 @@ void ApplyBCs::execute(const MeshTileView& tile, FieldCatalog& fields, double)
         for (int r = 0; r < reps; ++r)
         {
             // Vector mirror if requested on all 3 velocity components and present
-            if (have("u") && have("v") && have("w") && is_mirror(su) && is_mirror(sv) && is_mirror(sw))
+            if (have("u") && have("v") && have("w") && is_mirror(su) && is_mirror(sv) &&
+                is_mirror(sw))
             {
                 apply_mirror_vector(U, V, W, f.ax, f.sgn, mask_for(f.ax));
             }

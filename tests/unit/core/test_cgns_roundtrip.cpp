@@ -1,9 +1,9 @@
 #include "master/FieldCatalog.hpp"
 #include "master/Views.hpp"
-#include "mesh/Mesh.hpp" 
 #include "master/io/CGNSWriter.hpp"
 #include "master/io/WriterConfig.hpp"
-#include "memory/MpiBox.hpp"   
+#include "memory/MpiBox.hpp"
+#include "mesh/Mesh.hpp"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -67,12 +67,13 @@ namespace cm = core::mesh;
 namespace fs = std::filesystem;
 using Catch::Approx;
 
-static cm::Mesh make_single_tile_mesh(int nx, int ny, int nz) {
+static cm::Mesh make_single_tile_mesh(int nx, int ny, int nz)
+{
     cm::Mesh m{};
-    m.global    = {nx, ny, nz};
-    m.local     = {nx, ny, nz};
-    m.global_lo = {0,  0,  0 };
-    m.proc_grid = {1,  1,  1 };
+    m.global = {nx, ny, nz};
+    m.local = {nx, ny, nz};
+    m.global_lo = {0, 0, 0};
+    m.proc_grid = {1, 1, 1};
     m.ng = 0;
     return m;
 }

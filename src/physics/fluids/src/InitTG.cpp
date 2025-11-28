@@ -1,11 +1,17 @@
 #include "InitTG.hpp"
 #include "master/FieldCatalog.hpp"
-#include "master/Views.hpp"
 #include "master/HaloOps.hpp"
+#include "master/Views.hpp"
 #include "mesh/Mesh.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <mpi.h>
+#include <iostream>
+
+#include "memory/MpiBox.hpp"
+#include "mesh/Field.hpp"
+#include "master/Views.hpp"
 
 using namespace core::master;
 
@@ -19,7 +25,8 @@ InitTG::InitTG(double Lx, double Ly, double Lz, double U0, void* mpi_comm)
     info_.phases = plugin::Phase::PreExchange; // run before any halos (initial fill)
 }
 
-std::shared_ptr<plugin::IAction> make_init_tg(const plugin::KV& kv, const core::master::RunContext& rc)
+std::shared_ptr<plugin::IAction> make_init_tg(const plugin::KV& kv,
+                                              const core::master::RunContext& rc)
 {
     // U0 default 1.0; Lx/Ly/Lz default 1.0 if not provided
     auto get = [&](const char* k, const char* dflt) -> std::string
@@ -117,7 +124,7 @@ void InitTG::execute(const MeshTileView& tile, FieldCatalog& fields, double)
         {
             const double yc = (j0 + j + 0.5) * dy; // GLOBAL y center
             for (int i = 0; i < nx_u; ++i)
-            {                             // faces in x
+            {                                    // faces in x
                 const double xf = (i0 + i) * dx; // GLOBAL x face
                 const int I = i + ng, J = j + ng, K = k + ng;
                 const double sX = std::sin(2 * M_PI * xf / Lx_);
@@ -132,10 +139,10 @@ void InitTG::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     const int ny_v = ny_c + 1; // +1 along normal
     for (int k = 0; k < nz_c; ++k)
     {
-        const double zc = (k0 + k + 0.5) * dz;   // GLOBAL z center
+        const double zc = (k0 + k + 0.5) * dz; // GLOBAL z center
         for (int j = 0; j < ny_v; ++j)
-        { // faces in y
-            const double yf = (j0 + j) * dy;     // GLOBAL y face
+        {                                    // faces in y
+            const double yf = (j0 + j) * dy; // GLOBAL y face
             for (int i = 0; i < nx_c; ++i)
             {
                 const double xc = (i0 + i + 0.5) * dx; // GLOBAL x center
@@ -151,11 +158,11 @@ void InitTG::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     // ---- W on KFaces: z at faces, x/y at centers ----
     const int nz_w = nz_c + 1; // +1 along normal
     for (int k = 0; k < nz_w; ++k)
-    { // faces in z
-        const double zf = (k0 + k) * dz;         // GLOBAL z face
+    {                                    // faces in z
+        const double zf = (k0 + k) * dz; // GLOBAL z face
         for (int j = 0; j < ny_c; ++j)
         {
-            const double yc = (j0 + j + 0.5) * dy;   // GLOBAL y center
+            const double yc = (j0 + j + 0.5) * dy; // GLOBAL y center
             for (int i = 0; i < nx_c; ++i)
             {
                 const double xc = (i0 + i + 0.5) * dx; // GLOBAL x center
@@ -172,9 +179,11 @@ void InitTG::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     // Pressure = 0 by default (app initializes arrays to zero).
 
     // One-time halo fill so ghosts are valid at t=0 on multi-rank runs.
-    if (tile.mesh) {
-        core::master::exchange_named_fields(fields, *tile.mesh, mpi_comm_, {"u","v","w"});
+    if (tile.mesh)
+    {
+        core::master::exchange_named_fields(fields, *tile.mesh, mpi_comm_, {"u", "v", "w"});
     }
+
 }
 
 } // namespace fluids

@@ -1,14 +1,14 @@
-case: tgv_32
+case: tgv_128
 
 mesh:
-  global: [32, 32, 32]
+  global: [128, 128, 128]
   ng: 2
   periodic: [true, true, true] 
 
 time:
-  dt: 2.5e-2
-  t_end: 5.0
-  write_every: { steps: 2 }
+  dt: 5.0e-3
+  t_end: 20.0
+  write_every: { steps: 40 }
 
 io:
   backend: cgns
@@ -23,10 +23,10 @@ plugins:
 program:
   key: les
   params:
-    # operator spacings (2π box / 32)
-    dx: "0.19634954084936207"
-    dy: "0.19634954084936207"
-    dz: "0.19634954084936207"
+    # operator spacings (2π box / 128)
+    dx: "0.04908738521234052"
+    dy: "0.04908738521234052"
+    dz: "0.04908738521234052"
 
     # TGV initializer extents & amplitude
     Lx: "6.283185307179586"
@@ -35,16 +35,16 @@ program:
     U0: "1.0"
 
     rho: "1"
-    nu:  "1.0e-1"
-    Cs:  "0.0"
+    nu:  "3.926990816987242e-3" # Re = U0*L/nu => Re = 1600
+    Cs:  "0.16"
 
     scheme: "piso"
+    num_corrections: "2"
     time_scheme: "abm3"
-    pred_imp_order: "2" #CN
+    #pred_imp_order: "2"
     div_tol: "1.0e-7"
 
-    advect: "off"
-    p_iters: "0"                 # keep Poisson off for a diffusion test
+    advect: "on"
     init: "taylor_green"
 
 fields:

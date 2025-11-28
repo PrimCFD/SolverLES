@@ -6,11 +6,15 @@
 #include <string>
 #include <vector>
 
+#include <mpi.h>
+
 #include "PressurePoisson.hpp" // fluids::make_poisson, IAction
 #include "Program.hpp"         // KV, BcTable (parsed inside make_poisson)
 #include "master/FieldCatalog.hpp"
 #include "master/RunContext.hpp"
 #include "master/Views.hpp" // MeshTileView / AnyFieldView box
+#include "memory/MpiBox.hpp"
+#include "mesh/Mesh.hpp"
 
 #include "test_petsc_guard.hpp"
 static PetscTestGuard _petsc_guard;
@@ -147,6 +151,49 @@ TEST_CASE("MG Poisson reproduces manufactured p* (β=1) using FieldCatalog::regi
     MeshTileView tile{};
     FieldCatalog fields;
 
+    // Minimal mesh + MPI decomposition so PressurePoisson sees the same geometry
+    core::mesh::Mesh mesh{};
+    mesh.ng = ng;
+    mesh.global[0] = nx;
+    mesh.global[1] = ny;
+    mesh.global[2] = nz;
+    mesh.periodic[0] = false;
+    mesh.periodic[1] = false;
+    mesh.periodic[2] = false;
+
+    int world_size = 1, world_rank = 0;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
+    int dims[3] = {0, 0, 0};
+    MPI_Dims_create(world_size, 3, dims); // heuristic near-cubic grid
+    int periods[3] = {0, 0, 0};           // non-periodic for this test
+
+    MPI_Comm cart_comm = MPI_COMM_NULL;
+    MPI_Cart_create(MPI_COMM_WORLD, 3, dims, periods, /*reorder*/ 1, &cart_comm);
+    if (cart_comm == MPI_COMM_NULL)
+        cart_comm = MPI_COMM_WORLD; // fallback
+
+    int coords[3] = {0, 0, 0};
+    MPI_Cart_get(cart_comm, 3, dims, periods, coords);
+
+    mesh.proc_grid[0] = dims[0];
+    mesh.proc_grid[1] = dims[1];
+    mesh.proc_grid[2] = dims[2];
+
+    auto owner_start = [](int n, int p, int r) {
+        const int q = n / p;
+        const int rem = n % p;
+        if (r < rem) return r * (q + 1);
+        return rem * (q + 1) + (r - rem) * q;
+    };
+
+    mesh.global_lo[0] = owner_start(nx, mesh.proc_grid[0], coords[0]);
+    mesh.global_lo[1] = owner_start(ny, mesh.proc_grid[1], coords[1]);
+    mesh.global_lo[2] = owner_start(nz, mesh.proc_grid[2], coords[2]);
+
+    tile.mesh = &mesh;
+
     // Register
     fields.register_scalar("p", p.data(), sizeof(double), {nxc_tot, nyc_tot, nzc_tot},
                            strides_bytes(nxc_tot, nyc_tot), core::master::Stagger::Cell);
@@ -169,7 +216,10 @@ TEST_CASE("MG Poisson reproduces manufactured p* (β=1) using FieldCatalog::regi
         {"div_tol", "1e-10"},
     };
 
-    core::master::RunContext rc{};
+    RunContext rc{};
+    rc.mpi_comm = mpi_box(cart_comm);
+    rc.world_size = world_size;
+    rc.world_rank = world_rank;
     auto poisson = fluids::make_poisson(kv, rc);
 
     poisson->execute(tile, fields, dt);

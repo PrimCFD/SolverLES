@@ -283,19 +283,25 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
             (fp.shape.nx == cfg_.mesh->local[0] && fp.shape.ny == cfg_.mesh->local[1] &&
              fp.shape.nz == cfg_.mesh->local[2] + 1);
         const bool isFace = (iFace || jFace || kFace);
-        const bool isVel  = (fp.shape.name == "u" || fp.shape.name == "v" || fp.shape.name == "w");
+        const bool isVel = (fp.shape.name == "u" || fp.shape.name == "v" || fp.shape.name == "w");
         const hsize_t GX = (hsize_t) (impl_->nx + (iFace ? 1 : 0));
         const hsize_t GY = (hsize_t) (impl_->ny + (jFace ? 1 : 0));
         const hsize_t GZ = (hsize_t) (impl_->nz + (kFace ? 1 : 0));
 
         // Write native dataset unless it is a face-centered velocity (skip like CGNS)
-        if (!(isVel && isFace)) {
+        if (!(isVel && isFace))
+        {
             // Global file space (Z,Y,X)
             const hsize_t file_dims[3] = {GZ, GY, GX};
             hid_t space_f = H5Screate_simple(3, file_dims, nullptr);
-            hid_t dset = H5Dcreate2(g, fp.shape.name.c_str(), dtype, space_f,
-                                    H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-            if (dset < 0) { H5Sclose(space_f); H5Gclose(g); return; }
+            hid_t dset = H5Dcreate2(g, fp.shape.name.c_str(), dtype, space_f, H5P_DEFAULT,
+                                    H5P_DEFAULT, H5P_DEFAULT);
+            if (dset < 0)
+            {
+                H5Sclose(space_f);
+                H5Gclose(g);
+                return;
+            }
             // Select this rank's hyperslab and write collectively
             const hsize_t ox = (hsize_t) cfg_.mesh->global_lo[0];
             const hsize_t oy = (hsize_t) cfg_.mesh->global_lo[1];
@@ -308,8 +314,13 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
             H5Sselect_hyperslab(space_f, H5S_SELECT_SET, start, nullptr, count, nullptr);
             const hsize_t mem_dims[3] = {LZ, LY, LX};
             hid_t space_m = H5Screate_simple(3, mem_dims, nullptr);
-            if (H5Dwrite(dset, dtype, space_m, space_f, impl_->xfer_plist, src) < 0) {
-                H5Dclose(dset); H5Sclose(space_f); H5Sclose(space_m); H5Gclose(g); return;
+            if (H5Dwrite(dset, dtype, space_m, space_f, impl_->xfer_plist, src) < 0)
+            {
+                H5Dclose(dset);
+                H5Sclose(space_f);
+                H5Sclose(space_m);
+                H5Gclose(g);
+                return;
             }
             H5Dclose(dset);
             H5Sclose(space_m);
@@ -323,48 +334,73 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
         if ((isU || isV || isW) && isFace)
         {
             // Average onto cell centers using the same helpers as CGNS writer
-            void* tmp = pool_.data(i);        // reuse staging slot
+            void* tmp = pool_.data(i); // reuse staging slot
             const bool src_f64 = (view.elem_size == 8);
             const bool dst_f64 = (fp.shape.elem_size == 8);
             const int nx_loc = cfg_.mesh->local[0];
             const int ny_loc = cfg_.mesh->local[1];
             const int nz_loc = cfg_.mesh->local[2];
 
-            if (dst_f64) {
+            if (dst_f64)
+            {
                 auto* d = static_cast<double*>(tmp);
-                if (iFace) { src_f64 ? avg_i_to_cell<double,double>(d, view, nx_loc, ny_loc, nz_loc)
-                                     : avg_i_to_cell<float, double>(d, view, nx_loc, ny_loc, nz_loc); }
-                else if (jFace) { src_f64 ? avg_j_to_cell<double,double>(d, view, nx_loc, ny_loc, nz_loc)
-                                          : avg_j_to_cell<float, double>(d, view, nx_loc, ny_loc, nz_loc); }
-                else { src_f64 ? avg_k_to_cell<double,double>(d, view, nx_loc, ny_loc, nz_loc)
-                               : avg_k_to_cell<float, double>(d, view, nx_loc, ny_loc, nz_loc); }
-            } else {
+                if (iFace)
+                {
+                    src_f64 ? avg_i_to_cell<double, double>(d, view, nx_loc, ny_loc, nz_loc)
+                            : avg_i_to_cell<float, double>(d, view, nx_loc, ny_loc, nz_loc);
+                }
+                else if (jFace)
+                {
+                    src_f64 ? avg_j_to_cell<double, double>(d, view, nx_loc, ny_loc, nz_loc)
+                            : avg_j_to_cell<float, double>(d, view, nx_loc, ny_loc, nz_loc);
+                }
+                else
+                {
+                    src_f64 ? avg_k_to_cell<double, double>(d, view, nx_loc, ny_loc, nz_loc)
+                            : avg_k_to_cell<float, double>(d, view, nx_loc, ny_loc, nz_loc);
+                }
+            }
+            else
+            {
                 auto* d = static_cast<float*>(tmp);
-                if (iFace) { src_f64 ? avg_i_to_cell<double,float>(d, view, nx_loc, ny_loc, nz_loc)
-                                     : avg_i_to_cell<float, float>(d, view, nx_loc, ny_loc, nz_loc); }
-                else if (jFace) { src_f64 ? avg_j_to_cell<double,float>(d, view, nx_loc, ny_loc, nz_loc)
-                                          : avg_j_to_cell<float, float>(d, view, nx_loc, ny_loc, nz_loc); }
-                else { src_f64 ? avg_k_to_cell<double,float>(d, view, nx_loc, ny_loc, nz_loc)
-                               : avg_k_to_cell<float, float>(d, view, nx_loc, ny_loc, nz_loc); }
+                if (iFace)
+                {
+                    src_f64 ? avg_i_to_cell<double, float>(d, view, nx_loc, ny_loc, nz_loc)
+                            : avg_i_to_cell<float, float>(d, view, nx_loc, ny_loc, nz_loc);
+                }
+                else if (jFace)
+                {
+                    src_f64 ? avg_j_to_cell<double, float>(d, view, nx_loc, ny_loc, nz_loc)
+                            : avg_j_to_cell<float, float>(d, view, nx_loc, ny_loc, nz_loc);
+                }
+                else
+                {
+                    src_f64 ? avg_k_to_cell<double, float>(d, view, nx_loc, ny_loc, nz_loc)
+                            : avg_k_to_cell<float, float>(d, view, nx_loc, ny_loc, nz_loc);
+                }
             }
 
             // Create /Step_xxxxxx/u_cell (global dims = cells)
             const char* alias = isU ? "u_cell" : isV ? "v_cell" : "w_cell";
-            const hsize_t gXc = (hsize_t)impl_->nx, gYc = (hsize_t)impl_->ny, gZc = (hsize_t)impl_->nz;
+            const hsize_t gXc = (hsize_t) impl_->nx, gYc = (hsize_t) impl_->ny,
+                          gZc = (hsize_t) impl_->nz;
             const hsize_t file_dims_cc[3] = {gZc, gYc, gXc};
             hid_t space_f_cc = H5Screate_simple(3, file_dims_cc, nullptr);
-            hid_t dset_cc = H5Dcreate2(g, alias, dtype, space_f_cc, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-            if (dset_cc >= 0) {
+            hid_t dset_cc =
+                H5Dcreate2(g, alias, dtype, space_f_cc, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (dset_cc >= 0)
+            {
                 // Select this rank's *cell* tile (no +1 anywhere)
-                const hsize_t ozc = (hsize_t)cfg_.mesh->global_lo[2]; // Z
-                const hsize_t oyc = (hsize_t)cfg_.mesh->global_lo[1]; // Y
-                const hsize_t oxc = (hsize_t)cfg_.mesh->global_lo[0]; // X
-                const hsize_t Lzc = (hsize_t)cfg_.mesh->local[2];     // Z
-                const hsize_t Lyc = (hsize_t)cfg_.mesh->local[1];     // Y
-                const hsize_t Lxc = (hsize_t)cfg_.mesh->local[0];     // X
+                const hsize_t ozc = (hsize_t) cfg_.mesh->global_lo[2]; // Z
+                const hsize_t oyc = (hsize_t) cfg_.mesh->global_lo[1]; // Y
+                const hsize_t oxc = (hsize_t) cfg_.mesh->global_lo[0]; // X
+                const hsize_t Lzc = (hsize_t) cfg_.mesh->local[2];     // Z
+                const hsize_t Lyc = (hsize_t) cfg_.mesh->local[1];     // Y
+                const hsize_t Lxc = (hsize_t) cfg_.mesh->local[0];     // X
                 hsize_t start_cc[3] = {ozc, oyc, oxc};
                 hsize_t count_cc[3] = {Lzc, Lyc, Lxc};
-                H5Sselect_hyperslab(space_f_cc, H5S_SELECT_SET, start_cc, nullptr, count_cc, nullptr);
+                H5Sselect_hyperslab(space_f_cc, H5S_SELECT_SET, start_cc, nullptr, count_cc,
+                                    nullptr);
                 const hsize_t mem_dims_cc[3] = {Lzc, Lyc, Lxc};
                 hid_t space_m_cc = H5Screate_simple(3, mem_dims_cc, nullptr);
                 H5Dwrite(dset_cc, dtype, space_m_cc, space_f_cc, impl_->xfer_plist, tmp);
@@ -419,7 +455,8 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
                                     fp.shape.nz == impl_->nz + 1);
                 const bool isFace = (iFace || jFace || kFace);
                 // Skip advertising native face velocity attributes
-                if (!(isVel && isFace)) {
+                if (!(isVel && isFace))
+                {
                     const int gnx = impl_->nx + (iFace ? 1 : 0);
                     const int gny = impl_->ny + (jFace ? 1 : 0);
                     const int gnz = impl_->nz + (kFace ? 1 : 0);
@@ -433,12 +470,15 @@ void XdmfHdf5Writer::write(const WriteRequest& req)
                 }
 
                 // If velocity was face-centered, also advertise the cell-centered alias
-                if (fname == "u" || fname == "v" || fname == "w") {
-                    const std::string alias = (fname == "u") ? "u_cell" : (fname == "v") ? "v_cell" : "w_cell";
+                if (fname == "u" || fname == "v" || fname == "w")
+                {
+                    const std::string alias = (fname == "u")   ? "u_cell"
+                                              : (fname == "v") ? "v_cell"
+                                                               : "w_cell";
                     xmf << " <Attribute Name=\"" << alias
                         << "\" AttributeType=\"Scalar\" Center=\"Cell\">\n"
-                        << " <DataItem Dimensions=\"" << impl_->nz << " " << impl_->ny << " " << impl_->nx
-                        << "\" NumberType=\"Float\" Precision=\"" << fp.shape.elem_size
+                        << " <DataItem Dimensions=\"" << impl_->nz << " " << impl_->ny << " "
+                        << impl_->nx << "\" NumberType=\"Float\" Precision=\"" << fp.shape.elem_size
                         << "\" Format=\"HDF\">" << fs::path(impl_->h5_path).filename().string()
                         << ":/" << stepname << "/" << alias << "</DataItem>\n"
                         << " </Attribute>\n";

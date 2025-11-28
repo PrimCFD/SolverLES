@@ -1,410 +1,308 @@
 #pragma once
 #include "Field.hpp"
 #include "Mesh.hpp"
-#include <cassert>
-#include <mpi.h>
-#include <vector>
+#include "master/Views.hpp"
 
-/**
- * @file HaloExchange.hpp
- * @ingroup memory
- * @brief MPI façade to exchange ghost/halo slabs of ghost‑padded fields.
- *
- * Posts six non‑blocking \c MPI_Isend/\c MPI_Irecv operations into the ghost layers
- * of each field and overlaps communication with interior computation. Interfaces
- * operate on \c Field\<T\> views to avoid extra copies.
- *
- * @rst
- *.. code-block:: cpp
- *
- *    exchange_ghosts(rho, mesh, cart_comm); // X±, Y±, Z± slabs
- * @endrst
- *
- * @warning All participating fields must share the same ghost width and extents.
- */
+#include <mpi.h>
+#include <array>
+#include <type_traits>
+#include <vector>
+#include <algorithm>
+#include <assert.h>
 
 namespace core::mesh
 {
 
-// Exchange the 6 axis-aligned faces (no edges/corners). Works for ng >= 1.
-// Uses the caller-provided *Cartesian* communicator as-is.
-// Returns true if halos were exchanged (or nothing was needed but the path is valid),
-// false if no exchange was performed (caller may choose to fall back). In practice,
-// this implements local fallbacks so it very rarely returns false.
+// 26-neighbor halo exchange with MAC-staggering support.
+// - T in {float,double}
+// - comm must be a 3D Cartesian communicator whose periodicity matches Mesh::periodic
+// - tag_base must reserve a window >= 26 tags (HaloOps reserves 64 per field)
+//
+// Tag contract:
+//   For each direction d with index id = dir_index(ox,oy,oz),
+//   and opposite direction d' with opp_id = dir_index(-ox,-oy,-oz):
+//     recv tag = tag_base + id      (expecting data coming *from* direction d)
+//     send tag = tag_base + opp_id  (so our neighbor’s recv tag matches)
+//
+// That way rank A sending east uses the same tag as rank B receiving west, etc.
 template <class T>
-bool exchange_ghosts(Field<T>& f, const Mesh& m, MPI_Comm comm, int tag_base = 100)
+bool exchange_ghosts(Field<T>& f,
+                     const Mesh& m,
+                     MPI_Comm comm,
+                     int tag_base = 200,
+                     core::master::Stagger stagger = core::master::Stagger::Cell)
 {
-    static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>,
-                  "exchange_ghosts currently supports float/double element types");
+    static_assert(std::is_same_v<T,float> || std::is_same_v<T,double>,
+                  "exchange_ghosts<T>: T must be float or double");
+
+    // Use the mesh ghost width (or f.ng(); they should match)
     const int ng = m.ng;
-    const auto e = f.extents(); // totals INCLUDING ghosts
-    const int nx = e[0] - 2 * ng;
-    const int ny = e[1] - 2 * ng;
-    const int nz = e[2] - 2 * ng;
+    const auto e  = f.extents();
 
-    // Bail early if there's nothing to exchange
-    if (ng <= 0 || nx <= 0 || ny <= 0 || nz <= 0)
-        return true;
+    // Interior extents (cell or face); for faces this is N_cells_local+1 on the normal axis.
+    const int nxI = e[0] - 2*ng;
+    const int nyI = e[1] - 2*ng;
+    const int nzI = e[2] - 2*ng;
 
-    // Require initialized MPI
-    int initialized = 0;
-    MPI_Initialized(&initialized);
-    if (!initialized)
-        return false; // not usable here
+    if (ng <= 0 || nxI <= 0 || nyI <= 0 || nzI <= 0) return true;
 
-    // Require a valid, caller-provided *Cartesian* communicator
-    if (comm == MPI_COMM_NULL)
-        return false;
+    // MAC staggering flags: used only to pick which interior slab to send
+    // along the normal direction; they do NOT change the interior size.
+    const bool faceI = (stagger == core::master::Stagger::IFace);
+    const bool faceJ = (stagger == core::master::Stagger::JFace);
+    const bool faceK = (stagger == core::master::Stagger::KFace);
 
-    // Optional but helpful: during development, return errors instead of aborting
-    // (comment out for production)
+    int init = 0;
+    MPI_Initialized(&init);
+    if (!init || comm == MPI_COMM_NULL) return false;
     MPI_Comm_set_errhandler(comm, MPI_ERRORS_RETURN);
 
-    int size = 1, ierr = MPI_Comm_size(comm, &size);
-    if (ierr != MPI_SUCCESS)
-        return false; // nothing we can do; keep it fail-safe
-
-    // Small local helper: periodic face wrap for faces only (matches master logic)
-    auto idx_lo = [](int n, int g) -> int
-    {
-        if (n <= 0)
-            return 0;
-        int r = (g % n);
-        return (r == 0) ? (n - 1) : (n - r);
-    };
-    auto idx_hi = [](int n, int g) -> int
-    {
-        if (n <= 0)
-            return 0;
-        return (g - 1) % n;
-    };
-
-    // 0-gradient fallback: replicate nearest interior plane into ghosts on one side
-    auto replicate_x_ghosts_from_interior = [&](bool lower_side) {
-        const int ncopy = ng;
-        const int i_int  = lower_side ? 0      : (nx - 1);
-        const int i_gh0  = lower_side ? -ng    : nx;
-        for (int k = 0; k < nz; ++k)
-            for (int j = 0; j < ny; ++j)
-                for (int g = 0; g < ncopy; ++g)
-                    f(i_gh0 + g, j, k) = f(i_int, j, k);
-    };
-    auto replicate_y_ghosts_from_interior = [&](bool lower_side) {
-        const int ncopy = ng;
-        const int j_int  = lower_side ? 0      : (ny - 1);
-        const int j_gh0  = lower_side ? -ng    : ny;
-        for (int k = 0; k < nz; ++k)
-            for (int i = 0; i < nx; ++i)
-                for (int g = 0; g < ncopy; ++g)
-                    f(i, j_gh0 + g, k) = f(i, j_int, k);
-    };
-    auto replicate_z_ghosts_from_interior = [&](bool lower_side) {
-        const int ncopy = ng;
-        const int k_int  = lower_side ? 0      : (nz - 1);
-        const int k_gh0  = lower_side ? -ng    : nz;
-        for (int j = 0; j < ny; ++j)
-            for (int i = 0; i < nx; ++i)
-                for (int g = 0; g < ncopy; ++g)
-                    f(i, j, k_gh0 + g) = f(i, j, k_int);
-    };
-
-    // Thin-axis helper: if interior is thinner than ng, we’ll duplicate interior values
-    // to fully populate all ng ghost layers. Pack paths already do this via modulo;
-    // these helpers cover the no-neighbor cases below.
-    auto safe_fill_nonperiodic_face = [&](int axis, bool lower_side) {
-        // axis: 0=x,1=y,2=z
-        if (axis == 0) replicate_x_ghosts_from_interior(lower_side);
-        if (axis == 1) replicate_y_ghosts_from_interior(lower_side);
-        if (axis == 2) replicate_z_ghosts_from_interior(lower_side);
-    };
-
-    // Quick sanity: if any interior extent is zero, just return true (no work).
-    if (nx == 0 || ny == 0 || nz == 0) return true;
-
-    // Per-axis wrappers
-    auto wrap_x_faces_local = [&](Field<T>& ff)
-    {
-        if (!m.periodic[0])
-            return;
-        for (int k = 0; k < nz; ++k)
-            for (int j = 0; j < ny; ++j)
-                for (int g = 1; g <= ng; ++g)
-                {
-                    ff(-g, j, k) = ff(idx_lo(nx, g), j, k);
-                    ff(nx - 1 + g, j, k) = ff(idx_hi(nx, g), j, k);
-                }
-    };
-    auto wrap_y_faces_local = [&](Field<T>& ff)
-    {
-        if (!m.periodic[1])
-            return;
-        for (int k = 0; k < nz; ++k)
-            for (int i = 0; i < nx; ++i)
-                for (int g = 1; g <= ng; ++g)
-                {
-                    ff(i, -g, k) = ff(i, idx_lo(ny, g), k);
-                    ff(i, ny - 1 + g, k) = ff(i, idx_hi(ny, g), k);
-                }
-    };
-    auto wrap_z_faces_local = [&](Field<T>& ff)
-    {
-        if (!m.periodic[2])
-            return;
-        for (int j = 0; j < ny; ++j)
-            for (int i = 0; i < nx; ++i)
-                for (int g = 1; g <= ng; ++g)
-                {
-                    ff(i, j, -g) = ff(i, j, idx_lo(nz, g));
-                    ff(i, j, nz - 1 + g) = ff(i, j, idx_hi(nz, g));
-                }
-    };
-
-    // If single rank:
-    //  - no neighbors if not periodic -> nothing to do
-    //  - periodic in any axis -> do local periodic wrap and return
-    if (size == 1)
-    {
-        if (m.periodic[0])
-            wrap_x_faces_local(f);
-        if (m.periodic[1])
-            wrap_y_faces_local(f);
-        if (m.periodic[2])
-            wrap_z_faces_local(f);
-        return true;
-    }
-
-    // Verify the communicator is already Cartesian and matches Mesh periodicity
     int topo = MPI_UNDEFINED;
     MPI_Topo_test(comm, &topo);
-    if (topo != MPI_CART)
+    if (topo != MPI_CART) return false;
+
+    int cdims[3]{}, cper[3]{}, ccoords[3]{};
+    MPI_Cart_get(comm, 3, cdims, cper, ccoords);
+    if ((cper[0] != (m.periodic[0]?1:0)) ||
+        (cper[1] != (m.periodic[1]?1:0)) ||
+        (cper[2] != (m.periodic[2]?1:0))) return false;
+
+    // --- Tag safety: ensure tag_base..tag_base+25 fit under MPI_TAG_UB ---
     {
-        // Not a Cartesian communicator: do local fallbacks only (keep halos usable)
-        if (m.periodic[0]) wrap_x_faces_local(f); else { safe_fill_nonperiodic_face(0,true); safe_fill_nonperiodic_face(0,false); }
-        if (m.periodic[1]) wrap_y_faces_local(f); else { safe_fill_nonperiodic_face(1,true); safe_fill_nonperiodic_face(1,false); }
-        if (m.periodic[2]) wrap_z_faces_local(f); else { safe_fill_nonperiodic_face(2,true); safe_fill_nonperiodic_face(2,false); }
-        return false;
-    }
-    // Optional consistency check (non-fatal)
-    int cdims[3] = {0, 0, 0}, cperiods[3] = {0, 0, 0}, coords[3] = {0, 0, 0};
-    MPI_Cart_get(comm, 3, cdims, cperiods, coords);
-    // If needed: ensure periodic flags match Mesh (ignore cdims; decomposition is up to the app)
-    if ((cperiods[0] != (m.periodic[0] ? 1 : 0)) || (cperiods[1] != (m.periodic[1] ? 1 : 0)) ||
-        (cperiods[2] != (m.periodic[2] ? 1 : 0)))
-    {
-        // Mismatch between Mesh.periodic and communicator topology — safer to bail
-        return false;
+        int flag = 0;
+        int *p_ub = nullptr;
+        MPI_Comm_get_attr(comm, MPI_TAG_UB, &p_ub, &flag);
+        if (flag && p_ub) {
+            const int tag_ub = *p_ub;
+            const int max_tag_needed = tag_base + 25;
+            if (max_tag_needed > tag_ub) {
+                return false;
+            }
+        }
+        // If !flag, assume tag_base was chosen sanely by the caller.
     }
 
-    // Neighbor ranks for faces
-    int xneg = MPI_PROC_NULL, xpos = MPI_PROC_NULL;
-    int yneg = MPI_PROC_NULL, ypos = MPI_PROC_NULL;
-    int zneg = MPI_PROC_NULL, zpos = MPI_PROC_NULL;
-    MPI_Cart_shift(comm, 0, 1, &xneg, &xpos);
-    MPI_Cart_shift(comm, 1, 1, &yneg, &ypos);
-    MPI_Cart_shift(comm, 2, 1, &zneg, &zpos);
     int myrank = -1;
     MPI_Comm_rank(comm, &myrank);
+    MPI_Datatype Tmpi = std::is_same_v<T,double> ? MPI_DOUBLE : MPI_FLOAT;
 
-    // Pack/unpack helpers
-    auto pack_x = [&](int i_start, std::vector<T>& buf)
-    {
-        buf.resize(static_cast<std::size_t>(ny) * nz * ng);
-        std::size_t p = 0;
-        const int n = nx;
-        const int nsend = (n > 0) ? std::min(ng, n) : 0;
-        for (int k = 0; k < nz; ++k)
-            for (int j = 0; j < ny; ++j)
-                for (int g = 0; g < ng; ++g)
-                {
-                    int gi = i_start + g;
-                    if (gi < 0) gi = 0;
-                    if (gi >= n) gi = n - 1;
-                    buf[p++] = f(gi, j, k);
+    auto rank_of = [&](int ox,int oy,int oz)->int {
+        int c[3] = { ccoords[0]+ox, ccoords[1]+oy, ccoords[2]+oz };
+        for (int a=0; a<3; ++a){
+            if (c[a] < 0 || c[a] >= cdims[a]){
+                if (cper[a]) {
+                    if (c[a] < 0)                c[a] += cdims[a];
+                    else if (c[a] >= cdims[a])   c[a] -= cdims[a];
+                } else {
+                    return MPI_PROC_NULL;
                 }
-    };
-    auto unpack_x = [&](int i_ghost_start, const std::vector<T>& buf)
-    {
-        std::size_t p = 0;
-        for (int k = 0; k < nz; ++k)
-            for (int j = 0; j < ny; ++j)
-                for (int g = 0; g < ng; ++g)
-                    f(i_ghost_start + g, j, k) = buf[p++];
+            }
+        }
+        int r; MPI_Cart_rank(comm, c, &r); return r;
     };
 
-    auto pack_y = [&](int j_start, std::vector<T>& buf)
+    // Map (ox,oy,oz) ∈ {-1,0,1}^3 \ {(0,0,0)} → [0..25],
+    // paired with opposite(ox,oy,oz)
+    auto dir_index = [](int ox,int oy,int oz)->int {
+        int ix = ox+1, iy = oy+1, iz = oz+1;   // each in {0,1,2}
+        int id = ix*9 + iy*3 + iz;            // 0..26
+        return (id>13 ? id-1 : id);           // skip center (id==13)
+    };
+    auto opposite = [](int ox,int oy,int oz){ return std::array<int,3>{-ox,-oy,-oz}; };
+
+    struct Box { int i0,j0,k0, sx,sy,sz; }; // start + size (in interior indexing)
+
+    // n  = interior extent along this axis (cells or faces)
+    // g  = number of ghost layers
+    // o  = neighbor offset along this axis (-1,0,+1)
+    // isFaceNormal = true if this axis is the MAC-normal one for the field
+    auto src_start_axis = [&](int n, int g, int o, bool isFaceNormal)->int
     {
-        buf.resize(static_cast<std::size_t>(nx) * nz * ng);
-        std::size_t p = 0;
-        const int n = ny;
-        const int nsend = (n > 0) ? std::min(ng, n) : 0;
-        for (int k = 0; k < nz; ++k)
-            for (int i = 0; i < nx; ++i)
-                for (int g = 0; g < ng; ++g)
-                {
-                    int gj = j_start + g;
-                    if (gj < 0) gj = 0;
-                    if (gj >= n) gj = n - 1;
-                    buf[p++] = f(i, gj, k);
+        if (o == 0) return 0;
+
+        // Cell-centred (or tangential-to-axis) case: original behaviour.
+        if (!isFaceNormal)
+            return (o < 0 ? 0 : (n - g));
+
+        // Face-centred in the normal direction:
+        // here n = N_cells_local + 1.  Let nc be the number of cells.
+        const int nc = n - 1;
+
+        // To the minus neighbour we must send the first g faces *after*
+        // the shared interface face (local index 0); i = 1..g.
+        if (o < 0)
+            return 1;
+
+        // To the plus neighbour we must send the last g faces *before*
+        // the shared interface face at local index nc; i = nc-g..nc-1.
+        // (Assuming g <= nc; which holds for your runs.)
+        return nc - g;
+    };
+
+    // Destination: always write into canonical ghost locations; no MAC shift on
+    // the receiving side. The indexing convention is:
+    //   interior: [0 .. n-1]
+    //   ghosts- : [-g .. -1]
+    //   ghosts+ : [ n .. n+g-1]
+    auto dst_start_axis = [&](int n, int g, int o)->int {
+        if (o == 0) return 0;
+        return (o < 0 ? -g : n);
+    };
+
+    auto src_box = [&](int ox,int oy,int oz)->Box {
+        const int sx = (ox==0 ? nxI : ng);
+        const int sy = (oy==0 ? nyI : ng);
+        const int sz = (oz==0 ? nzI : ng);
+        const int i0 = (ox==0 ? 0 : src_start_axis(nxI, ng, ox, faceI));
+        const int j0 = (oy==0 ? 0 : src_start_axis(nyI, ng, oy, faceJ));
+        const int k0 = (oz==0 ? 0 : src_start_axis(nzI, ng, oz, faceK));
+    #ifndef NDEBUGEX
+        auto ok = [&](int n, int s0, int s)->bool { return s0 >= 0 && s0 + s <= n; };
+        assert(ok(nxI, i0, sx) && "src i out of range");
+        assert(ok(nyI, j0, sy) && "src j out of range");
+        assert(ok(nzI, k0, sz) && "src k out of range");
+    #endif
+        return { i0, j0, k0, sx, sy, sz };
+    };
+
+    auto dst_box = [&](int ox,int oy,int oz)->Box {
+        const int sx = (ox==0 ? nxI : ng);
+        const int sy = (oy==0 ? nyI : ng);
+        const int sz = (oz==0 ? nzI : ng);
+        const int i0d = (ox==0 ? 0 : dst_start_axis(nxI, ng, ox));
+        const int j0d = (oy==0 ? 0 : dst_start_axis(nyI, ng, oy));
+        const int k0d = (oz==0 ? 0 : dst_start_axis(nzI, ng, oz));
+    #ifndef NDEBUGEX
+        auto ghost_ok = [&](int n, int g, int o, int s0, int s)->bool {
+            if (o == 0) return (s0 >= 0 && s0 + s <= n);
+            if (o < 0)  return (s0 == -g && s == g);
+            else        return (s0 ==  n && s == g);
+        };
+        assert(ghost_ok(nxI, ng, ox, i0d, sx) && "dst i must lie in ghosts");
+        assert(ghost_ok(nyI, ng, oy, j0d, sy) && "dst j must lie in ghosts");
+        assert(ghost_ok(nzI, ng, oz, k0d, sz) && "dst k must lie in ghosts");
+    #endif
+        return { i0d, j0d, k0d, sx, sy, sz };
+    };
+
+    struct Dir {
+        int ox,oy,oz, peer, tag_recv, tag_send;
+        Box s, d;
+        std::size_t count;
+    };
+    std::array<Dir,26> dirs{};
+
+    {   // build all 26 directions
+        int p=0;
+        for (int oz=-1; oz<=1; ++oz)
+        for (int oy=-1; oy<=1; ++oy)
+        for (int ox=-1; ox<=1; ++ox){
+            if (ox==0 && oy==0 && oz==0) continue;
+            const int peer = rank_of(ox,oy,oz);
+            const int id   = dir_index(ox,oy,oz);
+            auto opp       = opposite(ox,oy,oz);
+            const int opp_id = dir_index(opp[0],opp[1],opp[2]);
+
+            Dir d;
+            d.ox=ox; d.oy=oy; d.oz=oz; d.peer=peer;
+            d.s = src_box(ox,oy,oz);
+            d.d = dst_box(ox,oy,oz);
+            d.count = std::size_t(d.s.sx)*std::size_t(d.s.sy)*std::size_t(d.s.sz);
+            // Irecv expects base+id; Isend uses peer’s expected tag = base+opp_id
+            d.tag_recv = tag_base + id;
+            d.tag_send = tag_base + opp_id;
+            dirs[p++] = d;
+        }
+    }
+
+    // helpers
+    auto pack = [&](const Dir& d, std::vector<T>& buf){
+        buf.resize(d.count);
+        std::size_t q=0;
+        for (int kk=0; kk<d.s.sz; ++kk){
+            const int k = d.s.k0 + kk;
+            for (int jj=0; jj<d.s.sy; ++jj){
+                const int j = d.s.j0 + jj;
+                for (int ii=0; ii<d.s.sx; ++ii){
+                    const int i = d.s.i0 + ii;
+                    buf[q++] = f(i,j,k);
                 }
+            }
+        }
     };
-    auto unpack_y = [&](int j_ghost_start, const std::vector<T>& buf)
-    {
-        std::size_t p = 0;
-        for (int k = 0; k < nz; ++k)
-            for (int i = 0; i < nx; ++i)
-                for (int g = 0; g < ng; ++g)
-                    f(i, j_ghost_start + g, k) = buf[p++];
-    };
-
-    auto pack_z = [&](int k_start, std::vector<T>& buf)
-    {
-        buf.resize(static_cast<std::size_t>(nx) * ny * ng);
-        std::size_t p = 0;
-        const int n = nz;
-        const int nsend = (n > 0) ? std::min(ng, n) : 0;
-        for (int j = 0; j < ny; ++j)
-            for (int i = 0; i < nx; ++i)
-                for (int g = 0; g < ng; ++g)
-                {
-                    int gk = k_start + g;
-                    if (gk < 0) gk = 0;
-                    if (gk >= n) gk = n - 1;
-                    buf[p++] = f(i, j, gk);
+    auto unpack = [&](const Dir& d, const std::vector<T>& buf){
+        std::size_t q=0;
+        for (int kk=0; kk<d.d.sz; ++kk){
+            const int k = d.d.k0 + kk;
+            for (int jj=0; jj<d.d.sy; ++jj){
+                const int j = d.d.j0 + jj;
+                for (int ii=0; ii<d.d.sx; ++ii){
+                    const int i = d.d.i0 + ii;
+                    f(i,j,k) = buf[q++];
                 }
+            }
+        }
     };
 
-    auto unpack_z = [&](int k_ghost_start, const std::vector<T>& buf)
-    {
-        std::size_t p = 0;
-        for (int j = 0; j < ny; ++j)
-            for (int i = 0; i < nx; ++i)
-                for (int g = 0; g < ng; ++g)
-                    f(i, j, k_ghost_start + g) = buf[p++];
+    // PROC_NULL: clamp from this rank’s interior (zero-gradient)
+    auto clamp_fill = [&](const Dir& d){
+        std::vector<T> tmp; tmp.resize(d.count);
+        std::size_t q=0;
+        for (int kk=0; kk<d.d.sz; ++kk){
+            int k = std::clamp(d.d.k0 + kk, 0, std::max(1,nzI)-1);
+            for (int jj=0; jj<d.d.sy; ++jj){
+                int j = std::clamp(d.d.j0 + jj, 0, std::max(1,nyI)-1);
+                for (int ii=0; ii<d.d.sx; ++ii){
+                    int i = std::clamp(d.d.i0 + ii, 0, std::max(1,nxI)-1);
+                    tmp[q++] = f(i,j,k);
+                }
+            }
+        }
+        unpack(d, tmp);
     };
 
-    // Buffers & requests
-    std::vector<T> s_xn, r_xn, s_xp, r_xp;
-    std::vector<T> s_yn, r_yn, s_yp, r_yp;
-    std::vector<T> s_zn, r_zn, s_zp, r_zp;
-    MPI_Request reqs[12];
-    int rcount = 0;
-    // Map T -> MPI_Datatype
-    MPI_Datatype Tmpi = MPI_BYTE;
-    if constexpr (std::is_same_v<T, double>)
-        Tmpi = MPI_DOUBLE;
-    else if constexpr (std::is_same_v<T, float>)
-        Tmpi = MPI_FLOAT;
-
-    // If a periodic axis has a self-neighbor (rank==myrank), prefer local copy for that axis.
-    const bool xneg_self = (xneg == myrank);
-    const bool xpos_self = (xpos == myrank);
-    const bool yneg_self = (yneg == myrank);
-    const bool ypos_self = (ypos == myrank);
-    const bool zneg_self = (zneg == myrank);
-    const bool zpos_self = (zpos == myrank);
-
-    // Post recvs (only for true remote neighbors)
-    if (xneg != MPI_PROC_NULL && !xneg_self)
-    {
-        r_xn.resize((size_t) ny * nz * ng);
-        MPI_Irecv(r_xn.data(), (int) r_xn.size(), Tmpi, xneg, tag_base + 0, comm, &reqs[rcount++]);
-    }
-    if (xpos != MPI_PROC_NULL && !xpos_self)
-    {
-        r_xp.resize((size_t) ny * nz * ng);
-        MPI_Irecv(r_xp.data(), (int) r_xp.size(), Tmpi, xpos, tag_base + 1, comm, &reqs[rcount++]);
-    }
-    if (yneg != MPI_PROC_NULL && !yneg_self)
-    {
-        r_yn.resize((size_t) nx * nz * ng);
-        MPI_Irecv(r_yn.data(), (int) r_yn.size(), Tmpi, yneg, tag_base + 2, comm, &reqs[rcount++]);
-    }
-    if (ypos != MPI_PROC_NULL && !ypos_self)
-    {
-        r_yp.resize((size_t) nx * nz * ng);
-        MPI_Irecv(r_yp.data(), (int) r_yp.size(), Tmpi, ypos, tag_base + 3, comm, &reqs[rcount++]);
-    }
-    if (zneg != MPI_PROC_NULL && !zneg_self)
-    {
-        r_zn.resize((size_t) nx * ny * ng);
-        MPI_Irecv(r_zn.data(), (int) r_zn.size(), Tmpi, zneg, tag_base + 4, comm, &reqs[rcount++]);
-    }
-    if (zpos != MPI_PROC_NULL && !zpos_self)
-    {
-        r_zp.resize((size_t) nx * ny * ng);
-        MPI_Irecv(r_zp.data(), (int) r_zp.size(), Tmpi, zpos, tag_base + 5, comm, &reqs[rcount++]);
+    // post all receives
+    std::array<std::vector<T>,26> rbuf{}, sbuf{};
+    std::vector<MPI_Request> reqs; reqs.reserve(52);
+    for (int idx=0; idx<26; ++idx){
+        const auto& d = dirs[idx];
+        if (d.peer!=MPI_PROC_NULL && d.peer!=myrank){
+            rbuf[idx].resize(d.count);
+            MPI_Request r{};
+            MPI_Irecv(rbuf[idx].data(),
+                      static_cast<int>(d.count), Tmpi,
+                      d.peer, d.tag_recv, comm, &r);
+            reqs.push_back(r);
+        }
     }
 
-    // Pack & send
-    if (xneg != MPI_PROC_NULL && !xneg_self)
-    {
-        pack_x(0, s_xn);
-        MPI_Isend(s_xn.data(), (int) s_xn.size(), Tmpi, xneg, tag_base + 1, comm, &reqs[rcount++]);
-    }
-    if (xpos != MPI_PROC_NULL && !xpos_self)
-    {
-        const int nsend = std::min(ng, nx);
-        pack_x(nx - nsend, s_xp);
-        MPI_Isend(s_xp.data(), (int) s_xp.size(), Tmpi, xpos, tag_base + 0, comm, &reqs[rcount++]);
-    }
-    if (yneg != MPI_PROC_NULL && !yneg_self)
-    {
-        pack_y(0, s_yn);
-        MPI_Isend(s_yn.data(), (int) s_yn.size(), Tmpi, yneg, tag_base + 3, comm, &reqs[rcount++]);
-    }
-    if (ypos != MPI_PROC_NULL && !ypos_self)
-    {
-        const int nsend = std::min(ng, ny);
-        pack_y(ny - nsend, s_yp);
-        MPI_Isend(s_yp.data(), (int) s_yp.size(), Tmpi, ypos, tag_base + 2, comm, &reqs[rcount++]);
-    }
-    if (zneg != MPI_PROC_NULL && !zneg_self)
-    {
-        pack_z(0, s_zn);
-        MPI_Isend(s_zn.data(), (int) s_zn.size(), Tmpi, zneg, tag_base + 5, comm, &reqs[rcount++]);
-    }
-    if (zpos != MPI_PROC_NULL && !zpos_self)
-    {
-        const int nsend = std::min(ng, nz);
-        pack_z(nz - nsend, s_zp);
-        MPI_Isend(s_zp.data(), (int) s_zp.size(), Tmpi, zpos, tag_base + 4, comm, &reqs[rcount++]);
+    // pack & send (or local paths)
+    for (int idx=0; idx<26; ++idx){
+        const auto& d = dirs[idx];
+        if (d.peer == MPI_PROC_NULL){
+            clamp_fill(d);
+        } else if (d.peer == myrank){
+            std::vector<T> tmp; pack(d,tmp); unpack(d,tmp);
+        } else {
+            pack(d, sbuf[idx]);
+            MPI_Request s{};
+            MPI_Isend(sbuf[idx].data(),
+                      static_cast<int>(d.count), Tmpi,
+                      d.peer, d.tag_send, comm, &s);
+            reqs.push_back(s);
+        }
     }
 
-    if (rcount)
-        MPI_Waitall(rcount, reqs, MPI_STATUSES_IGNORE);
+    if (!reqs.empty())
+        MPI_Waitall(static_cast<int>(reqs.size()),
+                    reqs.data(), MPI_STATUSES_IGNORE);
 
-    // Unpack to ghosts (only where a remote message arrived)
-    if (!r_xn.empty())
-        unpack_x(-ng, r_xn);
-    if (!r_xp.empty())
-        unpack_x(nx, r_xp);
-    if (!r_yn.empty())
-        unpack_y(-ng, r_yn);
-    if (!r_yp.empty())
-        unpack_y(ny, r_yp);
-    if (!r_zn.empty())
-        unpack_z(-ng, r_zn);
-    if (!r_zp.empty())
-        unpack_z(nz, r_zp);
-
-    // For any axis with self-neighbor (periodic, cdims==1), do a local copy on that axis only.
-    // This avoids clobbering halos that were filled via MPI on other periodic-but-distributed axes.
-    if (xneg_self || xpos_self)
-        wrap_x_faces_local(f);
-    if (yneg_self || ypos_self)
-        wrap_y_faces_local(f);
-    if (zneg_self || zpos_self)
-        wrap_z_faces_local(f);
-
-    // For any non-periodic face with no neighbor (PROC_NULL), ensure ghosts are defined.
-    // This covers slab partitions like nz=1 with ng>=2.
-    if (xneg == MPI_PROC_NULL && !m.periodic[0]) safe_fill_nonperiodic_face(0, /*lower*/true);
-    if (xpos == MPI_PROC_NULL && !m.periodic[0]) safe_fill_nonperiodic_face(0, /*lower*/false);
-    if (yneg == MPI_PROC_NULL && !m.periodic[1]) safe_fill_nonperiodic_face(1, /*lower*/true);
-    if (ypos == MPI_PROC_NULL && !m.periodic[1]) safe_fill_nonperiodic_face(1, /*lower*/false);
-    if (zneg == MPI_PROC_NULL && !m.periodic[2]) safe_fill_nonperiodic_face(2, /*lower*/true);
-    if (zpos == MPI_PROC_NULL && !m.periodic[2]) safe_fill_nonperiodic_face(2, /*lower*/false);
-
+    // unpack remote receives
+    for (int idx=0; idx<26; ++idx){
+        const auto& d = dirs[idx];
+        auto &rb = rbuf[idx];
+        if (!rb.empty()) unpack(d, rb);
+    }
     return true;
 }
 

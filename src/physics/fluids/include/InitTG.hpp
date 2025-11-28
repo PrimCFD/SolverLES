@@ -1,6 +1,6 @@
 #pragma once
-#include "master/plugin/Action.hpp"
 #include "master/RunContext.hpp"
+#include "master/plugin/Action.hpp"
 #include <memory>
 #include <string>
 
@@ -21,7 +21,7 @@ struct InitTG final : core::master::plugin::IAction
     void* mpi_comm_{nullptr};
 };
 
-std::shared_ptr<core::master::plugin::IAction> make_init_tg(
-    const core::master::plugin::KV& kv, const core::master::RunContext& rc);
+std::shared_ptr<core::master::plugin::IAction> make_init_tg(const core::master::plugin::KV& kv,
+                                                            const core::master::RunContext& rc);
 
 } // namespace fluids

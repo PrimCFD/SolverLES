@@ -170,7 +170,12 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
     const std::size_t Nu = (size_t) nxu_tot * nyu_tot * nzu_tot;
     const std::size_t Nv = (size_t) nxv_tot * nyv_tot * nzv_tot;
     const std::size_t Nw = (size_t) nxw_tot * nyw_tot * nzw_tot;
-    // Freeze RHS = u^n, v^n, w^n for this timestep
+    // Make sure halos for u^n, v^n, w^n are consistent across ranks
+    // BEFORE we freeze the RHS for this timestep. This ensures that
+    // the IMEX RHS, advection, and diffusion all see the same state.
+    core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"u", "v", "w"});
+
+    // Freeze RHS = u^n, v^n, w^n for this timestep (including ghosts)
     std::vector<double> urhs(Nu), vrhs(Nv), wrhs(Nw);
     std::copy_n((const double*) vu.host_ptr, Nu, urhs.data());
     std::copy_n((const double*) vv.host_ptr, Nv, vrhs.data());
@@ -180,6 +185,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
     std::vector<double> nu_eff(Ncenter, nu_);
     if (fields.contains("nu_t"))
     {
+        core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"nu_t"});
         auto vt = fields.view("nu_t");
         const double* t = static_cast<const double*>(vt.host_ptr);
         for (std::size_t q = 0; q < Ncenter; ++q)
@@ -217,8 +223,8 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
         advect_velocity_kk3_mac_c(static_cast<const double*>(vu.host_ptr), nxu_tot, nyu_tot,
                                   nzu_tot, static_cast<const double*>(vv.host_ptr), nxv_tot,
                                   nyv_tot, nzv_tot, static_cast<const double*>(vw.host_ptr),
-                                  nxw_tot, nyw_tot, nzw_tot, ng, dx_, dy_, dz_,
-                                  Nu_t.data(), Nv_t.data(), Nw_t.data());
+                                  nxw_tot, nyw_tot, nzw_tot, ng, dx_, dy_, dz_, Nu_t.data(),
+                                  Nv_t.data(), Nw_t.data());
     }
 
     // ---- Diffusion operator apply D(u)=L u at faces for AM2/AM3 RHS terms ----
@@ -423,6 +429,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
                 }
             }
         }
+        
         const double dt_imp = theta * dt; // scale the implicit block to match AMk diagonal
 
         const int kmax = std::max(1, pred_imp_max_iters_);

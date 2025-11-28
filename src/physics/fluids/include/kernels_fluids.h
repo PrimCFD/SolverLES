@@ -78,8 +78,8 @@ extern "C"
     void advect_velocity_kk3_mac_c(const double* u, int nxu_tot, int nyu_tot, int nzu_tot,
                                    const double* v, int nxv_tot, int nyv_tot, int nzv_tot,
                                    const double* w, int nxw_tot, int nyw_tot, int nzw_tot, int ng,
-                                   double dx, double dy, double dz, double* Nu,
-                                   double* Nv, double* Nw);
+                                   double dx, double dy, double dz, double* Nu, double* Nv,
+                                   double* Nw);
 
 #ifdef __cplusplus
 }

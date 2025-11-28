@@ -1,8 +1,8 @@
-#include "master/Views.hpp"
+#include "master/io/CGNSWriter.hpp"
 #include "master/Log.hpp"
+#include "master/Views.hpp"
 #include "master/io/StagingPool.hpp"
 #include "master/io/WritePlan.hpp"
-#include "master/io/CGNSWriter.hpp"
 #include "memory/MpiBox.hpp"
 
 #include <algorithm>
@@ -62,10 +62,14 @@ static inline void cart_dims_coords(MPI_Comm in_comm, int rank, int dims[3], int
     MPI_Comm_size(comm, &size);
     int td[3] = {0, 0, 0};
     MPI_Dims_create(size, 3, td);
-    dims[0] = td[0]; dims[1] = td[1]; dims[2] = td[2];
+    dims[0] = td[0];
+    dims[1] = td[1];
+    dims[2] = td[2];
     int r = rank;
-    coords[0] = (dims[0] > 0) ? (r % dims[0]) : 0; r /= (dims[0] > 0 ? dims[0] : 1);
-    coords[1] = (dims[1] > 0) ? (r % dims[1]) : 0; r /= (dims[1] > 0 ? dims[1] : 1);
+    coords[0] = (dims[0] > 0) ? (r % dims[0]) : 0;
+    r /= (dims[0] > 0 ? dims[0] : 1);
+    coords[1] = (dims[1] > 0) ? (r % dims[1]) : 0;
+    r /= (dims[1] > 0 ? dims[1] : 1);
     coords[2] = (dims[2] > 0) ? (r % dims[2]) : 0;
 }
 
@@ -285,20 +289,22 @@ void CGNSWriter::open_case(const std::string& case_name)
         cg_set_file_type(CG_FILE_HDF5);
     }
 
-    
     // PARALLEL open (all ranks)
     {
         MPI_Comm comm = mpi_unbox(cfg_.mpi_cart_comm);
-        if (comm == MPI_COMM_NULL) comm = MPI_COMM_WORLD;
+        if (comm == MPI_COMM_NULL)
+            comm = MPI_COMM_WORLD;
 
         // Open brand-new file collectively in WRITE mode and create metadata in parallel session
         int ok_local = (cgp_open(impl_->filepath.c_str(), CG_MODE_WRITE, &impl_->file) == CG_OK);
         int ok_all = 0;
         MPI_Allreduce(&ok_local, &ok_all, 1, MPI_INT, MPI_MIN, comm);
-        if (!ok_all) {
-            if (!ok_local) {
-                LOGE("[cgns] cgp_open(%s, WRITE) failed: %s\n",
-                             impl_->filepath.c_str(), cg_get_error());
+        if (!ok_all)
+        {
+            if (!ok_local)
+            {
+                LOGE("[cgns] cgp_open(%s, WRITE) failed: %s\n", impl_->filepath.c_str(),
+                     cg_get_error());
             }
             // Ensure everyone leaves consistently
             impl_->opened = false;
@@ -309,23 +315,31 @@ void CGNSWriter::open_case(const std::string& case_name)
         int base_id = 0, zone_id = 0;
         {
             const int cell_dim = 3, phys_dim = 3;
-            if (cg_base_write(impl_->file, "Base", cell_dim, phys_dim, &base_id) != CG_OK) {
+            if (cg_base_write(impl_->file, "Base", cell_dim, phys_dim, &base_id) != CG_OK)
+            {
                 LOGE("[cgns] cg_base_write failed: %s\n", cg_get_error());
                 base_id = 0;
             }
             const int GX_cells = cfg_.mesh->global[0];
             const int GY_cells = cfg_.mesh->global[1];
             const int GZ_cells = cfg_.mesh->global[2];
-            cgsize_t size[9] = {
-                (cgsize_t)(GX_cells + 1), (cgsize_t)(GY_cells + 1), (cgsize_t)(GZ_cells + 1),
-                (cgsize_t) GX_cells,      (cgsize_t) GY_cells,      (cgsize_t) GZ_cells,
-                0, 0, 0};
+            cgsize_t size[9] = {(cgsize_t) (GX_cells + 1),
+                                (cgsize_t) (GY_cells + 1),
+                                (cgsize_t) (GZ_cells + 1),
+                                (cgsize_t) GX_cells,
+                                (cgsize_t) GY_cells,
+                                (cgsize_t) GZ_cells,
+                                0,
+                                0,
+                                0};
             if (base_id != 0 &&
-                cg_zone_write(impl_->file, base_id, "Zone", size, Structured, &zone_id) != CG_OK) {
+                cg_zone_write(impl_->file, base_id, "Zone", size, Structured, &zone_id) != CG_OK)
+            {
                 LOGE("[cgns] cg_zone_write failed: %s\n", cg_get_error());
                 zone_id = 0;
             }
-            if (base_id != 0) {
+            if (base_id != 0)
+            {
                 ok(cg_simulation_type_write(impl_->file, base_id, TimeAccurate));
             }
         }
@@ -333,8 +347,10 @@ void CGNSWriter::open_case(const std::string& case_name)
         int meta_ok = (base_id != 0 && zone_id != 0);
         int meta_all = 0;
         MPI_Allreduce(&meta_ok, &meta_all, 1, MPI_INT, MPI_MIN, comm);
-        if (!meta_all) {
-            if (impl_->file >= 0) cgp_close(impl_->file);
+        if (!meta_all)
+        {
+            if (impl_->file >= 0)
+                cgp_close(impl_->file);
             impl_->opened = false;
             return;
         }
@@ -386,8 +402,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (!ok_all)
             {
                 if (!ok_local)
-                    LOGE("[cgns] cgp_coord_write(CoordinateX) failed: %s\n",
-                                 cg_get_error());
+                    LOGE("[cgns] cgp_coord_write(CoordinateX) failed: %s\n", cg_get_error());
                 return;
             }
             ok_local = (cgp_coord_write(impl_->file, impl_->base, impl_->zone, RealDouble,
@@ -396,8 +411,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (!ok_all)
             {
                 if (!ok_local)
-                    LOGE("[cgns] cgp_coord_write(CoordinateY) failed: %s\n",
-                                 cg_get_error());
+                    LOGE("[cgns] cgp_coord_write(CoordinateY) failed: %s\n", cg_get_error());
                 return;
             }
             ok_local = (cgp_coord_write(impl_->file, impl_->base, impl_->zone, RealDouble,
@@ -406,8 +420,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (!ok_all)
             {
                 if (!ok_local)
-                    LOGE("[cgns] cgp_coord_write(CoordinateZ) failed: %s\n",
-                                 cg_get_error());
+                    LOGE("[cgns] cgp_coord_write(CoordinateZ) failed: %s\n", cg_get_error());
                 return;
             }
         }
@@ -455,7 +468,8 @@ void CGNSWriter::write(const WriteRequest& req)
                                        (cgsize_t) (oz + vzn)};
             // Coordinate slabs must also succeed on all ranks collectively.
             MPI_Comm comm2 = mpi_unbox(cfg_.mpi_cart_comm);
-            if (comm2 == MPI_COMM_NULL) comm2 = MPI_COMM_WORLD;
+            if (comm2 == MPI_COMM_NULL)
+                comm2 = MPI_COMM_WORLD;
             int ok_local = (cgp_coord_write_data(impl_->file, impl_->base, impl_->zone, cx, rminV,
                                                  rmaxV, X_local.data()) == CG_OK);
             int ok_all = 0;
@@ -463,8 +477,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (!ok_all)
             {
                 if (!ok_local)
-                    LOGE("[cgns] cgp_coord_write_data(X) failed: %s\n",
-                                 cg_get_error());
+                    LOGE("[cgns] cgp_coord_write_data(X) failed: %s\n", cg_get_error());
                 return;
             }
             ok_local = (cgp_coord_write_data(impl_->file, impl_->base, impl_->zone, cy, rminV,
@@ -473,8 +486,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (!ok_all)
             {
                 if (!ok_local)
-                    LOGE("[cgns] cgp_coord_write_data(Y) failed: %s\n",
-                                 cg_get_error());
+                    LOGE("[cgns] cgp_coord_write_data(Y) failed: %s\n", cg_get_error());
                 return;
             }
             ok_local = (cgp_coord_write_data(impl_->file, impl_->base, impl_->zone, cz, rminV,
@@ -483,8 +495,7 @@ void CGNSWriter::write(const WriteRequest& req)
             if (!ok_all)
             {
                 if (!ok_local)
-                    LOGE("[cgns] cgp_coord_write_data(Z) failed: %s\n",
-                                 cg_get_error());
+                    LOGE("[cgns] cgp_coord_write_data(Z) failed: %s\n", cg_get_error());
                 return;
             }
         }
@@ -515,12 +526,19 @@ void CGNSWriter::write(const WriteRequest& req)
     {
         // All ranks must enter these cg_* calls collectively in a pcgns session.
         int nsol = 0, id = 0;
-        if (cg_nsols(impl_->file, impl_->base, impl_->zone, &nsol) != CG_OK) nsol = 0;
-        for (int si = 1; si <= nsol; ++si) {
+        if (cg_nsols(impl_->file, impl_->base, impl_->zone, &nsol) != CG_OK)
+            nsol = 0;
+        for (int si = 1; si <= nsol; ++si)
+        {
             char nm[256] = {0};
             GridLocation_t l = Vertex;
-            if (cg_sol_info(impl_->file, impl_->base, impl_->zone, si, nm, &l) != CG_OK) continue;
-            if (std::strcmp(nm, wanted) == 0) { id = si; break; }
+            if (cg_sol_info(impl_->file, impl_->base, impl_->zone, si, nm, &l) != CG_OK)
+                continue;
+            if (std::strcmp(nm, wanted) == 0)
+            {
+                id = si;
+                break;
+            }
         }
         return id;
     };
@@ -559,13 +577,19 @@ void CGNSWriter::write(const WriteRequest& req)
                 GridLocation_t l = Vertex;
                 if (cg_sol_info(impl_->file, impl_->base, impl_->zone, si, nm, &l) != CG_OK)
                     continue;
-                if (std::strcmp(nm, name) == 0) { id = si; break; }
+                if (std::strcmp(nm, name) == 0)
+                {
+                    id = si;
+                    break;
+                }
             }
             int need_create = (id == 0);
             int need_all = 0;
             MPI_Allreduce(&need_create, &need_all, 1, MPI_INT, MPI_MAX, comm);
-            if (need_all) {
-                if (cg_sol_write(impl_->file, impl_->base, impl_->zone, name, loc, &id) != CG_OK) {
+            if (need_all)
+            {
+                if (cg_sol_write(impl_->file, impl_->base, impl_->zone, name, loc, &id) != CG_OK)
+                {
                     LOGE("[cgns] cg_sol_write(%s) failed: %s\n", name, cg_get_error());
                     id = 0;
                 }
@@ -647,8 +671,8 @@ void CGNSWriter::write(const WriteRequest& req)
             if (cgp_field_write(impl_->file, impl_->base, impl_->zone, sol_id, dtype,
                                 fp.shape.name.c_str(), &fld_id) != CG_OK)
             {
-                LOGE("[cgns] cgp_field_write(%s) failed: %s\n",
-                             fp.shape.name.c_str(), cg_get_error());
+                LOGE("[cgns] cgp_field_write(%s) failed: %s\n", fp.shape.name.c_str(),
+                     cg_get_error());
                 // Don't abort the whole write step; continue to any CellCenter alias below.
             }
             else
@@ -668,8 +692,8 @@ void CGNSWriter::write(const WriteRequest& req)
             if (cgp_field_write_data(impl_->file, impl_->base, impl_->zone, sol_id, fld_id, rmin,
                                      rmax, staging) != CG_OK)
             {
-                LOGE("[cgns] cgp_field_write_data(%s) failed: %s\n",
-                             fp.shape.name.c_str(), cg_get_error());
+                LOGE("[cgns] cgp_field_write_data(%s) failed: %s\n", fp.shape.name.c_str(),
+                     cg_get_error());
                 // Keep going; we'll still try to emit the CellCenter alias for velocities.
             }
         }
@@ -745,8 +769,7 @@ void CGNSWriter::write(const WriteRequest& req)
                 if (cgp_field_write(impl_->file, impl_->base, impl_->zone, sol_cell_id, dtype,
                                     alias.c_str(), &fld_cc) != CG_OK)
                 {
-                    LOGE("[cgns] cgp_field_write(%s) failed: %s\n", alias.c_str(),
-                                 cg_get_error());
+                    LOGE("[cgns] cgp_field_write(%s) failed: %s\n", alias.c_str(), cg_get_error());
                     return;
                 }
                 // Cell-centered alias write ranges are strictly the local (cell) tile:
@@ -759,8 +782,8 @@ void CGNSWriter::write(const WriteRequest& req)
                 if (cgp_field_write_data(impl_->file, impl_->base, impl_->zone, sol_cell_id, fld_cc,
                                          rmin_cc, rmax_cc, tmp) != CG_OK)
                 {
-                    LOGE("[cgns] cgp_field_write_data(CellCenter %s) failed: %s\n",
-                                 alias.c_str(), cg_get_error());
+                    LOGE("[cgns] cgp_field_write_data(CellCenter %s) failed: %s\n", alias.c_str(),
+                         cg_get_error());
                     return;
                 }
             } // alias creation & write (collective)

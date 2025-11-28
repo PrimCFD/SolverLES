@@ -249,7 +249,7 @@ int main(int argc, char** argv)
     const int nx = (int) size[3], ny = (int) size[4], nz = (int) size[5];
 
     // Require FlowSolutionPointers and use them exclusively (no legacy scan).
-    auto solptrs = read_cgns_char_array_2d(f, 1, 1, "FlowSolutionPointers", /*width*/ 32);
+    auto solptrs = read_cgns_char_array_2d(f, 1, 1, "FlowSolutionPointers", /*width*/ 128);
     if (solptrs.size() < 2)
         die("FlowSolutionPointers missing or too few steps", 10);
     const std::string& sol0_name = solptrs.front();   // first written snapshot
