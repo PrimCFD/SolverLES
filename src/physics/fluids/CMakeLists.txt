@@ -14,10 +14,14 @@ set(SRC
     src/VelocityCorrector.cpp)
 
 add_physics_plugin(
-  TARGET  physics_fluids
-  SOURCES "${SRC}"
-  INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/include"
-  LINK    core;numerics;PETSC::petsc)
+  TARGET
+  physics_fluids
+  SOURCES
+  "${SRC}"
+  INCLUDE
+  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  LINK
+  core;numerics;PETSC::petsc)
 
 # --- OpenMP + per-target tuning ----
 find_package(OpenMP REQUIRED)
@@ -26,8 +30,8 @@ find_package(OpenMP REQUIRED)
 target_link_libraries(physics_fluids PRIVATE OpenMP::OpenMP_CXX)
 
 # Generic high opt for both C++ and Fortran
-target_compile_options(
-  physics_fluids PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O3 -march=native>)
+target_compile_options(physics_fluids PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O3
+                                              -march=native>)
 
 set_target_properties(
   physics_fluids

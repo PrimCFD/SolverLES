@@ -15,12 +15,12 @@
 // - KSP/Amat/Pmat: KSPSetOperators(); Chebyshev smoother: KSPCHEBYSHEV/KSPChebyshevEstEigSet()
 
 #include "PressurePoisson.hpp"
+#include "MacOps.hpp"
 #include "Program.hpp"
 #include "master/FieldCatalog.hpp"
 #include "master/HaloOps.hpp"
 #include "master/Log.hpp"
 #include "master/Views.hpp"
-#include "MacOps.hpp"
 
 #include <algorithm>
 #include <array>

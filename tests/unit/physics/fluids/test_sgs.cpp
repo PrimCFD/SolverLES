@@ -1,8 +1,8 @@
+#include "MacOps.hpp"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <vector>
-#include "MacOps.hpp"
 using namespace numerics::kernels;
 
 using Catch::Approx;
@@ -48,8 +48,8 @@ TEST_CASE("Smagorinsky SGS on constant-gradient velocity (MAC)", "[fluids][sgs]"
 
     // Call new MAC kernel signature
     sgs_smagorinsky(u.data(), v.data(), w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot,
-                          nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot, ng, dx, dy,
-                          dz, Cs, nu_t.data());
+                    nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot, ng, dx, dy, dz,
+                    Cs, nu_t.data());
 
     // Expected Smag remains √[2(a²+b²+c²)], Δ=(dx*dy*dz)^(1/3)=1
     const double Smag = std::sqrt(2.0 * (a * a + b * b + c * c));

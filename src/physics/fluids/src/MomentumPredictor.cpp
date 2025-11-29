@@ -1,4 +1,5 @@
 #include "MomentumPredictor.hpp"
+#include "MacOps.hpp"
 #include "master/FieldCatalog.hpp"
 #include "master/HaloOps.hpp"
 #include <algorithm> // std::transform, std::copy_n
@@ -11,7 +12,6 @@
 #include <numeric>
 #include <stdexcept>
 #include <string>
-#include "MacOps.hpp"
 using namespace numerics::kernels;
 
 #include "memory/MpiBox.hpp"
@@ -221,11 +221,10 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
         Nu_t.assign(NuN, 0.0);
         Nv_t.assign(NvN, 0.0);
         Nw_t.assign(NwN, 0.0);
-        advect_kk3(static_cast<const double*>(vu.host_ptr), nxu_tot, nyu_tot,
-                                  nzu_tot, static_cast<const double*>(vv.host_ptr), nxv_tot,
-                                  nyv_tot, nzv_tot, static_cast<const double*>(vw.host_ptr),
-                                  nxw_tot, nyw_tot, nzw_tot, ng, dx_, dy_, dz_, Nu_t.data(),
-                                  Nv_t.data(), Nw_t.data());
+        advect_kk3(static_cast<const double*>(vu.host_ptr), nxu_tot, nyu_tot, nzu_tot,
+                   static_cast<const double*>(vv.host_ptr), nxv_tot, nyv_tot, nzv_tot,
+                   static_cast<const double*>(vw.host_ptr), nxw_tot, nyw_tot, nzw_tot, ng, dx_, dy_,
+                   dz_, Nu_t.data(), Nv_t.data(), Nw_t.data());
     }
 
     // ---- Diffusion operator apply D(u)=L u at faces for AM2/AM3 RHS terms ----

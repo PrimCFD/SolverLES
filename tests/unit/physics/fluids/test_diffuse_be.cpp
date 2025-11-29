@@ -1,8 +1,8 @@
+#include "MacOps.hpp"
 #include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
-#include "MacOps.hpp"
 using namespace numerics::kernels;
 
 using Catch::Approx;
@@ -68,26 +68,25 @@ TEST_CASE("BE Jacobi sweep reduces diffusion residual", "[fluids][diffuse][be]")
     std::fill(w_iter.begin(), w_iter.end(), 0.0);
 
     double res2_before = -1.0, rhs2_before = -1.0;
-    diffuse_be_residual(
-        u_rhs.data(), v_rhs.data(), w_rhs.data(), u_iter.data(), v_iter.data(), w_iter.data(),
-        nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot,
-        nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt, res2_before, rhs2_before);
+    diffuse_be_residual(u_rhs.data(), v_rhs.data(), w_rhs.data(), u_iter.data(), v_iter.data(),
+                        w_iter.data(), nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot, nyu_tot,
+                        nzu_tot, nxv_tot, nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng, dx, dy,
+                        dz, dt, res2_before, rhs2_before);
 
-    diffuse_be_jacobi_sweep(u_rhs.data(), v_rhs.data(), w_rhs.data(), u_iter.data(),
-                                    v_iter.data(), w_iter.data(), nu_eff.data(), nxc_tot, nyc_tot,
-                                    nzc_tot, nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot,
-                                    nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt, u_next.data(),
-                                    v_next.data(), w_next.data());
+    diffuse_be_jacobi_sweep(u_rhs.data(), v_rhs.data(), w_rhs.data(), u_iter.data(), v_iter.data(),
+                            w_iter.data(), nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot,
+                            nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot,
+                            ng, dx, dy, dz, dt, u_next.data(), v_next.data(), w_next.data());
 
     copy_halos_face(u_next, u_iter, nxu_tot, nyu_tot, nzu_tot, ng);
     copy_halos_face(v_next, v_iter, nxv_tot, nyv_tot, nzv_tot, ng);
     copy_halos_face(w_next, w_iter, nxw_tot, nyw_tot, nzw_tot, ng);
 
     double res2_after = -1.0, rhs2_after = -1.0;
-    diffuse_be_residual(
-        u_rhs.data(), v_rhs.data(), w_rhs.data(), u_next.data(), v_next.data(), w_next.data(),
-        nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot,
-        nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt, res2_after, rhs2_after);
+    diffuse_be_residual(u_rhs.data(), v_rhs.data(), w_rhs.data(), u_next.data(), v_next.data(),
+                        w_next.data(), nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot, nyu_tot,
+                        nzu_tot, nxv_tot, nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng, dx, dy,
+                        dz, dt, res2_after, rhs2_after);
 
     REQUIRE(rhs2_after == Approx(rhs2_before));
     REQUIRE(res2_after < res2_before);
@@ -141,10 +140,10 @@ TEST_CASE("Red-black GS updates only the requested color", "[fluids][diffuse][gs
     auto u_before = u, v_before = v, w_before = w;
 
     // Update color 0 (red) on MAC grid
-    diffuse_be_rbgs_color(u.data(), v.data(), w.data(), u_rhs.data(), v_rhs.data(),
-                                       w_rhs.data(), nu_eff.data(), nxc_tot, nyc_tot, nzc_tot,
-                                       nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot,
-                                       nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt, /*color=*/0);
+    diffuse_be_rbgs_color(u.data(), v.data(), w.data(), u_rhs.data(), v_rhs.data(), w_rhs.data(),
+                          nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot, nyu_tot, nzu_tot,
+                          nxv_tot, nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt,
+                          /*color=*/0);
 
     // Check parity behavior (per-component to respect each face-grid extent)
     bool any_updated = false;

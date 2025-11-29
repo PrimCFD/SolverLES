@@ -1,7 +1,7 @@
+#include "MacOps.hpp"
 #include "simple_bench.hpp"
 #include <random>
 #include <vector>
-#include "MacOps.hpp"
 using namespace numerics::kernels;
 
 static inline size_t idx(int I, int J, int K, int nx_tot, int ny_tot)
@@ -62,9 +62,9 @@ int main()
     auto [mean_grad, std_grad] = bench::run(
         [&]
         {
-            grad_p_faces(p.data(), nxc_tot, nyc_tot, nzc_tot, ng, dx, dy, dz, dpx_u.data(),
-                          nxu_tot, nyu_tot, nzu_tot, dpy_v.data(), nxv_tot, nyv_tot, nzv_tot,
-                          dpz_w.data(), nxw_tot, nyw_tot, nzw_tot);
+            grad_p_faces(p.data(), nxc_tot, nyc_tot, nzc_tot, ng, dx, dy, dz, dpx_u.data(), nxu_tot,
+                         nyu_tot, nzu_tot, dpy_v.data(), nxv_tot, nyv_tot, nzv_tot, dpz_w.data(),
+                         nxw_tot, nyw_tot, nzw_tot);
         });
     // bytes ~ read p (Nc) + write three face grads (Nu+Nv+Nw)
     double bytes_grad = (static_cast<double>(Nc + Nu + Nv + Nw)) * sizeof(double);
@@ -74,9 +74,9 @@ int main()
     auto [mean_div, std_div] = bench::run(
         [&]
         {
-            divergence(u.data(), v.data(), w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot,
-                             nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot,
-                             ng, dx, dy, dz, div.data());
+            divergence(u.data(), v.data(), w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot,
+                       nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot, ng, dx, dy,
+                       dz, div.data());
         });
     // bytes ~ read u/v/w faces (Nu+Nv+Nw) + write div centers (Nc)
     double bytes_div = (static_cast<double>(Nu + Nv + Nw + Nc)) * sizeof(double);
@@ -87,9 +87,9 @@ int main()
         [&]
         {
             correct_velocity_const_rho(u.data(), v.data(), w.data(), dpx_u.data(), dpy_v.data(),
-                                   dpz_w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot,
-                                   nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot,
-                                   ng, rho, dt);
+                                       dpz_w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot,
+                                       nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot,
+                                       nzc_tot, ng, rho, dt);
         });
     // bytes ~ inout u/v/w faces (Nu+Nv+Nw) + read grads (Nu+Nv+Nw)
     double bytes_corr = (static_cast<double>(2 * (Nu + Nv + Nw))) * sizeof(double);

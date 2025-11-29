@@ -1,8 +1,8 @@
 
+#include "MacOps.hpp"
 #include "simple_bench.hpp"
 #include <random>
 #include <vector>
-#include "MacOps.hpp"
 using namespace numerics::kernels;
 
 int main()
@@ -36,11 +36,10 @@ int main()
     auto [mean_jac, std_jac] = bench::run(
         [&]
         {
-            diffuse_be_jacobi_sweep(u_rhs.data(), v_rhs.data(), w_rhs.data(), u0.data(),
-                                            v0.data(), w0.data(), nu_eff.data(), nxc_tot, nyc_tot,
-                                            nzc_tot, nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot,
-                                            nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt,
-                                            u1.data(), v1.data(), w1.data());
+            diffuse_be_jacobi_sweep(u_rhs.data(), v_rhs.data(), w_rhs.data(), u0.data(), v0.data(),
+                                    w0.data(), nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot,
+                                    nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot, nxw_tot, nyw_tot,
+                                    nzw_tot, ng, dx, dy, dz, dt, u1.data(), v1.data(), w1.data());
             // swap iterates
             std::swap(u0, u1);
             std::swap(v0, v1);
@@ -59,14 +58,14 @@ int main()
     auto [mean_gs, std_gs] = bench::run(
         [&]
         {
-            diffuse_be_rbgs_color(
-                u0.data(), v0.data(), w0.data(), u_rhs.data(), v_rhs.data(), w_rhs.data(),
-                nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot, nyu_tot, nzu_tot, nxv_tot,
-                nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt, /*color=*/0);
-            diffuse_be_rbgs_color(
-                u0.data(), v0.data(), w0.data(), u_rhs.data(), v_rhs.data(), w_rhs.data(),
-                nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot, nyu_tot, nzu_tot, nxv_tot,
-                nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt, /*color=*/1);
+            diffuse_be_rbgs_color(u0.data(), v0.data(), w0.data(), u_rhs.data(), v_rhs.data(),
+                                  w_rhs.data(), nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot,
+                                  nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot, nxw_tot, nyw_tot,
+                                  nzw_tot, ng, dx, dy, dz, dt, /*color=*/0);
+            diffuse_be_rbgs_color(u0.data(), v0.data(), w0.data(), u_rhs.data(), v_rhs.data(),
+                                  w_rhs.data(), nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot,
+                                  nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot, nxw_tot, nyw_tot,
+                                  nzw_tot, ng, dx, dy, dz, dt, /*color=*/1);
         });
 
     // Each color updates ~half interior faces; rough estimate per color ~(7N/2 reads + 3N/2 writes)

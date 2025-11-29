@@ -1,4 +1,5 @@
 #include "VelocityCorrector.hpp"
+#include "MacOps.hpp"
 #include "master/FieldCatalog.hpp"
 #include <algorithm>
 #include <cstdlib>
@@ -7,7 +8,6 @@
 #include <mpi.h>
 #include <stdexcept>
 #include <vector>
-#include "MacOps.hpp"
 using namespace numerics::kernels;
 
 using namespace core::master;
@@ -81,8 +81,8 @@ void Corrector::execute(const MeshTileView& tile, FieldCatalog& fields, double d
 
     // Compute pressure gradients on faces (MAC)
     grad_p_faces(static_cast<const double*>(vp.host_ptr), nxc_tot, nyc_tot, nzc_tot, ng, dx_, dy_,
-                  dz_, dpx_u.data(), nxu_tot, nyu_tot, nzu_tot, dpy_v.data(), nxv_tot, nyv_tot,
-                  nzv_tot, dpz_w.data(), nxw_tot, nyw_tot, nzw_tot);
+                 dz_, dpx_u.data(), nxu_tot, nyu_tot, nzu_tot, dpy_v.data(), nxv_tot, nyv_tot,
+                 nzv_tot, dpz_w.data(), nxw_tot, nyw_tot, nzw_tot);
 
     // Velocity correction on faces (variable-ρ if present; else constant ρ_)
     if (fields.contains("rho"))
@@ -96,10 +96,11 @@ void Corrector::execute(const MeshTileView& tile, FieldCatalog& fields, double d
     }
     else
     {
-        correct_velocity_const_rho(static_cast<double*>(vu.host_ptr), static_cast<double*>(vv.host_ptr),
-                               static_cast<double*>(vw.host_ptr), dpx_u.data(), dpy_v.data(),
-                               dpz_w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot,
-                               nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot, ng, rho_, dt);
+        correct_velocity_const_rho(
+            static_cast<double*>(vu.host_ptr), static_cast<double*>(vv.host_ptr),
+            static_cast<double*>(vw.host_ptr), dpx_u.data(), dpy_v.data(), dpz_w.data(), nxu_tot,
+            nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot,
+            nyc_tot, nzc_tot, ng, rho_, dt);
     }
 }
 

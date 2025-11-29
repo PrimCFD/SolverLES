@@ -4,11 +4,11 @@ module kernels
 contains
 
   subroutine sgs_smagorinsky(u, v, w, &
-                                   nxu_tot, nyu_tot, nzu_tot, &
-                                   nxv_tot, nyv_tot, nzv_tot, &
-                                   nxw_tot, nyw_tot, nzw_tot, &
-                                   nxc_tot, nyc_tot, nzc_tot, &
-                                   ng, dx, dy, dz, Cs, nu_t_c) bind(C, name="sgs_smagorinsky")
+                             nxu_tot, nyu_tot, nzu_tot, &
+                             nxv_tot, nyv_tot, nzv_tot, &
+                             nxw_tot, nyw_tot, nzw_tot, &
+                             nxc_tot, nyc_tot, nzc_tot, &
+                             ng, dx, dy, dz, Cs, nu_t_c) bind(C, name="sgs_smagorinsky")
     use, intrinsic :: iso_c_binding
     implicit none
     ! Face-centered velocities
@@ -108,11 +108,11 @@ contains
   end subroutine sgs_smagorinsky
 
   subroutine divergence(u, v, w, &
-                              nxu_tot, nyu_tot, nzu_tot, &
-                              nxv_tot, nyv_tot, nzv_tot, &
-                              nxw_tot, nyw_tot, nzw_tot, &
-                              nxc_tot, nyc_tot, nzc_tot, &
-                              ng, dx, dy, dz, div) bind(C, name="divergence")
+                        nxu_tot, nyu_tot, nzu_tot, &
+                        nxv_tot, nyv_tot, nzv_tot, &
+                        nxw_tot, nyw_tot, nzw_tot, &
+                        nxc_tot, nyc_tot, nzc_tot, &
+                        ng, dx, dy, dz, div) bind(C, name="divergence")
     use, intrinsic :: iso_c_binding
     implicit none
     integer(c_int), value :: nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot
@@ -170,9 +170,9 @@ contains
   end subroutine divergence
 
   subroutine grad_p_faces(p, nxc_tot, nyc_tot, nzc_tot, ng, dx, dy, dz, &
-                           dpx_u, nxu_tot, nyu_tot, nzu_tot, &
-                           dpy_v, nxv_tot, nyv_tot, nzv_tot, &
-                           dpz_w, nxw_tot, nyw_tot, nzw_tot) bind(C, name="grad_p_faces")
+                          dpx_u, nxu_tot, nyu_tot, nzu_tot, &
+                          dpy_v, nxv_tot, nyv_tot, nzv_tot, &
+                          dpz_w, nxw_tot, nyw_tot, nzw_tot) bind(C, name="grad_p_faces")
     use, intrinsic :: iso_c_binding
     implicit none
     integer(c_int), value :: nxc_tot, nyc_tot, nzc_tot, nxu_tot, nyu_tot, nzu_tot
@@ -244,10 +244,10 @@ contains
   end subroutine grad_p_faces
 
   subroutine correct_velocity_const_rho(u, v, w, dpx_u, dpy_v, dpz_w, &
-                                    nxu_tot, nyu_tot, nzu_tot, &
-                                    nxv_tot, nyv_tot, nzv_tot, &
-                                    nxw_tot, nyw_tot, nzw_tot, &
-                                    nxc_tot, nyc_tot, nzc_tot, ng, rho, dt) &
+                                        nxu_tot, nyu_tot, nzu_tot, &
+                                        nxv_tot, nyv_tot, nzv_tot, &
+                                        nxw_tot, nyw_tot, nzw_tot, &
+                                        nxc_tot, nyc_tot, nzc_tot, ng, rho, dt) &
     bind(C, name="correct_velocity_const_rho")
     use, intrinsic :: iso_c_binding
     implicit none
@@ -300,10 +300,10 @@ contains
   end subroutine correct_velocity_const_rho
 
   subroutine correct_velocity_varrho(u, v, w, dpx_u, dpy_v, dpz_w, &
-                                           nxu_tot, nyu_tot, nzu_tot, &
-                                           nxv_tot, nyv_tot, nzv_tot, &
-                                           nxw_tot, nyw_tot, nzw_tot, &
-                                           nxc_tot, nyc_tot, nzc_tot, ng, rho_c, dt) &
+                                     nxu_tot, nyu_tot, nzu_tot, &
+                                     nxv_tot, nyv_tot, nzv_tot, &
+                                     nxw_tot, nyw_tot, nzw_tot, &
+                                     nxc_tot, nyc_tot, nzc_tot, ng, rho_c, dt) &
     bind(C, name="correct_velocity_varrho")
     use, intrinsic :: iso_c_binding
     implicit none

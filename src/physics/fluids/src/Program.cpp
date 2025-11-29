@@ -1,11 +1,11 @@
 #include "Program.hpp"
 #include "ApplyBCs.hpp"
+#include "MacOps.hpp"
 #include "ProjectionLoop.hpp"
 #include "master/FieldCatalog.hpp"
 #include "master/plugin/Action.hpp"
 #include <algorithm>
 #include <cstdlib>
-#include "MacOps.hpp"
 using namespace numerics::kernels;
 
 using namespace core::master;

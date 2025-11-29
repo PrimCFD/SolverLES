@@ -1,7 +1,7 @@
+#include "MacOps.hpp"
 #include "simple_bench.hpp"
 #include <random>
 #include <vector>
-#include "MacOps.hpp"
 using namespace numerics::kernels;
 
 int main()
@@ -30,10 +30,9 @@ int main()
     auto [mean, stddev] = bench::run(
         [&]
         {
-            diffuse_fe(u.data(), nxu_tot, nyu_tot, nzu_tot, v.data(), nxv_tot,
-                                      nyv_tot, nzv_tot, w.data(), nxw_tot, nyw_tot, nzw_tot,
-                                      nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, ng, dx, dy, dz, dt,
-                                      us.data(), vs.data(), ws.data());
+            diffuse_fe(u.data(), nxu_tot, nyu_tot, nzu_tot, v.data(), nxv_tot, nyv_tot, nzv_tot,
+                       w.data(), nxw_tot, nyw_tot, nzw_tot, nu_eff.data(), nxc_tot, nyc_tot,
+                       nzc_tot, ng, dx, dy, dz, dt, us.data(), vs.data(), ws.data());
         });
 
     const size_t Nfaces = (size_t) nxu_tot * nyu_tot * nzu_tot +

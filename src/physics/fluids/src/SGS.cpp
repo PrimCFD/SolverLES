@@ -1,10 +1,10 @@
 #include "SGS.hpp"
+#include "MacOps.hpp"
 #include "master/FieldCatalog.hpp"
 #include "master/Views.hpp"
 #include <cstdlib>
 #include <stdexcept>
 #include <vector>
-#include "MacOps.hpp"
 using namespace numerics::kernels;
 
 using namespace core::master;
@@ -96,12 +96,12 @@ void SGS::execute(const MeshTileView& tile, FieldCatalog& fields, double)
     }
 
     sgs_smagorinsky(static_cast<const double*>(vu.host_ptr),
-                          static_cast<const double*>(vv.host_ptr),
-                          static_cast<const double*>(vw.host_ptr),
-                          /* u faces */ nxu_tot, nyu_tot, nzu_tot,
-                          /* v faces */ nxv_tot, nyv_tot, nzv_tot,
-                          /* w faces */ nxw_tot, nyw_tot, nzw_tot,
-                          /* centers  */ nxc_tot, nyc_tot, nzc_tot, ng, dx_, dy_, dz_, Cs_, nu_t);
+                    static_cast<const double*>(vv.host_ptr),
+                    static_cast<const double*>(vw.host_ptr),
+                    /* u faces */ nxu_tot, nyu_tot, nzu_tot,
+                    /* v faces */ nxv_tot, nyv_tot, nzv_tot,
+                    /* w faces */ nxw_tot, nyw_tot, nzw_tot,
+                    /* centers  */ nxc_tot, nyc_tot, nzc_tot, ng, dx_, dy_, dz_, Cs_, nu_t);
 }
 
 } // namespace fluids

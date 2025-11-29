@@ -1,4 +1,5 @@
 #include "ProjectionLoop.hpp"
+#include "MacOps.hpp"
 #include "master/FieldCatalog.hpp"
 #include "master/HaloOps.hpp"
 #include "master/Views.hpp"
@@ -8,7 +9,6 @@
 #include <iostream>
 #include <mpi.h>
 #include <stdexcept>
-#include "MacOps.hpp"
 using namespace numerics::kernels;
 
 #include "memory/MpiBox.hpp"

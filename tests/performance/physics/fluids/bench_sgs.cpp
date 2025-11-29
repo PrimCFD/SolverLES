@@ -1,7 +1,7 @@
+#include "MacOps.hpp"
 #include "simple_bench.hpp"
 #include <random>
 #include <vector>
-#include "MacOps.hpp"
 using namespace numerics::kernels;
 
 int main()
@@ -43,8 +43,8 @@ int main()
             //                       nxu, nyu, nzu, nxv, nyv, nzv, nxw, nyw, nzw,
             //                       nxc, nyc, nzc, ng, dx, dy, dz, Cs, nu_t_centers)
             sgs_smagorinsky(u.data(), v.data(), w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot,
-                                  nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot,
-                                  nzc_tot, ng, dx, dy, dz, Cs, nu_t.data());
+                            nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot,
+                            ng, dx, dy, dz, Cs, nu_t.data());
         });
 
     // Rough I/O traffic: read u/v/w faces + write center nu_t

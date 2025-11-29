@@ -59,7 +59,8 @@ add_perf_test(perf_diffuse_fluids bench_diffuse_fluids)
 # Diffusion - Backward Euler (BE) - Jacobi sweep (ping-pong) - Red/Black
 # Gauss–Seidel (in-place, red+black)
 add_executable(bench_diffuse_be_fluids bench_diffuse_be.cpp ${SIMPLE_BENCH_HDR})
-target_link_libraries(bench_diffuse_be_fluids PRIVATE physics_fluids core numerics)
+target_link_libraries(bench_diffuse_be_fluids PRIVATE physics_fluids core
+                                                      numerics)
 target_include_directories(
   bench_diffuse_be_fluids
   PRIVATE ${CMAKE_SOURCE_DIR}/src/physics/fluids/include
@@ -92,7 +93,8 @@ add_mpi_perf_test(perf_poisson_petsc_fluids bench_poisson_fluids)
 # Gradient / Divergence / Corrector
 add_executable(bench_grad_div_correct_fluids bench_grad_div_correct.cpp
                                              ${SIMPLE_BENCH_HDR})
-target_link_libraries(bench_grad_div_correct_fluids PRIVATE physics_fluids core numerics)
+target_link_libraries(bench_grad_div_correct_fluids PRIVATE physics_fluids core
+                                                            numerics)
 target_include_directories(
   bench_grad_div_correct_fluids
   PRIVATE ${CMAKE_SOURCE_DIR}/src/physics/fluids/include
