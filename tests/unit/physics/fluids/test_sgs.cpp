@@ -2,7 +2,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <vector>
-#include "kernels_fluids.h"
+#include "MacOps.hpp"
+using namespace numerics::kernels;
 
 using Catch::Approx;
 
@@ -46,7 +47,7 @@ TEST_CASE("Smagorinsky SGS on constant-gradient velocity (MAC)", "[fluids][sgs]"
                 w[idx3(I, nxw_tot, J, nyw_tot, K)] = c * dz * ((K - ng) - 0.5); // z-face
 
     // Call new MAC kernel signature
-    sgs_smagorinsky_mac_c(u.data(), v.data(), w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot,
+    sgs_smagorinsky(u.data(), v.data(), w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot,
                           nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot, ng, dx, dy,
                           dz, Cs, nu_t.data());
 

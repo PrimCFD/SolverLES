@@ -1,7 +1,8 @@
 #include "simple_bench.hpp"
 #include <random>
 #include <vector>
-#include "kernels_fluids.h"
+#include "MacOps.hpp"
+using namespace numerics::kernels;
 
 static inline size_t idx(int I, int J, int K, int nx_tot, int ny_tot)
 {
@@ -61,7 +62,7 @@ int main()
     auto [mean_grad, std_grad] = bench::run(
         [&]
         {
-            gradp_faces_c(p.data(), nxc_tot, nyc_tot, nzc_tot, ng, dx, dy, dz, dpx_u.data(),
+            grad_p_faces(p.data(), nxc_tot, nyc_tot, nzc_tot, ng, dx, dy, dz, dpx_u.data(),
                           nxu_tot, nyu_tot, nzu_tot, dpy_v.data(), nxv_tot, nyv_tot, nzv_tot,
                           dpz_w.data(), nxw_tot, nyw_tot, nzw_tot);
         });
@@ -73,7 +74,7 @@ int main()
     auto [mean_div, std_div] = bench::run(
         [&]
         {
-            divergence_mac_c(u.data(), v.data(), w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot,
+            divergence(u.data(), v.data(), w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot,
                              nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot,
                              ng, dx, dy, dz, div.data());
         });
@@ -85,7 +86,7 @@ int main()
     auto [mean_corr, std_corr] = bench::run(
         [&]
         {
-            correct_velocity_mac_c(u.data(), v.data(), w.data(), dpx_u.data(), dpy_v.data(),
+            correct_velocity_const_rho(u.data(), v.data(), w.data(), dpx_u.data(), dpy_v.data(),
                                    dpz_w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot,
                                    nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot, nzc_tot,
                                    ng, rho, dt);

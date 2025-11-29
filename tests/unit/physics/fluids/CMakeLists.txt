@@ -12,7 +12,7 @@ add_executable(
   test_correct_velocity_varrho.cpp)
 
 # Link: plugin + core + Catch2
-target_link_libraries(unit_fluids PRIVATE physics_fluids core
+target_link_libraries(unit_fluids PRIVATE physics_fluids core numerics
                                           Catch2::Catch2WithMain PETSC::petsc)
 
 # Include plugin headers (for kernels_fluids.h) and public core headers

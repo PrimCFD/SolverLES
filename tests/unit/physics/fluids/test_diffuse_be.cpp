@@ -2,7 +2,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
-#include "kernels_fluids.h"
+#include "MacOps.hpp"
+using namespace numerics::kernels;
 
 using Catch::Approx;
 
@@ -67,12 +68,12 @@ TEST_CASE("BE Jacobi sweep reduces diffusion residual", "[fluids][diffuse][be]")
     std::fill(w_iter.begin(), w_iter.end(), 0.0);
 
     double res2_before = -1.0, rhs2_before = -1.0;
-    diffuse_velocity_be_residual_mac_c(
+    diffuse_be_residual(
         u_rhs.data(), v_rhs.data(), w_rhs.data(), u_iter.data(), v_iter.data(), w_iter.data(),
         nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot,
-        nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt, &res2_before, &rhs2_before);
+        nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt, res2_before, rhs2_before);
 
-    diffuse_velocity_be_sweep_mac_c(u_rhs.data(), v_rhs.data(), w_rhs.data(), u_iter.data(),
+    diffuse_be_jacobi_sweep(u_rhs.data(), v_rhs.data(), w_rhs.data(), u_iter.data(),
                                     v_iter.data(), w_iter.data(), nu_eff.data(), nxc_tot, nyc_tot,
                                     nzc_tot, nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot,
                                     nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt, u_next.data(),
@@ -83,10 +84,10 @@ TEST_CASE("BE Jacobi sweep reduces diffusion residual", "[fluids][diffuse][be]")
     copy_halos_face(w_next, w_iter, nxw_tot, nyw_tot, nzw_tot, ng);
 
     double res2_after = -1.0, rhs2_after = -1.0;
-    diffuse_velocity_be_residual_mac_c(
+    diffuse_be_residual(
         u_rhs.data(), v_rhs.data(), w_rhs.data(), u_next.data(), v_next.data(), w_next.data(),
         nu_eff.data(), nxc_tot, nyc_tot, nzc_tot, nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot,
-        nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt, &res2_after, &rhs2_after);
+        nzv_tot, nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt, res2_after, rhs2_after);
 
     REQUIRE(rhs2_after == Approx(rhs2_before));
     REQUIRE(res2_after < res2_before);
@@ -140,7 +141,7 @@ TEST_CASE("Red-black GS updates only the requested color", "[fluids][diffuse][gs
     auto u_before = u, v_before = v, w_before = w;
 
     // Update color 0 (red) on MAC grid
-    diffuse_velocity_be_gs_color_mac_c(u.data(), v.data(), w.data(), u_rhs.data(), v_rhs.data(),
+    diffuse_be_rbgs_color(u.data(), v.data(), w.data(), u_rhs.data(), v_rhs.data(),
                                        w_rhs.data(), nu_eff.data(), nxc_tot, nyc_tot, nzc_tot,
                                        nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot,
                                        nxw_tot, nyw_tot, nzw_tot, ng, dx, dy, dz, dt, /*color=*/0);

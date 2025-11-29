@@ -8,7 +8,8 @@
 #include <iostream>
 #include <mpi.h>
 #include <stdexcept>
-#include "kernels_fluids.h"
+#include "MacOps.hpp"
+using namespace numerics::kernels;
 
 #include "memory/MpiBox.hpp"
 
@@ -97,13 +98,13 @@ double ProjectionLoop::compute_div_linf(const core::master::MeshTileView& tile,
     const int nzc_tot = vp.extents[2];
 
     // Build divergence (center-sized) and compute via MAC operator
-    std::vector<double> divergence((std::size_t) nxc_tot * nyc_tot * nzc_tot, 0.0);
+    std::vector<double> div((std::size_t) nxc_tot * nyc_tot * nzc_tot, 0.0);
 
-    divergence_mac_c(
+    numerics::kernels::divergence(
         static_cast<const double*>(vu.host_ptr), static_cast<const double*>(vv.host_ptr),
         static_cast<const double*>(vw.host_ptr), vu.extents[0], vu.extents[1], vu.extents[2],
         vv.extents[0], vv.extents[1], vv.extents[2], vw.extents[0], vw.extents[1], vw.extents[2],
-        nxc_tot, nyc_tot, nzc_tot, ng, opt_.dx, opt_.dy, opt_.dz, divergence.data());
+        nxc_tot, nyc_tot, nzc_tot, ng, opt_.dx, opt_.dy, opt_.dz, div.data());
 
     // Linf on interior cells only (centers)
     double linf = 0.0;
@@ -119,7 +120,7 @@ double ProjectionLoop::compute_div_linf(const core::master::MeshTileView& tile,
 
             // walk i interior contiguously
             for (int i = 0; i < nxc_tot - 2 * ng; ++i, ++c)
-                linf = std::max(linf, std::abs(divergence[c]));
+                linf = std::max(linf, std::abs(div[c]));
         }
     }
 

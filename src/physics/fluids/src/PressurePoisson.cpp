@@ -20,7 +20,7 @@
 #include "master/HaloOps.hpp"
 #include "master/Log.hpp"
 #include "master/Views.hpp"
-#include "kernels_fluids.h"
+#include "MacOps.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1896,7 +1896,7 @@ void PressurePoisson::execute(const MeshTileView& tile, FieldCatalog& fields, do
     }
 
     std::vector<double> div(std::size_t(nxc_tot) * nyc_tot * nzc_tot, 0.0);
-    divergence_mac_c(
+    numerics::kernels::divergence(
         static_cast<const double*>(vu.host_ptr), static_cast<const double*>(vv.host_ptr),
         static_cast<const double*>(vw.host_ptr), vu.extents[0], vu.extents[1], vu.extents[2],
         vv.extents[0], vv.extents[1], vv.extents[2], vw.extents[0], vw.extents[1], vw.extents[2],

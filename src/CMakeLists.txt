@@ -1,5 +1,8 @@
 add_subdirectory(core)
 
+# Shared numerics
+add_subdirectory(numerics)
+
 # Physics stacks (each may provide plugins and helper libs)
 add_subdirectory(physics)
 

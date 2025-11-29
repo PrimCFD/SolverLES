@@ -2,7 +2,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
-#include "kernels_fluids.h"
+#include "MacOps.hpp"
+using namespace numerics::kernels;
 
 using Catch::Approx;
 
@@ -42,7 +43,7 @@ TEST_CASE("Diffusion (FE, MAC) preserves constant velocity field on interior fac
     std::vector<double> nu_eff((size_t) nxc_tot * nyc_tot * nzc_tot, 1.0e-3);
     std::vector<double> us(u.size(), 0.0), vs(v.size(), 0.0), ws(w.size(), 0.0);
 
-    diffuse_velocity_fe_mac_c(
+    diffuse_fe(
         /*u in*/ u.data(), nxu_tot, nyu_tot, nzu_tot,
         /*v in*/ v.data(), nxv_tot, nyv_tot, nzv_tot,
         /*w in*/ w.data(), nxw_tot, nyw_tot, nzw_tot,

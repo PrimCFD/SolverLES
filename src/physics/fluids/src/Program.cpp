@@ -5,7 +5,8 @@
 #include "master/plugin/Action.hpp"
 #include <algorithm>
 #include <cstdlib>
-#include "kernels_fluids.h"
+#include "MacOps.hpp"
+using namespace numerics::kernels;
 
 using namespace core::master;
 using namespace core::master::plugin;
@@ -158,12 +159,6 @@ StepPlan LESProgram::plan_step(double)
     plan.tiled.push_back(loop_);
 
     return plan;
-}
-
-LESProgram::~LESProgram()
-{
-    // Make sure no actions are executing anymore.
-    fluids_kernels_free_scratch();
 }
 
 } // namespace fluids

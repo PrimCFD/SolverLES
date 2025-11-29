@@ -2,7 +2,8 @@
 #include <catch2/catch_all.hpp>
 #include <cmath>
 #include <vector>
-#include "kernels_fluids.h"
+#include "MacOps.hpp"
+using namespace numerics::kernels;
 
 using Catch::Approx;
 
@@ -56,12 +57,12 @@ TEST_CASE("MAC gradp_faces + divergence_mac equals the discrete 7-point Laplacia
 
     // Face gradients via kernel
     std::vector<double> dpx_u(Nu, 0.0), dpy_v(Nv, 0.0), dpz_w(Nw, 0.0);
-    gradp_faces_c(p.data(), nxc, nyc, nzc, ng, dx, dy, dz, dpx_u.data(), nxu, nyu, nzu,
+    grad_p_faces(p.data(), nxc, nyc, nzc, ng, dx, dy, dz, dpx_u.data(), nxu, nyu, nzu,
                   dpy_v.data(), nxv, nyv, nzv, dpz_w.data(), nxw, nyw, nzw);
 
     // div(grad p) via MAC
     std::vector<double> mac_lap(Np, 0.0);
-    divergence_mac_c(dpx_u.data(), dpy_v.data(), dpz_w.data(), nxu, nyu, nzu, nxv, nyv, nzv, nxw,
+    divergence(dpx_u.data(), dpy_v.data(), dpz_w.data(), nxu, nyu, nzu, nxv, nyv, nzv, nxw,
                      nyw, nzw, nxc, nyc, nzc, ng, dx, dy, dz, mac_lap.data());
 
     // Discrete 7-point Laplacian at centers

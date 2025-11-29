@@ -27,20 +27,18 @@ The project is an **open, modular finite‑volume LES solver for thermal–plasm
 ```text
 KolmoPlas/
 ├─ .github/workflows/        # CI definitions
-├─ assets/                   # Doc and visual assets
+├─ assets/                   # Docs and visual assets
 ├─ cmake/                    # CMake helper modules
 ├─ docs/                     # Sphinx/Doxygen furo doc
 ├─ examples/                 # Tiny example run‑ready cases
 ├─ extern/                   # Third‑party sources (tar balls mirrored, no edits)
 ├─ scripts/                  # Dev‑ops & helper scripts
 ├─ src/                      # Solver source code
+│   ├─ apps/                 # Executable entry points 
 │   ├─ core/                 # C++ runtime static lib (orchestration, memory management)
 │   ├─ gui/                  # Qt/VTK front‑end
-│   ├─ physics/              # Hot‑swappable physics modules dynamic lib
-│   ├─ kernels/              # Shared Fortran math kernels
-│   ├─ bindings/             # C/Fortran interop helpers
 │   ├─ ipc/                  # Inter-process communication GUI/Solver
-│   └─ apps/                 # Executable entry points
+│   └─ physics/              # Hot‑swappable physics modules dynamic lib
 ├─ tests/                    # Unit, regression & perf tests
 ├─ .clang-format             # C++ style
 ├─ .cmake-format.yml         # CMake style
@@ -58,8 +56,8 @@ KolmoPlas/
 | Path | Role | Notes |
 |------|------|-------|
 | **src/core** | Owns mesh, fields, time loop, I/O; _no physics_. | Written in modern C++ (C++20). |
-| **src/physics** | Physics shared library plugins | Each physics → one shared lib (e.g. `libfluids.so`). |
-| **src/physics/kernels** | Optimised Fortran math; reused by plug‑ins. | Vectorised / GPU‑offloaded via OpenMP/CUDA Fortran. |
+| **src/physics** | Physics shared library plugins | Each physics → one shared lib (`libphysics_*.so`). |
+| **src/numerics** | Optimised Fortran/Linear solver math; reused by plug‑ins. | Vectorised / GPU‑offloaded via OpenMP/CUDA Fortran. |
 | **extern** | Vendored: CGNS, PETSc, etc. | Pulled via `FetchContent`/`ExternalProject`; do **not** modify in‑tree. |
 | **tests** | Unit, regression CGNS, etc | CI runs these on every PR. |
 | **examples** | Minimal decks: coarse Taylor–Green, etc. | Should finish < 1 minute serial. |

@@ -11,7 +11,8 @@
 #include <numeric>
 #include <stdexcept>
 #include <string>
-#include "kernels_fluids.h"
+#include "MacOps.hpp"
+using namespace numerics::kernels;
 
 #include "memory/MpiBox.hpp"
 
@@ -220,7 +221,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
         Nu_t.assign(NuN, 0.0);
         Nv_t.assign(NvN, 0.0);
         Nw_t.assign(NwN, 0.0);
-        advect_velocity_kk3_mac_c(static_cast<const double*>(vu.host_ptr), nxu_tot, nyu_tot,
+        advect_kk3(static_cast<const double*>(vu.host_ptr), nxu_tot, nyu_tot,
                                   nzu_tot, static_cast<const double*>(vv.host_ptr), nxv_tot,
                                   nyv_tot, nzv_tot, static_cast<const double*>(vw.host_ptr),
                                   nxw_tot, nyw_tot, nzw_tot, ng, dx_, dy_, dz_, Nu_t.data(),
@@ -237,7 +238,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
         std::memcpy(u0.data(), vu.host_ptr, Nu * sizeof(double));
         std::memcpy(v0.data(), vv.host_ptr, Nv * sizeof(double));
         std::memcpy(w0.data(), vw.host_ptr, Nw * sizeof(double));
-        diffuse_velocity_fe_mac_c(
+        diffuse_fe(
             /*u in  */ u0.data(), nxu_tot, nyu_tot, nzu_tot,
             /*v in  */ v0.data(), nxv_tot, nyv_tot, nzv_tot,
             /*w in  */ w0.data(), nxw_tot, nyw_tot, nzw_tot,
@@ -318,7 +319,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
     if (mode_ == Mode::FE)
     {
         // ---- FE: single explicit update ----
-        diffuse_velocity_fe_mac_c(
+        diffuse_fe(
             /*u in  */ u_ptr, nxu_tot, nyu_tot, nzu_tot,
             /*v in  */ v_ptr, nxv_tot, nyv_tot, nzv_tot,
             /*w in  */ w_ptr, nxw_tot, nyw_tot, nzw_tot,
@@ -440,7 +441,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
             if (pred_imp_solver_ == IMPSolver::Jacobi)
             {
                 // ---------- Jacobi (as before) ----------
-                diffuse_velocity_be_sweep_mac_c(
+                diffuse_be_jacobi_sweep(
                     /*rhs   */ urhs.data(), vrhs.data(), wrhs.data(),
                     /*iter  */ u_ptr, v_ptr, w_ptr,
                     /*nu    */ nu_eff.data(), nxc_tot, nyc_tot, nzc_tot,
@@ -460,7 +461,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
             {
                 // ---------- RBGS (in-place color sweeps) ----------
                 // Red
-                diffuse_velocity_be_gs_color_mac_c(
+                diffuse_be_rbgs_color(
                     /*inout*/ u_ptr, v_ptr, w_ptr,
                     /*rhs  */ urhs.data(), vrhs.data(), wrhs.data(),
                     /*nu   */ nu_eff.data(), nxc_tot, nyc_tot, nzc_tot,
@@ -470,7 +471,7 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
                     /*geom */ ng, dx_, dy_, dz_, dt_imp, /*color*/ 0);
                 core::master::exchange_named_fields(fields, mesh, mpi_comm_, {"u", "v", "w"});
                 // Black
-                diffuse_velocity_be_gs_color_mac_c(
+                diffuse_be_rbgs_color(
                     /*inout*/ u_ptr, v_ptr, w_ptr,
                     /*rhs  */ urhs.data(), vrhs.data(), wrhs.data(),
                     /*nu   */ nu_eff.data(), nxc_tot, nyc_tot, nzc_tot,
@@ -483,14 +484,14 @@ void Predictor::execute(const MeshTileView& tile, FieldCatalog& fields, double d
 
             // Residual (needs valid halos; we just exchanged)
             double res2 = 0.0, rhs2 = 0.0;
-            diffuse_velocity_be_residual_mac_c(
+            diffuse_be_residual(
                 /*rhs  */ urhs.data(), vrhs.data(), wrhs.data(),
                 /*next */ u_ptr, v_ptr, w_ptr,
                 /*nu   */ nu_eff.data(), nxc_tot, nyc_tot, nzc_tot,
                 /*u ext*/ nxu_tot, nyu_tot, nzu_tot,
                 /*v ext*/ nxv_tot, nyv_tot, nzv_tot,
                 /*w ext*/ nxw_tot, nyw_tot, nzw_tot,
-                /*geom */ ng, dx_, dy_, dz_, dt_imp, &res2, &rhs2);
+                /*geom */ ng, dx_, dy_, dz_, dt_imp, res2, rhs2);
             if (mpi_comm_)
             {
                 MPI_Comm comm = mpi_unbox(mpi_comm_);

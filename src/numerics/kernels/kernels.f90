@@ -1,19 +1,14 @@
-module fluids_kernels
+module kernels
   use, intrinsic :: iso_c_binding
   implicit none
 contains
 
-  subroutine fluids_kernels_free_scratch() bind(C, name="fluids_kernels_free_scratch")
-    use, intrinsic :: iso_c_binding
-    implicit none
-  end subroutine fluids_kernels_free_scratch
-
-  subroutine sgs_smagorinsky_mac_c(u, v, w, &
+  subroutine sgs_smagorinsky(u, v, w, &
                                    nxu_tot, nyu_tot, nzu_tot, &
                                    nxv_tot, nyv_tot, nzv_tot, &
                                    nxw_tot, nyw_tot, nzw_tot, &
                                    nxc_tot, nyc_tot, nzc_tot, &
-                                   ng, dx, dy, dz, Cs, nu_t_c) bind(C, name="sgs_smagorinsky_mac_c")
+                                   ng, dx, dy, dz, Cs, nu_t_c) bind(C, name="sgs_smagorinsky")
     use, intrinsic :: iso_c_binding
     implicit none
     ! Face-centered velocities
@@ -110,14 +105,14 @@ contains
         end do
       end do
     end do
-  end subroutine sgs_smagorinsky_mac_c
+  end subroutine sgs_smagorinsky
 
-  subroutine divergence_mac_c(u, v, w, &
+  subroutine divergence(u, v, w, &
                               nxu_tot, nyu_tot, nzu_tot, &
                               nxv_tot, nyv_tot, nzv_tot, &
                               nxw_tot, nyw_tot, nzw_tot, &
                               nxc_tot, nyc_tot, nzc_tot, &
-                              ng, dx, dy, dz, div) bind(C, name="divergence_mac_c")
+                              ng, dx, dy, dz, div) bind(C, name="divergence")
     use, intrinsic :: iso_c_binding
     implicit none
     integer(c_int), value :: nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot
@@ -172,12 +167,12 @@ contains
         end do
       end do
     end do
-  end subroutine divergence_mac_c
+  end subroutine divergence
 
-  subroutine gradp_faces_c(p, nxc_tot, nyc_tot, nzc_tot, ng, dx, dy, dz, &
+  subroutine grad_p_faces(p, nxc_tot, nyc_tot, nzc_tot, ng, dx, dy, dz, &
                            dpx_u, nxu_tot, nyu_tot, nzu_tot, &
                            dpy_v, nxv_tot, nyv_tot, nzv_tot, &
-                           dpz_w, nxw_tot, nyw_tot, nzw_tot) bind(C, name="gradp_faces_c")
+                           dpz_w, nxw_tot, nyw_tot, nzw_tot) bind(C, name="grad_p_faces")
     use, intrinsic :: iso_c_binding
     implicit none
     integer(c_int), value :: nxc_tot, nyc_tot, nzc_tot, nxu_tot, nyu_tot, nzu_tot
@@ -246,14 +241,14 @@ contains
         end do
       end do
     end do
-  end subroutine gradp_faces_c
+  end subroutine grad_p_faces
 
-  subroutine correct_velocity_mac_c(u, v, w, dpx_u, dpy_v, dpz_w, &
+  subroutine correct_velocity_const_rho(u, v, w, dpx_u, dpy_v, dpz_w, &
                                     nxu_tot, nyu_tot, nzu_tot, &
                                     nxv_tot, nyv_tot, nzv_tot, &
                                     nxw_tot, nyw_tot, nzw_tot, &
                                     nxc_tot, nyc_tot, nzc_tot, ng, rho, dt) &
-    bind(C, name="correct_velocity_mac_c")
+    bind(C, name="correct_velocity_const_rho")
     use, intrinsic :: iso_c_binding
     implicit none
     integer(c_int), value :: nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot
@@ -302,14 +297,14 @@ contains
         end do
       end do
     end do
-  end subroutine correct_velocity_mac_c
+  end subroutine correct_velocity_const_rho
 
-  subroutine correct_velocity_varrho_mac_c(u, v, w, dpx_u, dpy_v, dpz_w, &
+  subroutine correct_velocity_varrho(u, v, w, dpx_u, dpy_v, dpz_w, &
                                            nxu_tot, nyu_tot, nzu_tot, &
                                            nxv_tot, nyv_tot, nzv_tot, &
                                            nxw_tot, nyw_tot, nzw_tot, &
                                            nxc_tot, nyc_tot, nzc_tot, ng, rho_c, dt) &
-    bind(C, name="correct_velocity_varrho_mac_c")
+    bind(C, name="correct_velocity_varrho")
     use, intrinsic :: iso_c_binding
     implicit none
     integer(c_int), value :: nxu_tot, nyu_tot, nzu_tot, nxv_tot, nyv_tot, nzv_tot
@@ -404,18 +399,18 @@ contains
         end do
       end do
     end do
-  end subroutine correct_velocity_varrho_mac_c
+  end subroutine correct_velocity_varrho
 
   ! =========================
   ! FE: single explicit step
   ! =========================
-  subroutine diffuse_velocity_fe_mac_c( &
+  subroutine diffuse_fe( &
     u, nxu_tot, nyu_tot, nzu_tot, &
     v, nxv_tot, nyv_tot, nzv_tot, &
     w, nxw_tot, nyw_tot, nzw_tot, &
     nu_eff, nxc_tot, nyc_tot, nzc_tot, &
     ng, dx, dy, dz, dt, &
-    uo, vo, wo) bind(C, name="diffuse_velocity_fe_mac_c")
+    uo, vo, wo) bind(C, name="diffuse_fe")
     use, intrinsic :: iso_c_binding
     implicit none
     integer(c_int), value :: nxu_tot, nyu_tot, nzu_tot
@@ -541,14 +536,14 @@ contains
         end do
       end do
     end do
-  end subroutine diffuse_velocity_fe_mac_c
+  end subroutine diffuse_fe
 
   ! =========================================
   ! BE: one Jacobi sweep (INTERIOR ONLY)
   !    u_rhs = u^n, u_iter = current iterate
   !    writes u_next on interior; halos untouched
   ! =========================================
-  subroutine diffuse_velocity_be_sweep_mac_c( &
+  subroutine diffuse_be_jacobi_sweep( &
     u_rhs, v_rhs, w_rhs, &
     u_iter, v_iter, w_iter, &
     nu_eff, nxc_tot, nyc_tot, nzc_tot, &
@@ -556,7 +551,7 @@ contains
     nxv_tot, nyv_tot, nzv_tot, &
     nxw_tot, nyw_tot, nzw_tot, &
     ng, dx, dy, dz, dt, &
-    u_next, v_next, w_next) bind(C, name="diffuse_velocity_be_sweep_mac_c")
+    u_next, v_next, w_next) bind(C, name="diffuse_be_jacobi_sweep")
     use, intrinsic :: iso_c_binding
     implicit none
     integer(c_int), value :: nxc_tot, nyc_tot, nzc_tot
@@ -669,15 +664,15 @@ contains
         end do
       end do
     end do
-  end subroutine diffuse_velocity_be_sweep_mac_c
+  end subroutine diffuse_be_jacobi_sweep
 
-  subroutine diffuse_velocity_be_gs_color_mac_c( &
+  subroutine diffuse_be_rbgs_color( &
     u, v, w, u_rhs, v_rhs, w_rhs, &
     nu_eff, nxc_tot, nyc_tot, nzc_tot, &
     nxu_tot, nyu_tot, nzu_tot, &
     nxv_tot, nyv_tot, nzv_tot, &
     nxw_tot, nyw_tot, nzw_tot, &
-    ng, dx, dy, dz, dt, color) bind(C, name="diffuse_velocity_be_gs_color_mac_c")
+    ng, dx, dy, dz, dt, color) bind(C, name="diffuse_be_rbgs_color")
     use, intrinsic :: iso_c_binding
     implicit none
     integer(c_int), value :: nxc_tot, nyc_tot, nzc_tot
@@ -789,19 +784,19 @@ contains
         end do
       end do
     end do
-  end subroutine diffuse_velocity_be_gs_color_mac_c
+  end subroutine diffuse_be_rbgs_color
 
   ! =========================================
   ! BE residual on INTERIOR (needs valid halos
   ! on u_next/v_next/w_next before calling)
   ! =========================================
-  subroutine diffuse_velocity_be_residual_mac_c( &
+  subroutine diffuse_be_residual( &
     u_rhs, v_rhs, w_rhs, u_next, v_next, w_next, &
     nu_eff, nxc_tot, nyc_tot, nzc_tot, &
     nxu_tot, nyu_tot, nzu_tot, &
     nxv_tot, nyv_tot, nzv_tot, &
     nxw_tot, nyw_tot, nzw_tot, &
-    ng, dx, dy, dz, dt, res2, rhs2) bind(C, name="diffuse_velocity_be_residual_mac_c")
+    ng, dx, dy, dz, dt, res2, rhs2) bind(C, name="diffuse_be_residual")
     use, intrinsic :: iso_c_binding
     implicit none
     integer(c_int), value :: nxc_tot, nyc_tot, nzc_tot
@@ -922,7 +917,7 @@ contains
         end do
       end do
     end do
-  end subroutine diffuse_velocity_be_residual_mac_c
+  end subroutine diffuse_be_residual
 
   pure function kk_alpha_from_phi(qm2, qm1, q0, qp1, qp2, h) result(alpha)
     use, intrinsic :: iso_c_binding
@@ -971,12 +966,12 @@ contains
                 +0.25d0*(1.0d0-alpha)*filt4)    ! (1-alpha) * Dif3
   end function kk_flux_hybrid_kk3
 
-  subroutine advect_velocity_kk3_mac_c( &
+  subroutine advect_kk3( &
     u, nxu_tot, nyu_tot, nzu_tot, &
     v, nxv_tot, nyv_tot, nzv_tot, &
     w, nxw_tot, nyw_tot, nzw_tot, &
     ng, dx, dy, dz, &
-    Nu, Nv, Nw) bind(C, name="advect_velocity_kk3_mac_c")
+    Nu, Nv, Nw) bind(C, name="advect_kk3")
     use, intrinsic :: iso_c_binding
     implicit none
     ! sizes
@@ -1145,6 +1140,6 @@ contains
         end do
       end do
     end do
-  end subroutine advect_velocity_kk3_mac_c
+  end subroutine advect_kk3
 
-end module fluids_kernels
+end module kernels

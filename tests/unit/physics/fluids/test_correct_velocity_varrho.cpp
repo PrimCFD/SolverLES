@@ -2,7 +2,8 @@
 #include <catch2/catch_all.hpp>
 #include <cmath>
 #include <vector>
-#include "kernels_fluids.h"
+#include "MacOps.hpp"
+using namespace numerics::kernels;
 
 using Catch::Approx;
 
@@ -52,19 +53,19 @@ TEST_CASE(
 
     // Face gradients
     std::vector<double> dpx_u(Nu, 0.0), dpy_v(Nv, 0.0), dpz_w(Nw, 0.0);
-    gradp_faces_c(p.data(), nxc, nyc, nzc, ng, dx, dy, dz, dpx_u.data(), nxu, nyu, nzu,
+    grad_p_faces(p.data(), nxc, nyc, nzc, ng, dx, dy, dz, dpx_u.data(), nxu, nyu, nzu,
                   dpy_v.data(), nxv, nyv, nzv, dpz_w.data(), nxw, nyw, nzw);
 
     // Uniform rho at centers for this test (exercises varrho code path with trivial averaging)
     std::vector<double> rho_c(Np, rho0);
 
     // A) constant-ρ path
-    correct_velocity_mac_c(u1.data(), v1.data(), w1.data(), dpx_u.data(), dpy_v.data(),
+    correct_velocity_const_rho(u1.data(), v1.data(), w1.data(), dpx_u.data(), dpy_v.data(),
                            dpz_w.data(), nxu, nyu, nzu, nxv, nyv, nzv, nxw, nyw, nzw, nxc, nyc, nzc,
                            ng, rho0, dt);
 
     // B) variable-ρ path
-    correct_velocity_varrho_mac_c(u2.data(), v2.data(), w2.data(), dpx_u.data(), dpy_v.data(),
+    correct_velocity_varrho(u2.data(), v2.data(), w2.data(), dpx_u.data(), dpy_v.data(),
                                   dpz_w.data(), nxu, nyu, nzu, nxv, nyv, nzv, nxw, nyw, nzw, nxc,
                                   nyc, nzc, ng, rho_c.data(), dt);
 

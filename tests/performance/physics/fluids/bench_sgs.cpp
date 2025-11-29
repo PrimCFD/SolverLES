@@ -1,7 +1,8 @@
 #include "simple_bench.hpp"
 #include <random>
 #include <vector>
-#include "kernels_fluids.h"
+#include "MacOps.hpp"
+using namespace numerics::kernels;
 
 int main()
 {
@@ -38,10 +39,10 @@ int main()
         [&]
         {
             // MAC-face kernel signature:
-            // sgs_smagorinsky_mac_c(u, v, w,
+            // sgs_smagorinsky(u, v, w,
             //                       nxu, nyu, nzu, nxv, nyv, nzv, nxw, nyw, nzw,
             //                       nxc, nyc, nzc, ng, dx, dy, dz, Cs, nu_t_centers)
-            sgs_smagorinsky_mac_c(u.data(), v.data(), w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot,
+            sgs_smagorinsky(u.data(), v.data(), w.data(), nxu_tot, nyu_tot, nzu_tot, nxv_tot,
                                   nyv_tot, nzv_tot, nxw_tot, nyw_tot, nzw_tot, nxc_tot, nyc_tot,
                                   nzc_tot, ng, dx, dy, dz, Cs, nu_t.data());
         });

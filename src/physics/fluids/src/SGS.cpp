@@ -4,7 +4,8 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <vector>
-#include "kernels_fluids.h"
+#include "MacOps.hpp"
+using namespace numerics::kernels;
 
 using namespace core::master;
 
@@ -94,7 +95,7 @@ void SGS::execute(const MeshTileView& tile, FieldCatalog& fields, double)
         nu_t = scratch_.data();
     }
 
-    sgs_smagorinsky_mac_c(static_cast<const double*>(vu.host_ptr),
+    sgs_smagorinsky(static_cast<const double*>(vu.host_ptr),
                           static_cast<const double*>(vv.host_ptr),
                           static_cast<const double*>(vw.host_ptr),
                           /* u faces */ nxu_tot, nyu_tot, nzu_tot,
