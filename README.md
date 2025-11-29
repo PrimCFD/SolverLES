@@ -1,6 +1,10 @@
-# FVM–LES–Plasma Solver
+<p align="center">
+  <img src="assets/logo/KolmoPlasLogo512.png" alt="KolmoPlas logo" width="160">
+</p>
 
-> **Status:** _Early stage_
+# KolmoPlas
+
+> **Status:** _Early stage (hydrodynamics)_
 
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://primcfd.github.io/SolverLES/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -12,9 +16,9 @@
 
 ---
 
-## 1&nbsp;· Project Vision
+## 1&nbsp;· Overview
 
-The objective is to build an **open, modular finite‑volume LES solver for thermal–plasma flows** that lets researchers drop in new sub‑grid‑scale (SGS) models with minimal friction while still scaling to modern CPU & GPU clusters. The project is intended to research new SGS models for thermal plasma jets simulations accounting for steep density and temperature gradients.
+The project is an **open, modular finite‑volume LES solver for thermal–plasma flows** that lets researchers drop in new sub‑grid‑scale (SGS) models with minimal friction while still scaling to modern CPU & GPU clusters. The project is intended to research new SGS models for thermal plasma jets simulations accounting for steep density and temperature gradients.
 
 ---
 
@@ -24,9 +28,10 @@ The objective is to build an **open, modular finite‑volume LES solver for ther
 SolverLES/
 
 ├─ .github/workflows/        # CI definitions
+├─ assets/                   # Doc and visual assets
 ├─ cmake/                    # CMake helper modules
 ├─ docs/                     # Sphinx/Doxygen furo doc
-├─ examples/                 # Tiny run‑ready cases (< 60 s)
+├─ examples/                 # Tiny example run‑ready cases
 ├─ extern/                   # Third‑party sources (tar balls mirrored, no edits)
 ├─ scripts/                  # Dev‑ops & helper scripts
 ├─ src/                      # Solver source code
@@ -54,14 +59,11 @@ SolverLES/
 | Path | Role | Notes |
 |------|------|-------|
 | **src/core** | Owns mesh, fields, time loop, I/O; _no physics_. | Written in modern C++ (C++20). |
-| **src/physics** | Physics shared library plugins | Each physics → one shared lib (e.g. `libweno.so`). |
-| **src/physics/fluids/flux** | Spatial discretisation schemes. | Each sub‑dir → specific optimized numerics. |
-| **src/physics/fluids/sgs** | LES SGS models. | Research mostly done here. |
-| **src/physics/fluids/time** | Time‑integration schemes. | PISO, etc. |
-| **src/kernels** | Optimised Fortran math; reused by plug‑ins. | Vectorised / GPU‑offloaded via OpenMP/CUDA Fortran. |
-| **extern** | Vendored: CGNS, PETSc. | Pulled via `FetchContent`/`ExternalProject`; do **not** modify in‑tree. |
+| **src/physics** | Physics shared library plugins | Each physics → one shared lib (e.g. `libfluids.so`). |
+| **src/physics/kernels** | Optimised Fortran math; reused by plug‑ins. | Vectorised / GPU‑offloaded via OpenMP/CUDA Fortran. |
+| **extern** | Vendored: CGNS, PETSc, etc. | Pulled via `FetchContent`/`ExternalProject`; do **not** modify in‑tree. |
 | **tests** | Unit, regression CGNS, etc | CI runs these on every PR. |
-| **examples** | Minimal decks: Taylor–Green, Sod, etc. | Should finish < 1 minute serial. |
+| **examples** | Minimal decks: coarse Taylor–Green, etc. | Should finish < 1 minute serial. |
 
 ---
 
