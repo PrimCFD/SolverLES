@@ -185,9 +185,9 @@ strict_flags=()
 [[ "${SPHINX_STRICT:-0}" == "1" ]] && strict_flags=(-W)
 # Parallel: let Sphinx decide (auto)
 if $quiet; then
-  sphinx-build -q -j auto -b html -d "$doctrees_dir" -Dbreathe_projects.SolverLES="$doxygen_xml_dir" "$docs_src" "$html_dir" "${strict_flags[@]}"
+  sphinx-build -q -j auto -b html -d "$doctrees_dir" -Dbreathe_projects.KolmoPlas="$doxygen_xml_dir" "$docs_src" "$html_dir" "${strict_flags[@]}"
 else
-  sphinx-build -j auto -b html -d "$doctrees_dir" -Dbreathe_projects.SolverLES="$doxygen_xml_dir" "$docs_src" "$html_dir" "${strict_flags[@]}"
+  sphinx-build -j auto -b html -d "$doctrees_dir" -Dbreathe_projects.KolmoPlas="$doxygen_xml_dir" "$docs_src" "$html_dir" "${strict_flags[@]}"
 fi
 
 log "✅  Docs ready: $html_dir"

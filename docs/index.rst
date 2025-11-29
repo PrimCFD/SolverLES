@@ -119,23 +119,23 @@ Indices and tables
 * :ref:`search`
 
 .. |docs| image:: https://img.shields.io/badge/docs-online-blue
-   :target: https://primcfd.github.io/SolverLES/
+   :target: https://primcfd.github.io/KolmoPlas/
    :alt: Documentation
 
 .. |license| image:: https://img.shields.io/badge/License-MIT-yellow.svg
    :target: https://opensource.org/licenses/MIT
    :alt: MIT License
 
-.. |linux| image:: https://github.com/PrimCFD/SolverLES/actions/workflows/linux.yml/badge.svg?branch=main
-   :target: https://github.com/PrimCFD/SolverLES/actions/workflows/linux.yml
+.. |linux| image:: https://github.com/PrimCFD/KolmoPlas/actions/workflows/linux.yml/badge.svg?branch=main
+   :target: https://github.com/PrimCFD/KolmoPlas/actions/workflows/linux.yml
    :alt: Linux CI
 
-.. |docsci| image:: https://github.com/PrimCFD/SolverLES/actions/workflows/docs.yml/badge.svg?branch=main
-   :target: https://github.com/PrimCFD/SolverLES/actions/workflows/docs.yml
+.. |docsci| image:: https://github.com/PrimCFD/KolmoPlas/actions/workflows/docs.yml/badge.svg?branch=main
+   :target: https://github.com/PrimCFD/KolmoPlas/actions/workflows/docs.yml
    :alt: Docs CI
 
-.. |style| image:: https://github.com/PrimCFD/SolverLES/actions/workflows/style.yml/badge.svg?branch=main
-   :target: https://github.com/PrimCFD/SolverLES/actions/workflows/style.yml
+.. |style| image:: https://github.com/PrimCFD/KolmoPlas/actions/workflows/style.yml/badge.svg?branch=main
+   :target: https://github.com/PrimCFD/KolmoPlas/actions/workflows/style.yml
    :alt: Style CI
 
 .. _Furo: https://pradyunsg.me/furo/

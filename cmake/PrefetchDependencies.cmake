@@ -2,7 +2,7 @@
 # (e.g., scripts/prefetch_third_party.sh). Using LANGUAGES NONE avoids finding
 # compilers during prefetch-only builds.
 if(NOT CMAKE_PROJECT_NAME)
-  project(SolverLES LANGUAGES NONE)
+  project(KolmoPlas LANGUAGES NONE)
 endif()
 
 # Turn on "prefetch-only" behavior inside each Fetch*.cmake

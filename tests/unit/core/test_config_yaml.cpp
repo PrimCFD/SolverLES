@@ -23,7 +23,7 @@ TEST_CASE("config.hpp parses hello_mesh.yml correctly", "[config][yaml]")
     // NOTE: proper indentation matters in YAML.
     const char* YAML_TXT = R"YAML(
 #=======================
-# SolverLES config (v0)
+# KolmoPlas config (v0)
 #=======================
 
 # Short identifier for outputs (writer will create path/<case>.h5, path/<case>.xmf, etc.)

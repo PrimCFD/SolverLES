@@ -1,5 +1,5 @@
 # --- Input / parsing ---
-PROJECT_NAME           = SolverLES
+PROJECT_NAME           = KolmoPlas
 INPUT                  = @CMAKE_SOURCE_DIR@/src
 FILE_PATTERNS          = *.hpp *.cpp *.h *.f90
 RECURSIVE              = YES

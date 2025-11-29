@@ -268,7 +268,7 @@ TEST_CASE("CGNS roundtrip: one scalar field, 2 timesteps", "[io][cgns]")
     cfg.series = WriterConfig::Series::Single;
     cfg.precision = WriterConfig::Precision::Float64;
 
-    fs::path outdir = fs::temp_directory_path() / "solverles_cgns_rt";
+    fs::path outdir = fs::temp_directory_path() / "kolmoplas_cgns_rt";
     fs::create_directories(outdir);
     cfg.path = outdir.string();
 

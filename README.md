@@ -6,12 +6,12 @@
 
 > **Status:** _Early stage (hydrodynamics)_
 
-[![Docs](https://img.shields.io/badge/docs-online-blue)](https://primcfd.github.io/SolverLES/)
+[![Docs](https://img.shields.io/badge/docs-online-blue)](https://primcfd.github.io/KolmoPlas/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[![Linux CI](https://github.com/PrimCFD/SolverLES/actions/workflows/linux.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/linux.yml)
-[![Docs](https://github.com/PrimCFD/SolverLES/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/docs.yml)
-[![Style](https://github.com/PrimCFD/SolverLES/actions/workflows/style.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/style.yml)
+[![Linux CI](https://github.com/PrimCFD/KolmoPlas/actions/workflows/linux.yml/badge.svg?branch=main)](https://github.com/PrimCFD/KolmoPlas/actions/workflows/linux.yml)
+[![Docs](https://github.com/PrimCFD/KolmoPlas/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/PrimCFD/KolmoPlas/actions/workflows/docs.yml)
+[![Style](https://github.com/PrimCFD/KolmoPlas/actions/workflows/style.yml/badge.svg?branch=main)](https://github.com/PrimCFD/KolmoPlas/actions/workflows/style.yml)
 
 
 ---
@@ -25,8 +25,7 @@ The project is an **open, modular finite‑volume LES solver for thermal–plasm
 ## 2&nbsp;· Repository Layout (high‑level)
 
 ```text
-SolverLES/
-
+KolmoPlas/
 ├─ .github/workflows/        # CI definitions
 ├─ assets/                   # Doc and visual assets
 ├─ cmake/                    # CMake helper modules
@@ -152,7 +151,7 @@ STRICT=1 ./scripts/format_all.sh
 ---
 
 ## 5&nbsp;· Continuous Integration
-[![Linux CI](https://github.com/PrimCFD/SolverLES/actions/workflows/linux.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/linux.yml) [![Docs](https://github.com/PrimCFD/SolverLES/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/docs.yml) [![Style](https://github.com/PrimCFD/SolverLES/actions/workflows/style.yml/badge.svg?branch=main)](https://github.com/PrimCFD/SolverLES/actions/workflows/style.yml)
+[![Linux CI](https://github.com/PrimCFD/KolmoPlas/actions/workflows/linux.yml/badge.svg?branch=main)](https://github.com/PrimCFD/KolmoPlas/actions/workflows/linux.yml) [![Docs](https://github.com/PrimCFD/KolmoPlas/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/PrimCFD/KolmoPlas/actions/workflows/docs.yml) [![Style](https://github.com/PrimCFD/KolmoPlas/actions/workflows/style.yml/badge.svg?branch=main)](https://github.com/PrimCFD/KolmoPlas/actions/workflows/style.yml)
 
 All CI is always built from clean slate (containerized) to check the whole pipeline on Hardware with missing tools
 

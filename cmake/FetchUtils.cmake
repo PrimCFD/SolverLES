@@ -1,11 +1,11 @@
 # Internal accumulator for prefetch-only targets
 function(_fu_register_prefetch_target tgt)
-  get_property(_acc GLOBAL PROPERTY SOLVERLES_PREFETCH_TARGETS)
+  get_property(_acc GLOBAL PROPERTY KOLMOPLAS_PREFETCH_TARGETS)
   if(NOT _acc)
     set(_acc "")
   endif()
   list(APPEND _acc "${tgt}")
-  set_property(GLOBAL PROPERTY SOLVERLES_PREFETCH_TARGETS "${_acc}")
+  set_property(GLOBAL PROPERTY KOLMOPLAS_PREFETCH_TARGETS "${_acc}")
 endfunction()
 
 # Base directory where dependencies are built/installed Honors
@@ -95,7 +95,7 @@ endfunction()
 # Create a single aggregate phony target that depends on all prefetch populate
 # targets Call once from PrefetchDependencies.cmake
 function(fu_make_prefetch_aggregate)
-  get_property(_acc GLOBAL PROPERTY SOLVERLES_PREFETCH_TARGETS)
+  get_property(_acc GLOBAL PROPERTY KOLMOPLAS_PREFETCH_TARGETS)
   if(_acc)
     add_custom_target(
       prefetch-archives ALL

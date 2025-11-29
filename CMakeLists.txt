@@ -10,7 +10,7 @@ if(PREFETCH_THIRD_PARTY)
 endif()
 
 project(
-  SolverLES
+  KolmoPlas
   VERSION 0.1
   DESCRIPTION "Modular LES Plasma Solver (C++/Fortran)"
   LANGUAGES C CXX Fortran)

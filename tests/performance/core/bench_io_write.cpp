@@ -119,7 +119,7 @@ int main(int argc, char** argv)
 
     // Writer config (shared)
     WriterConfig cfg;
-    cfg.path = (fs::temp_directory_path() / "solverles_bench_io").string();
+    cfg.path = (fs::temp_directory_path() / "kolmoplas_bench_io").string();
     fs::create_directories(cfg.path);
     cfg.precision = args.f32 ? WriterConfig::Precision::Float32 : WriterConfig::Precision::Float64;
 

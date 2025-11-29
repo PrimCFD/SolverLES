@@ -4,7 +4,7 @@ from pathlib import Path as _Path
 import re
 
 # Project info 
-project = "SolverLES"
+project = "KolmoPlas"
 author = "RICHARD Anthony"
 release = "0.1.0"
 
@@ -39,8 +39,8 @@ else:
 breathe_projects = {}
 xml_env = os.environ.get("DOXYGEN_XML_DIR")
 if xml_env:
-    breathe_projects["SolverLES"] = xml_env
-breathe_default_project = "SolverLES"
+    breathe_projects["KolmoPlas"] = xml_env
+breathe_default_project = "KolmoPlas"
 
 breathe_use_project_refids = True
 

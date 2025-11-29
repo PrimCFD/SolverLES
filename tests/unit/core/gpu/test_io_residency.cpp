@@ -32,7 +32,7 @@ TEST_CASE("IO works under CUDA build (UM or mirrored)", "[io][gpu]")
 
     WriterConfig cfg;
     cfg.backend = WriterConfig::Backend::XDMF; // simple HDF5 write path
-    fs::path outdir = fs::temp_directory_path() / "solverles_gpu_io";
+    fs::path outdir = fs::temp_directory_path() / "kolmoplas_gpu_io";
     fs::create_directories(outdir);
     cfg.path = outdir.string();
 

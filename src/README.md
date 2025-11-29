@@ -135,7 +135,7 @@ The solver app reads a YAML file and passes **string keys** to the registry. Exa
 
 ```yaml
 #=======================
-# SolverLES config (v0.5)
+# KolmoPlas config (v0.5)
 #=======================
 
 

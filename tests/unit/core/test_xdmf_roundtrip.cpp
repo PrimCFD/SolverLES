@@ -103,7 +103,7 @@ TEST_CASE("XDMF/HDF5 roundtrip: two scalar fields, 1 timestep", "[io][xdmf]")
     cfg.series = WriterConfig::Series::Single;
     cfg.precision = WriterConfig::Precision::Float32; // cast on write to shrink
 
-    fs::path outdir = fs::temp_directory_path() / "solverles_xdmf_rt";
+    fs::path outdir = fs::temp_directory_path() / "kolmoplas_xdmf_rt";
     fs::create_directories(outdir);
     cfg.path = outdir.string();
 
